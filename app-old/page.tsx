@@ -1,3 +1,4 @@
+// app-old/page.tsx (or wherever your Home component is defined)
 import Image from "next/image";
 
 export default function Home() {
