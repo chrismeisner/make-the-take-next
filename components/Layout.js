@@ -1,6 +1,5 @@
 // components/Layout.js
-import Header from './Header'
-import '../styles/globals.css' // Ensure your globals are imported here
+import Header from "./Header";
 
 export default function Layout({ children }) {
   return (
@@ -10,5 +9,5 @@ export default function Layout({ children }) {
 		{children}
 	  </main>
 	</div>
-  )
+  );
 }
