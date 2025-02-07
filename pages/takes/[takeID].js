@@ -6,9 +6,10 @@ import Link from 'next/link'
 export default function TakePage() {
   const router = useRouter()
   const { takeID } = router.query
-  const [takeData, setTakeData] = useState(null)
+  const [takeDetails, setTakeDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [propError, setPropError] = useState('') // For prop-related errors
 
   useEffect(() => {
 	if (!takeID) return
@@ -19,7 +20,7 @@ export default function TakePage() {
 		if (!data.success) {
 		  setError(data.error || 'Error loading take.')
 		} else {
-		  setTakeData(data)
+		  setTakeDetails(data)
 		}
 	  } catch (err) {
 		setError('Could not fetch take data.')
@@ -27,14 +28,15 @@ export default function TakePage() {
 		setLoading(false)
 	  }
 	}
+
 	fetchTake()
   }, [takeID])
 
   if (loading) return <div>Loading take...</div>
   if (error) return <div style={{ color: 'red' }}>{error}</div>
-  if (!takeData || !takeData.take) return <div>Take not found.</div>
+  if (!takeDetails || !takeDetails.take) return <div>Take not found.</div>
 
-  const { take, prop } = takeData
+  const { take, prop } = takeDetails
 
   return (
 	<div style={{ padding: '1rem' }}>
@@ -46,14 +48,21 @@ export default function TakePage() {
 		<p><strong>Chosen Side:</strong> {take.propSide}</p>
 		<p><strong>Created:</strong> {take.createdTime}</p>
 	  </section>
-	  {prop && (
+
+	  {/* Error handling for prop data */}
+	  {prop ? (
 		<section style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem' }}>
 		  <h3>Prop Info</h3>
 		  <p><strong>Prop ID:</strong> {prop.propID}</p>
 		  <p><strong>Description:</strong> {prop.propShort}</p>
 		  <p><strong>Status:</strong> {prop.propStatus}</p>
 		</section>
+	  ) : (
+		<div style={{ color: 'orange' }}>
+		  <p>Prop data not found or is unavailable.</p>
+		</div>
 	  )}
+
 	  <Link href="/" className="underline text-blue-600">
 		Back to Home
 	  </Link>
