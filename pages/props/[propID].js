@@ -1,11 +1,12 @@
+// pages/props/[propID].js
 import Head from "next/head";
 import Link from "next/link";
 import VerificationWidget from "../../components/VerificationWidget";
 import RelatedProp from "../../components/RelatedProp";
 
 /**
- * This page uses getServerSideProps so that we have `propData` at request-time
- * and can set SEO-friendly OG meta tags.
+ * This page uses getServerSideProps so we have `propData` at request-time
+ * and can set SEO-friendly OG meta tags (title, description, og:image).
  */
 export default function PropDetailPage({ propData, coverImageUrl }) {
   if (!propData) {
@@ -23,13 +24,12 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 	propID,
   } = propData;
 
-  // We'll override the global OG tags with unique ones
   return (
 	<>
 	  <Head>
 		<title>{propTitle} | Make The Take</title>
 
-		{/* Open Graph */}
+		{/* Open Graph (OG) */}
 		<meta property="og:title" content={propTitle} />
 		<meta property="og:description" content={propSummary} />
 		<meta property="og:image" content={coverImageUrl} />
@@ -77,18 +77,17 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 		  {propSummary}
 		</p>
 
+		{/* Voting Widget */}
 		<section style={{ marginBottom: "1rem" }}>
 		  <h3>Vote on This Prop</h3>
 		  <VerificationWidget embeddedPropID={propID} />
 		</section>
 
+		{/* Related Proposition */}
 		{propSubjectID ? (
 		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
 			<h3>Related Proposition</h3>
-			<RelatedProp
-			  currentSubjectID={propSubjectID}
-			  currentPropID={propID}
-			/>
+			<RelatedProp currentSubjectID={propSubjectID} currentPropID={propID} />
 		  </section>
 		) : (
 		  <p style={{ color: "#999" }}>
@@ -106,11 +105,10 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 
 export async function getServerSideProps({ params }) {
   const { propID } = params;
+  const baseUrl = process.env.SITE_URL || "http://localhost:3000";
 
-  // 1) Fetch the data from your Airtable or another API
-  const response = await fetch(
-	`${process.env.SITE_URL || "http://localhost:3000"}/api/prop?propID=${propID}`
-  );
+  // 1) Fetch the prop data from your existing API
+  const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
   const data = await response.json();
 
   if (!data.success) {
@@ -119,10 +117,11 @@ export async function getServerSideProps({ params }) {
 	};
   }
 
-  // 2) Construct the cover image URL
-  // This references your dynamic route that returns a custom PNG.
-  const coverImageUrl = `${process.env.SITE_URL || "http://localhost:3000"}/api/prop-cover/${propID}`;
+  // 2) Build the dynamic cover image URL for social previews
+  //    This references /api/prop-cover/[propID].
+  const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
 
+  // Return both the propData and the coverImageUrl to the page
   return {
 	props: {
 	  propData: data,
