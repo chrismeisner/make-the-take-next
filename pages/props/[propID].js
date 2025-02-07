@@ -5,7 +5,7 @@ import VerificationWidget from "../../components/VerificationWidget";
 import RelatedProp from "../../components/RelatedProp";
 
 /**
- * This page uses getServerSideProps so we have `propData` at request-time
+ * This page uses getServerSideProps so that we have `propData` at request-time
  * and can set SEO-friendly OG meta tags (title, description, og:image).
  */
 export default function PropDetailPage({ propData, coverImageUrl }) {
@@ -87,7 +87,10 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 		{propSubjectID ? (
 		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
 			<h3>Related Proposition</h3>
-			<RelatedProp currentSubjectID={propSubjectID} currentPropID={propID} />
+			<RelatedProp
+			  currentSubjectID={propSubjectID}
+			  currentPropID={propID}
+			/>
 		  </section>
 		) : (
 		  <p style={{ color: "#999" }}>
