@@ -1,35 +1,16 @@
 // pages/_document.js
 import { Html, Head, Main, NextScript } from "next/document";
 
+/**
+ * Custom Document without global default Open Graph/Twitter meta tags.
+ * This prevents conflicts with page-specific metadata.
+ */
 export default function MyDocument() {
   return (
 	<Html lang="en">
 	  <Head>
-		{/* Global defaults if a page doesn't override them */}
-		<meta property="og:title" content="Make The Take (Global Default)" />
-		<meta 
-		  property="og:description" 
-		  content="A default site description if none is provided." 
-		/>
-		<meta 
-		  property="og:image" 
-		  content="https://placehold.co/1200x630?text=DEFAULT+SITE+OG" 
-		/>
-		<meta property="og:type" content="website" />
-
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta 
-		  name="twitter:title" 
-		  content="Make The Take (Global Default)" 
-		/>
-		<meta 
-		  name="twitter:description" 
-		  content="A default site description if none is provided." 
-		/>
-		<meta 
-		  name="twitter:image" 
-		  content="https://placehold.co/1200x630?text=DEFAULT+SITE+OG" 
-		/>
+		{/* Remove global default OG/Twitter meta tags to allow each page to provide its own.
+			Optionally, you may include other global tags here that don’t conflict with dynamic data. */}
 	  </Head>
 	  <body>
 		<Main />

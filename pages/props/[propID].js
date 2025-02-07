@@ -5,8 +5,8 @@ import VerificationWidget from "../../components/VerificationWidget";
 import RelatedProp from "../../components/RelatedProp";
 
 /**
- * This page uses getServerSideProps so that we have `propData` at request-time
- * and can set SEO-friendly OG meta tags (title, description, og:image).
+ * PropDetailPage displays a proposition with dynamic Open Graph and Twitter meta tags.
+ * Ensure that the SITE_URL environment variable is correctly set in production.
  */
 export default function PropDetailPage({ propData, coverImageUrl }) {
   if (!propData) {
@@ -28,14 +28,13 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 	<>
 	  <Head>
 		<title>{propTitle} | Make The Take</title>
-
-		{/* Open Graph (OG) */}
+		{/* Dynamic Open Graph Tags */}
 		<meta property="og:title" content={propTitle} />
 		<meta property="og:description" content={propSummary} />
 		<meta property="og:image" content={coverImageUrl} />
 		<meta property="og:type" content="article" />
 
-		{/* Twitter Card */}
+		{/* Dynamic Twitter (X) Tags */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={propTitle} />
 		<meta name="twitter:description" content={propSummary} />
@@ -44,7 +43,6 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 
 	  <div style={{ padding: "1rem", maxWidth: "800px", margin: "0 auto" }}>
 		<h1>{propTitle}</h1>
-
 		{subjectLogoUrl && (
 		  <img
 			src={subjectLogoUrl}
@@ -57,7 +55,6 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 			}}
 		  />
 		)}
-
 		{contentImageUrl && (
 		  <div style={{ margin: "1rem 0" }}>
 			<img
@@ -67,23 +64,17 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 			/>
 		  </div>
 		)}
-
 		<div style={{ color: "#555", marginBottom: "1rem" }}>
 		  {subjectTitle && <p>Subject: {subjectTitle}</p>}
 		  <p>Created: {createdAt}</p>
 		</div>
-
 		<p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>
 		  {propSummary}
 		</p>
-
-		{/* Voting Widget */}
 		<section style={{ marginBottom: "1rem" }}>
 		  <h3>Vote on This Prop</h3>
 		  <VerificationWidget embeddedPropID={propID} />
 		</section>
-
-		{/* Related Proposition */}
 		{propSubjectID ? (
 		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
 			<h3>Related Proposition</h3>
@@ -97,7 +88,6 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 			No subject information available for related props.
 		  </p>
 		)}
-
 		<p style={{ marginTop: "1rem" }}>
 		  <Link href="/">Back to Home</Link>
 		</p>
@@ -108,9 +98,10 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 
 export async function getServerSideProps({ params }) {
   const { propID } = params;
+  // Ensure that SITE_URL is correctly set in production.
   const baseUrl = process.env.SITE_URL || "http://localhost:3000";
 
-  // 1) Fetch the prop data from your existing API
+  // Fetch the prop data from your API.
   const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
   const data = await response.json();
 
@@ -120,11 +111,9 @@ export async function getServerSideProps({ params }) {
 	};
   }
 
-  // 2) Build the dynamic cover image URL for social previews
-  //    This references /api/prop-cover/[propID].
+  // Build the dynamic cover image URL for social previews.
   const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
 
-  // Return both the propData and the coverImageUrl to the page
   return {
 	props: {
 	  propData: data,
