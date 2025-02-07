@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 		  data[i] = gray;
 		  data[i + 1] = gray;
 		  data[i + 2] = gray;
-		  // Alpha (data[i+3]) is unchanged
+		  // Alpha (data[i+3]) remains unchanged
 		}
 		ctx.putImageData(imageData, 0, 0);
 	  } catch (err) {
@@ -81,8 +81,8 @@ export default async function handler(req, res) {
 	ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
 	ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-	// 5) Draw your text on top
-	ctx.fillStyle = "#ffffff";
+	// 5) Draw your text on top, now in yellow color.
+	ctx.fillStyle = "#ffff00"; // Updated to yellow
 	ctx.textAlign = "left";
 	ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
 	wrapText(ctx, propShort, 100, 450, TEXT_MAX_WIDTH, LINE_HEIGHT);
