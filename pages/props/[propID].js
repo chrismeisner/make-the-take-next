@@ -8,7 +8,7 @@ import RelatedProp from "../../components/RelatedProp";
  * PropDetailPage displays a proposition with dynamic Open Graph and Twitter meta tags.
  * Ensure that the SITE_URL environment variable is correctly set in production.
  */
-export default function PropDetailPage({ propData, coverImageUrl }) {
+export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
   if (!propData) {
 	return <div style={{ color: "red" }}>No prop data found.</div>;
   }
@@ -33,6 +33,8 @@ export default function PropDetailPage({ propData, coverImageUrl }) {
 		<meta property="og:description" content={propSummary} />
 		<meta property="og:image" content={coverImageUrl} />
 		<meta property="og:type" content="article" />
+		<meta property="og:url" content={pageUrl} />
+		<link rel="canonical" href={pageUrl} />
 
 		{/* Dynamic Twitter (X) Tags */}
 		<meta name="twitter:card" content="summary_large_image" />
@@ -100,6 +102,8 @@ export async function getServerSideProps({ params }) {
   const { propID } = params;
   // Ensure that SITE_URL is correctly set in production.
   const baseUrl = process.env.SITE_URL || "http://localhost:3000";
+  // Build the page URL for canonical and og:url tags.
+  const pageUrl = `${baseUrl}/props/${propID}`;
 
   // Fetch the prop data from your API.
   const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
@@ -118,6 +122,7 @@ export async function getServerSideProps({ params }) {
 	props: {
 	  propData: data,
 	  coverImageUrl,
+	  pageUrl,
 	},
   };
 }

@@ -9,8 +9,7 @@ export default function MyDocument() {
   return (
 	<Html lang="en">
 	  <Head>
-		{/* Remove global default OG/Twitter meta tags to allow each page to provide its own.
-			Optionally, you may include other global tags here that don’t conflict with dynamic data. */}
+		{/* Global meta tags (if any) should not conflict with page-level meta tags */}
 	  </Head>
 	  <body>
 		<Main />
