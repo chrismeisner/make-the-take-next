@@ -17,6 +17,7 @@ export default function PropDetailPage() {
 
   useEffect(() => {
 	if (!propID) return;
+
 	console.log(`Fetching prop data for propID=${propID}...`);
 	setLoading(true);
 
@@ -29,7 +30,6 @@ export default function PropDetailPage() {
 		} else {
 		  console.log("Prop data received:", data);
 		  setPropData(data);
-		  generatePropCover(data.propID);
 		}
 		setLoading(false);
 	  })
@@ -40,25 +40,11 @@ export default function PropDetailPage() {
 	  });
   }, [propID]);
 
-  /**
-   * Trigger the generation of the prop cover image
-   */
-  function generatePropCover(propID) {
-	console.log(`Requesting cover image for propID=${propID}...`);
-	fetch(`/api/prop-cover/${propID}`)
-	  .then(() => console.log(`Cover image generated/served for prop ${propID}`))
-	  .catch((err) => console.error("Error generating cover:", err));
-  }
-
   if (loading) return <div>Loading prop...</div>;
   if (error) return <div style={{ color: "red" }}>{error}</div>;
   if (!propData) return <div>Prop not found.</div>;
 
-  // Construct the cover image URL for social sharing if desired
-  const coverImageUrl = `${window.location.origin}/api/prop-cover/${propID}`;
-  console.log("Cover image URL:", coverImageUrl);
-
-  // Basic fallback if some fields are missing
+  // Destructure relevant fields
   const {
 	propTitle = "Untitled Proposition",
 	propSummary = "No summary available",
@@ -69,20 +55,19 @@ export default function PropDetailPage() {
 	propSubjectID,
   } = propData;
 
-  // We'll use `coverImageUrl` or `contentImageUrl` for og:image.
-  // Adjust as needed (maybe prefer contentImageUrl if it exists).
-  const ogImageUrl = contentImageUrl || coverImageUrl;
+  // If a prop doesn't have its own image, use a placeholder
+  const ogImageUrl = contentImageUrl || "https://placehold.co/1200x630?text=Default+Prop+Image";
 
+  // We'll set our <title> for the browser tab + OG meta tags
   return (
 	<>
-	  {/* Dynamic Head block for unique OG tags (title, description, image) */}
 	  <Head>
 		<title>{propTitle} | Make The Take</title>
+		{/* Open Graph (OG) tags */}
 		<meta property="og:title" content={propTitle} />
 		<meta property="og:description" content={propSummary} />
 		<meta property="og:image" content={ogImageUrl} />
 		<meta property="og:type" content="article" />
-
 		{/* Optional Twitter Card tags */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={propTitle} />
@@ -133,7 +118,7 @@ export default function PropDetailPage() {
 		{/* Verification Widget for Voting */}
 		<section style={{ marginBottom: "1rem" }}>
 		  <h3>Vote on This Prop</h3>
-		  <VerificationWidget embeddedPropID={propData.propID} />
+		  <VerificationWidget embeddedPropID={propID} />
 		</section>
 
 		{/* Related Prop Section */}
