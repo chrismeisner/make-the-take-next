@@ -24,6 +24,9 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 	propID,
   } = propData;
 
+  // Format date if available
+  const formattedDate = createdAt ? new Date(createdAt).toLocaleDateString() : "Unknown date";
+
   return (
 	<>
 	  <Head>
@@ -68,7 +71,7 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 		)}
 		<div style={{ color: "#555", marginBottom: "1rem" }}>
 		  {subjectTitle && <p>Subject: {subjectTitle}</p>}
-		  <p>Created: {createdAt}</p>
+		  <p>Created: {formattedDate}</p>
 		</div>
 		<p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>
 		  {propSummary}
@@ -105,24 +108,31 @@ export async function getServerSideProps({ params }) {
   // Build the page URL for canonical and og:url tags.
   const pageUrl = `${baseUrl}/props/${propID}`;
 
-  // Fetch the prop data from your API.
-  const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
-  const data = await response.json();
+  try {
+	// Fetch the prop data from your API.
+	const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
+	const data = await response.json();
 
-  if (!data.success) {
+	if (!data.success) {
+	  return {
+		notFound: true,
+	  };
+	}
+
+	// Build the dynamic cover image URL for social previews.
+	const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
+
+	return {
+	  props: {
+		propData: data,
+		coverImageUrl,
+		pageUrl,
+	  },
+	};
+  } catch (error) {
+	console.error("Error fetching prop data:", error);
 	return {
 	  notFound: true,
 	};
   }
-
-  // Build the dynamic cover image URL for social previews.
-  const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
-
-  return {
-	props: {
-	  propData: data,
-	  coverImageUrl,
-	  pageUrl,
-	},
-  };
 }
