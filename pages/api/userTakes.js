@@ -26,10 +26,11 @@ export default async function handler(req, res) {
 	  return res.status(200).json({ success: true, side: null, message: "No existing take" });
 	}
 
-	const take = records[0].fields;
+	const takeRecord = records[0];
 	return res.status(200).json({
 	  success: true,
-	  side: take.propSide || null,
+	  side: takeRecord.fields.propSide || null,
+	  takeID: takeRecord.fields.TakeID || takeRecord.id,
 	});
   } catch (error) {
 	console.error("[userTakes] Error fetching user take:", error);

@@ -207,7 +207,10 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 	  });
 	  const takeData = await takeResp.json();
 	  if (!takeData.success) {
-		setError("Error submitting your vote: " + (takeData.error || "Unknown error"));
+		setError(
+		  "Error submitting your vote: " +
+			(takeData.error || "Unknown error")
+		);
 		return;
 	  }
 
@@ -273,7 +276,8 @@ function MakeTakeButton({
   const [error, setError] = useState("");
 
   const userHasExistingTake = !!alreadyTookSide;
-  const isSameAsVerified = userHasExistingTake && selectedChoice === alreadyTookSide;
+  const isSameAsVerified =
+	userHasExistingTake && selectedChoice === alreadyTookSide;
   const disabled = !selectedChoice || isSameAsVerified;
   const buttonLabel = userHasExistingTake ? "Update Take" : "Make The Take";
 
@@ -354,13 +358,6 @@ function CompleteStep({
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const takeUrl = `/takes/${takeID}`;
 
-  // For the pirate flag, the user’s verified side is `alreadyTookSide`.
-  // We show them as selectedChoice if you want the highlight 
-  // (or you can also pass selectedChoice to the "isSelected" logic).
-  // But typically you'd highlight whichever side they just took, 
-  // so we'll pass `selectedChoice` to "isSelected," 
-  // and `alreadyTookSide` to "isVerified."
-
   const tweetText =
 	typeof window !== "undefined"
 	  ? `I just made my take! Check it out:\n\n${window.location.origin + takeUrl} #MakeTheTake`
@@ -373,19 +370,22 @@ function CompleteStep({
 	<div style={{ marginTop: "1rem" }}>
 	  <h3>Thanks!</h3>
 	  <p>Your take was logged successfully.</p>
-
 	  {/* Show the final bars and highlight */}
-	  <div style={{ marginTop: "1rem", border: "1px solid #ccc", padding: "1rem" }}>
+	  <div
+		style={{
+		  marginTop: "1rem",
+		  border: "1px solid #ccc",
+		  padding: "1rem",
+		}}
+	  >
 		<h4>Final Results for {propTitle}</h4>
 		<PropChoices
 		  // We pass "closed" so it’s not clickable
 		  propStatus="closed"
-		  // Since we've completed a verified take,
-		  // the user’s verified side is `alreadyTookSide`.
 		  alreadyTookSide={alreadyTookSide}
-		  selectedChoice={selectedChoice} 
+		  selectedChoice={selectedChoice}
 		  resultsRevealed={true}
-		  onSelectChoice={() => {}} // No-op
+		  onSelectChoice={() => {}}
 		  sideAPct={aPct}
 		  sideBPct={bPct}
 		  sideALabel={sideALabel}
@@ -395,14 +395,15 @@ function CompleteStep({
 		  Side A Count: {sideACount} | Side B Count: {sideBCount}
 		</p>
 	  </div>
-
 	  {/* Link to the newly created take */}
 	  <p style={{ marginTop: "0.5rem" }}>
-		<Link href={takeUrl} style={{ color: "blue", textDecoration: "underline" }}>
+		<Link
+		  href={takeUrl}
+		  style={{ color: "blue", textDecoration: "underline" }}
+		>
 		  View your new take here
 		</Link>
 	  </p>
-
 	  {/* Tweet link (optional) */}
 	  <p style={{ marginTop: "0.5rem" }}>
 		<a
@@ -420,7 +421,10 @@ function CompleteStep({
 
 /** 
  * 8) Main VerificationWidget 
- *  -- we pass the needed props to CompleteStep so it can show the bars
+ *  -- We pass the needed props to CompleteStep so it can show the bars.
+ *  -- Added a link to the prop detail page at the top.
+ *  -- Also, if the user is logged in and already has a take, we display
+ *     a link to view their existing take under the "Logged in as" line.
  */
 export default function VerificationWidget({
   embeddedPropID,
@@ -439,6 +443,7 @@ export default function VerificationWidget({
   const [sideACount, setSideACount] = useState(0);
   const [sideBCount, setSideBCount] = useState(0);
   const [alreadyTookSide, setAlreadyTookSide] = useState(null);
+  const [userTakeID, setUserTakeID] = useState(null);
 
   useEffect(() => {
 	if (!embeddedPropID) return;
@@ -465,9 +470,10 @@ export default function VerificationWidget({
 	  fetch(`/api/userTakes?propID=${propData.propID}`)
 		.then((res) => res.json())
 		.then((data) => {
-		  if (data.success && data.side) {
+		  if (data.success && data.side && data.takeID) {
 			setSelectedChoice(data.side);
 			setAlreadyTookSide(data.side);
+			setUserTakeID(data.takeID);
 			setResultsRevealed(true);
 		  }
 		})
@@ -506,10 +512,24 @@ export default function VerificationWidget({
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
 
-  //  If the user has completed voting, show the success step with the bars
+  // If the user has completed voting, show the complete step with the bars
   if (currentStep === "complete") {
 	return (
 	  <div style={{ border: "1px solid #ccc", padding: "1rem", marginTop: "1rem" }}>
+		{/* Link to the full prop detail page */}
+		<div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+		  <Link href={`/props/${embeddedPropID}`}>
+			View full details for this proposition
+		  </Link>
+		</div>
+		{/* If the user already has a take, display a link to their take */}
+		{session?.user && userTakeID && (
+		  <div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+			<Link href={`/takes/${userTakeID}`}>
+			  See your take here
+			</Link>
+		  </div>
+		)}
 		<CompleteStep
 		  takeID={takeID}
 		  sideACount={sideACount}
@@ -537,15 +557,29 @@ export default function VerificationWidget({
   // Main widget
   return (
 	<div style={{ border: "1px solid #ccc", padding: "1rem", marginTop: "1rem" }}>
+	  {/* Link to the full prop detail page */}
+	  <div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+		<Link href={`/props/${embeddedPropID}`}>
+		  View full details for this proposition
+		</Link>
+	  </div>
 	  <h4>{propData.propTitle}</h4>
 	  {session?.user ? (
 		<div style={{ marginBottom: "1rem", color: "#0070f3" }}>
 		  Logged in as: {session.user.phone}
+		  {userTakeID && (
+			<div style={{ fontSize: "0.9rem" }}>
+			  <Link href={`/takes/${userTakeID}`}>
+				See your take here
+			  </Link>
+			</div>
+		  )}
 		</div>
 	  ) : (
-		<div style={{ marginBottom: "1rem", color: "#777" }}>Not logged in</div>
+		<div style={{ marginBottom: "1rem", color: "#777" }}>
+		  Not logged in
+		</div>
 	  )}
-
 	  <PropChoices
 		propStatus="open"
 		selectedChoice={selectedChoice}
@@ -557,9 +591,7 @@ export default function VerificationWidget({
 		sideBLabel={propData.PropSideBShort || "Side B"}
 		alreadyTookSide={alreadyTookSide}
 	  />
-
 	  <p>Total Takes: {totalTakes}</p>
-
 	  {session?.user ? (
 		<MakeTakeButton
 		  selectedChoice={selectedChoice}

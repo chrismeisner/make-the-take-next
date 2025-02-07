@@ -24,10 +24,11 @@ export default async function handler(req, res) {
 	  })
 	  .all();
 
-	// Map them to an array of { propID, side }
+	// Map each record to include: propID, side, and takeID (using TakeID field or the record id)
 	const userTakes = records.map((r) => ({
 	  propID: r.fields.propID,
 	  side: r.fields.propSide,
+	  takeID: r.fields.TakeID || r.id,
 	}));
 
 	return res.status(200).json({

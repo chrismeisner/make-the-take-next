@@ -5,29 +5,24 @@ import { useSession } from "next-auth/react";
 
 export default function HomePage() {
   const { data: session } = useSession();
-
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(true);
   const [propsError, setPropsError] = useState("");
-
-  // Holds { [propID]: "A" | "B" } for user’s verified takes
+  // Mapping from propID to { side, takeID }
   const [userTakesMap, setUserTakesMap] = useState({});
   const [loadingTakes, setLoadingTakes] = useState(false);
 
-  // 1) Fetch all props on mount
+  // 1) Fetch props
   useEffect(() => {
 	async function loadProps() {
 	  try {
 		const res = await fetch("/api/props");
 		const data = await res.json();
-
 		if (!data.success) {
 		  setPropsError(data.error || "Unknown error fetching props");
 		  setLoadingProps(false);
 		  return;
 		}
-
-		// Filter out archived props (optional)
 		const filteredProps = (data.props || []).filter(
 		  (prop) => prop.propStatus !== "archived"
 		);
@@ -42,72 +37,68 @@ export default function HomePage() {
 	loadProps();
   }, []);
 
-  // 2) If user is logged in, fetch all user takes via /api/userTakesAll
+  // 2) Fetch user takes (if logged in)
   useEffect(() => {
 	if (!session?.user) return;
 
 	setLoadingTakes(true);
-	fetch("/api/userTakesAll")
-	  .then((res) => res.json())
-	  .then((data) => {
+	async function loadUserTakes() {
+	  try {
+		const res = await fetch("/api/userTakesAll");
+		const data = await res.json();
 		if (!data.success) {
 		  console.error("[HomePage] userTakesAll error:", data.error);
 		  setLoadingTakes(false);
 		  return;
 		}
-		// Build map: { propID: side }
+		// Build a mapping: { propID: { side, takeID } }
 		const map = {};
 		data.userTakes.forEach((take) => {
-		  map[take.propID] = take.side; // "A" or "B"
+		  map[take.propID] = take;
 		});
 		setUserTakesMap(map);
-		setLoadingTakes(false);
-	  })
-	  .catch((err) => {
+	  } catch (err) {
 		console.error("[HomePage] userTakesAll fetch error:", err);
+	  } finally {
 		setLoadingTakes(false);
-	  });
+	  }
+	}
+	loadUserTakes();
   }, [session]);
 
-  // Handle loading/error states
   if (loadingProps) return <div className="p-4">Loading props...</div>;
-  if (propsError) return <div className="p-4 text-red-600">Error: {propsError}</div>;
-  if (propsList.length === 0) return <div className="p-4">No props found.</div>;
+  if (propsError)
+	return <div className="p-4 text-red-600">Error: {propsError}</div>;
+  if (propsList.length === 0)
+	return <div className="p-4">No props found.</div>;
 
   return (
 	<div className="p-4">
-	  <h2 className="text-2xl font-bold mb-4">All Propositions (v1)</h2>
-
+	  <h2 className="text-2xl font-bold mb-4">All Propositions</h2>
 	  <div className="space-y-6">
 		{propsList.map((prop) => {
-		  // For debugging, see exactly what fields each prop has
-		  console.log("[DEBUG] prop =>", prop);
-
-		  // userSide is "A" or "B" if user has a take
-		  const userSide = userTakesMap[prop.propID];
-
-		  // Use the EXACT field names from your debug log:
-		  // "PropSideAShort" or "PropSideBShort"
-		  let userSideLabel = "";
-		  if (userSide === "A") {
-			userSideLabel = prop.PropSideAShort || "Side A";
-		  } else if (userSide === "B") {
-			userSideLabel = prop.PropSideBShort || "Side B";
+		  // Look up the user's take (if any) by this prop's ID
+		  const userTake = userTakesMap[prop.propID];
+		  let sideLabel = "";
+		  if (userTake) {
+			sideLabel =
+			  userTake.side === "A"
+				? prop.PropSideAShort || "Side A"
+				: prop.PropSideBShort || "Side B";
 		  }
-
 		  return (
 			<div key={prop.propID} className="border p-4 rounded">
 			  <div className="flex items-center">
-				{prop.subjectLogoUrls && prop.subjectLogoUrls.length > 0 && (
-				  <div className="w-10 aspect-square overflow-hidden rounded mr-2">
-					<img
-					  src={prop.subjectLogoUrls[0]}
-					  alt={prop.subjectTitle || "Subject Logo"}
-					  className="w-full h-full object-cover"
-					/>
-				  </div>
-				)}
-
+				{prop.subjectLogoUrls &&
+				  prop.subjectLogoUrls.length > 0 && (
+					<div className="w-10 aspect-square overflow-hidden rounded mr-2">
+					  <img
+						src={prop.subjectLogoUrls[0]}
+						alt={prop.subjectTitle || "Subject Logo"}
+						className="w-full h-full object-cover"
+					  />
+					</div>
+				  )}
 				<h3 className="text-xl font-semibold">
 				  <Link
 					href={`/props/${prop.propID}`}
@@ -117,21 +108,16 @@ export default function HomePage() {
 				  </Link>
 				</h3>
 			  </div>
-
 			  {(prop.subjectTitle || prop.propStatus) && (
 				<p className="mt-1 text-sm text-gray-600">
 				  {prop.subjectTitle && <>Subject: {prop.subjectTitle}</>}
 				  {prop.subjectTitle && prop.propStatus && (
 					<span className="ml-4">Status: {prop.propStatus}</span>
 				  )}
-				  {!prop.subjectTitle && prop.propStatus && (
-					<>Status: {prop.propStatus}</>
-				  )}
+				  {!prop.subjectTitle && prop.propStatus && <>Status: {prop.propStatus}</>}
 				</p>
 			  )}
-
 			  <p className="mt-1 text-gray-500">Created: {prop.createdAt}</p>
-
 			  <div className="mt-4">
 				{prop.contentImageUrls && prop.contentImageUrls.length > 0 ? (
 				  <Link href={`/props/${prop.propID}`}>
@@ -151,9 +137,7 @@ export default function HomePage() {
 				  </Link>
 				)}
 			  </div>
-
 			  <p className="mt-2">{prop.propSummary}</p>
-
 			  <p className="mt-2 text-sm font-semibold">Make The Take:</p>
 			  <p>
 				<Link
@@ -163,27 +147,27 @@ export default function HomePage() {
 				  {prop.propShort || "View Prop"}
 				</Link>
 			  </p>
-
-			  {/* "Your Take" area */}
+			  {/* "Your Take" section */}
 			  <div className="mt-4">
 				<p className="text-sm font-semibold">Your Take:</p>
-
 				{!session?.user ? (
 				  <p className="text-gray-600">
-					<Link
-					  href="/login?redirect=/"
-					  className="text-blue-600 underline"
-					>
+					<Link href="/login?redirect=/" className="text-blue-600 underline">
 					  Log in
 					</Link>{" "}
 					to see your take.
 				  </p>
 				) : loadingTakes ? (
 				  <p className="text-gray-600">Loading your takes...</p>
-				) : userSide ? (
+				) : userTake ? (
 				  <p className="text-gray-600">
-					{/* Show the short label (e.g. "Title-bound Lakers fire up") */}
-					You chose <strong>{userSideLabel}</strong>
+					You chose{" "}
+					<Link
+					  href={`/takes/${userTake.takeID}`}
+					  className="text-blue-600 hover:underline"
+					>
+					  <strong>{sideLabel}</strong>
+					</Link>
 				  </p>
 				) : (
 				  <p className="text-gray-600">No take on this prop yet.</p>
