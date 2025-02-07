@@ -4,17 +4,15 @@ import { useRouter } from "next/router";
 import { signOut, useSession } from "next-auth/react";
 
 export default function Header() {
-  const { data: session, status } = useSession() || {}; // Ensure session does not break rendering
+  const { data: session, status } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-	console.log("[Header] Rendering...");
 	console.log("[Header] Session status:", status);
 	console.log("[Header] Session data:", session);
   }, [session, status]);
 
   async function handleLogout() {
-	console.log("[Header] Logging out user");
 	await signOut({ redirect: false });
 	router.push("/");
   }
@@ -25,7 +23,6 @@ export default function Header() {
 		<Link href="/" className="text-2xl font-bold hover:text-gray-200">
 		  Make The Take
 		</Link>
-
 		<nav className="flex items-center space-x-6">
 		  <span className="text-sm">
 			Status:
@@ -37,12 +34,10 @@ export default function Header() {
 				: "Not Authenticated"}
 			</strong>
 		  </span>
-
 		  <Link href="/leaderboard" className="hover:text-gray-300">
 			Leaderboard
 		  </Link>
-
-		  {session?.user ? (
+		  {session?.user && session.user.profileID ? (
 			<>
 			  <Link href={`/profile/${session.user.profileID}`} className="hover:text-gray-300">
 				Profile
@@ -52,7 +47,10 @@ export default function Header() {
 			  </button>
 			</>
 		  ) : (
-			<Link href={`/login?redirect=${encodeURIComponent(router.asPath)}`} className="hover:text-gray-300">
+			<Link
+			  href={`/login?redirect=${encodeURIComponent(router.asPath)}`}
+			  className="hover:text-gray-300"
+			>
 			  Log in
 			</Link>
 		  )}
