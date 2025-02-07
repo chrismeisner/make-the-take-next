@@ -1,24 +1,16 @@
-// components/Header.js
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut, useSession } from "next-auth/react";
 
 export default function Header() {
-  // "status" can be "loading" | "authenticated" | "unauthenticated"
-  // "session" holds the user object if authenticated
-  const { data: session, status } = useSession();
+  const { data: session, status } = useSession() || {}; // Ensure session does not break rendering
   const router = useRouter();
 
-  // Debug logging in the console whenever status/session changes
   useEffect(() => {
+	console.log("[Header] Rendering...");
 	console.log("[Header] Session status:", status);
 	console.log("[Header] Session data:", session);
-	if (session?.user) {
-	  console.log("[Header] User is logged in with phone:", session.user.phone);
-	} else {
-	  console.log("[Header] No user is logged in.");
-	}
   }, [session, status]);
 
   async function handleLogout() {
@@ -28,14 +20,13 @@ export default function Header() {
   }
 
   return (
-	<header className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md">
-	  <div className="container mx-auto flex items-center justify-between py-4 px-6">
+	<header className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md border-b border-gray-300">
+	  <div className="container mx-auto flex items-center justify-between py-4 px-6 min-h-[50px]">
 		<Link href="/" className="text-2xl font-bold hover:text-gray-200">
 		  Make The Take
 		</Link>
 
 		<nav className="flex items-center space-x-6">
-		  {/* Show session status in the header for debug/user info */}
 		  <span className="text-sm">
 			Status:
 			<strong className="ml-1">
@@ -53,24 +44,15 @@ export default function Header() {
 
 		  {session?.user ? (
 			<>
-			  <Link
-				href={`/profile/${session.user.profileID}`}
-				className="hover:text-gray-300"
-			  >
+			  <Link href={`/profile/${session.user.profileID}`} className="hover:text-gray-300">
 				Profile
 			  </Link>
-			  <button
-				onClick={handleLogout}
-				className="hover:text-gray-300 focus:outline-none"
-			  >
+			  <button onClick={handleLogout} className="hover:text-gray-300 focus:outline-none">
 				Logout
 			  </button>
 			</>
 		  ) : (
-			<Link
-			  href={`/login?redirect=${encodeURIComponent(router.asPath)}`}
-			  className="hover:text-gray-300"
-			>
+			<Link href={`/login?redirect=${encodeURIComponent(router.asPath)}`} className="hover:text-gray-300">
 			  Log in
 			</Link>
 		  )}

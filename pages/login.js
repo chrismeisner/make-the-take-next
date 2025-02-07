@@ -1,11 +1,11 @@
-// pages/login.js
 import { useState } from "react";
 import { useRouter } from "next/router";
+import InputMask from "react-input-mask";
 import { signIn } from "next-auth/react";
 
-export default function Login() {
+export default function LoginPage() {
   const router = useRouter();
-  const [step, setStep] = useState("phone");
+  const [step, setStep] = useState("phone"); // "phone" -> "code"
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -13,20 +13,16 @@ export default function Login() {
   async function handleSendCode(e) {
 	e.preventDefault();
 	setError("");
-
 	try {
-	  const res = await fetch("/api/sendCode", {
+	  const resp = await fetch("/api/sendCode", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ phone }),
 	  });
-	  const data = await res.json();
-
-	  if (!res.ok || !data.success) {
+	  const data = await resp.json();
+	  if (!resp.ok || data.error) {
 		throw new Error(data.error || "Failed to send code");
 	  }
-
-	  // If successful, switch steps
 	  setStep("code");
 	} catch (err) {
 	  console.error("[LoginPage] handleSendCode error:", err);
@@ -37,52 +33,60 @@ export default function Login() {
   async function handleVerifyCode(e) {
 	e.preventDefault();
 	setError("");
-
+	if (!code) {
+	  setError("Please enter your 6-digit code");
+	  return;
+	}
+	// Call NextAuth signIn with credentials
 	const result = await signIn("credentials", {
 	  redirect: false,
 	  phone,
 	  code,
 	});
-
-	if (result.ok) {
-	  // If signIn succeeded, redirect or do something
-	  // e.g. router.push("/");
-	  router.replace("/");
-	} else {
-	  setError("Invalid code or verification failed.");
+	if (!result.ok) {
+	  setError(result.error || "Invalid code or verification failed.");
+	  return;
 	}
+	// On success, redirect to the home or desired page
+	router.push("/");
   }
 
   return (
-	<div style={{ maxWidth: "400px", margin: "0 auto" }}>
+	<div style={{ maxWidth: 400, margin: "2rem auto" }}>
 	  <h1>Phone Login</h1>
 	  {error && <p style={{ color: "red" }}>{error}</p>}
-
-	  {step === "phone" ? (
+	  {step === "phone" && (
 		<form onSubmit={handleSendCode}>
 		  <label>
-			Phone:
-			<input
-			  type="tel"
+			Enter your phone:
+			<InputMask
+			  mask="(999) 999-9999"
 			  value={phone}
 			  onChange={(e) => setPhone(e.target.value)}
-			  placeholder="(555) 555-1234"
-			/>
+			>
+			  {() => <input type="tel" placeholder="(555) 555-1234" />}
+			</InputMask>
 		  </label>
-		  <button type="submit">Send Code</button>
+		  <div style={{ marginTop: "1rem" }}>
+			<button type="submit">Send Code</button>
+		  </div>
 		</form>
-	  ) : (
+	  )}
+	  {step === "code" && (
 		<form onSubmit={handleVerifyCode}>
 		  <label>
-			Verification Code:
-			<input
-			  type="text"
+			Enter the 6-digit code:
+			<InputMask
+			  mask="999999"
 			  value={code}
 			  onChange={(e) => setCode(e.target.value)}
-			  placeholder="123456"
-			/>
+			>
+			  {() => <input type="tel" placeholder="123456" />}
+			</InputMask>
 		  </label>
-		  <button type="submit">Verify &amp; Login</button>
+		  <div style={{ marginTop: "1rem" }}>
+			<button type="submit">Verify &amp; Log In</button>
+		  </div>
 		</form>
 	  )}
 	</div>

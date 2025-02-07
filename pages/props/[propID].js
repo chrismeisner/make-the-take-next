@@ -1,82 +1,125 @@
-// pages/props/[propID].js
-import { useRouter } from 'next/router'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useRouter } from "next/router";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import VerificationWidget from "../../components/VerificationWidget";
+import RelatedProp from "../../components/RelatedProp";
 
 export default function PropDetailPage() {
-  const router = useRouter()
-  const { propID } = router.query
-  const [propData, setPropData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const router = useRouter();
+  const { propID } = router.query;
+  const { data: session, status } = useSession();
+
+  const [propData, setPropData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-	if (!propID) return
+	if (!propID) return;
+	console.log(`Fetching prop data for propID=${propID}...`);
+	setLoading(true);
 
-	async function fetchProp() {
-	  try {
-		console.log(`[PropDetailPage] Fetching data for propID: ${propID}`)
-		const res = await fetch(`/api/prop?propID=${encodeURIComponent(propID)}`)
-		if (!res.ok) {
-		  const message = `HTTP error! status: ${res.status}`
-		  console.error(message)
-		  throw new Error(message)
-		}
-		const data = await res.json()
-		console.log('[PropDetailPage] Fetched prop data:', data)
+	fetch(`/api/prop?propID=${encodeURIComponent(propID)}`)
+	  .then((res) => res.json())
+	  .then((data) => {
 		if (!data.success) {
-		  setError(data.error || 'Error loading prop.')
+		  console.error("Error loading prop data:", data.error);
+		  setError(data.error || "Error loading prop.");
 		} else {
-		  setPropData(data)
+		  console.log("Prop data received:", data);
+		  setPropData(data);
+		  generatePropCover(data.propID);
 		}
-	  } catch (err) {
-		console.error('[PropDetailPage] Exception while fetching prop data:', err)
-		setError('Could not load prop data.')
-	  } finally {
-		setLoading(false)
-	  }
-	}
-	fetchProp()
-  }, [propID])
+		setLoading(false);
+	  })
+	  .catch((err) => {
+		console.error("Error fetching prop:", err);
+		setError("Could not load prop data.");
+		setLoading(false);
+	  });
+  }, [propID]);
 
-  if (loading) return <div>Loading prop...</div>
-  if (error) return <div style={{ color: 'red' }}>{error}</div>
-  if (!propData) return <div>Prop not found.</div>
+  /**
+   * Trigger the generation of the prop cover image
+   */
+  function generatePropCover(propID) {
+	console.log(`Requesting cover image for propID=${propID}...`);
+	fetch(`/api/prop-cover/${propID}`)
+	  .then(() => console.log(`Cover image generated/served for prop ${propID}`))
+	  .catch((err) => console.error("Error generating cover:", err));
+  }
+
+  if (loading) return <div>Loading prop...</div>;
+  if (error) return <div style={{ color: "red" }}>{error}</div>;
+  if (!propData) return <div>Prop not found.</div>;
+
+  // Construct the cover image URL
+  const coverImageUrl = `${window.location.origin}/api/prop-cover/${propID}`;
+  console.log("Cover image URL:", coverImageUrl);
 
   return (
-	<div style={{ padding: '1rem', maxWidth: '800px', margin: '0 auto' }}>
+	<div style={{ padding: "1rem", maxWidth: "800px", margin: "0 auto" }}>
+	  {/* Prop Title */}
 	  <h1>{propData.propTitle}</h1>
+
+	  {/* Subject Logo */}
 	  {propData.subjectLogoUrl && (
 		<img
 		  src={propData.subjectLogoUrl}
-		  alt={propData.subjectTitle || 'Subject Logo'}
+		  alt={propData.subjectTitle || "Subject Logo"}
 		  style={{
-			width: '80px',
-			height: '80px',
-			objectFit: 'cover',
-			borderRadius: '4px',
+			width: "80px",
+			height: "80px",
+			objectFit: "cover",
+			borderRadius: "4px",
 		  }}
 		/>
 	  )}
+
+	  {/* Main Prop Image */}
 	  {propData.contentImageUrl && (
-		<div style={{ margin: '1rem 0' }}>
+		<div style={{ margin: "1rem 0" }}>
 		  <img
 			src={propData.contentImageUrl}
 			alt="Prop Content"
-			style={{ width: '100%', maxWidth: '600px', objectFit: 'cover' }}
+			style={{ width: "100%", maxWidth: "600px", objectFit: "cover" }}
 		  />
 		</div>
 	  )}
-	  <div style={{ color: '#555', marginBottom: '1rem' }}>
+
+	  {/* Subject & Created Date */}
+	  <div style={{ color: "#555", marginBottom: "1rem" }}>
 		{propData.subjectTitle && <p>Subject: {propData.subjectTitle}</p>}
 		<p>Created: {propData.createdAt}</p>
 	  </div>
-	  <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
+
+	  {/* Prop Summary */}
+	  <p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>
 		{propData.propSummary}
 	  </p>
-	  <Link href="/" className="underline text-blue-600">
-		Back to Home
-	  </Link>
+
+	  {/* Verification Widget for Voting */}
+	  <section style={{ marginBottom: "1rem" }}>
+		<h3>Vote on This Prop</h3>
+		<VerificationWidget embeddedPropID={propData.propID} />
+	  </section>
+
+	  {/* Related Prop Section */}
+	  {propData.propSubjectID ? (
+		<section style={{ border: "1px solid #ccc", padding: "1rem" }}>
+		  <h3>Related Proposition</h3>
+		  <RelatedProp
+			currentSubjectID={propData.propSubjectID}
+			currentPropID={propData.propID}
+		  />
+		</section>
+	  ) : (
+		<p style={{ color: "#999" }}>No subject information available for related props.</p>
+	  )}
+
+	  <p style={{ marginTop: "1rem" }}>
+		<Link href="/">Back to Home</Link>
+	  </p>
 	</div>
-  )
+  );
 }

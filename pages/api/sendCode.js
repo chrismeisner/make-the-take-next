@@ -1,4 +1,5 @@
 // pages/api/sendCode.js
+
 import twilio from "twilio";
 
 const client = twilio(
@@ -10,33 +11,32 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
 	return res.status(405).json({ error: "Method not allowed" });
   }
-
   const { phone } = req.body;
   if (!phone) {
 	return res.status(400).json({ error: "Missing phone number" });
   }
 
   try {
-	// Format to E.164 (assuming US, so +1)
 	const numeric = phone.replace(/\D/g, "");
 	const e164Phone = `+1${numeric}`;
+	console.log("[/api/sendCode] sending code to =>", e164Phone);
 
-	// Send the code via Twilio Verify
+	// Use Twilio Verify to send code
 	const verification = await client.verify.v2
 	  .services(process.env.TWILIO_VERIFY_SERVICE_SID)
 	  .verifications.create({ to: e164Phone, channel: "sms" });
 
-	// Optionally check verification status
+	console.log("[/api/sendCode] Twilio verification =>", verification.status);
+
 	if (verification.status === "pending") {
 	  return res.status(200).json({ success: true });
 	} else {
-	  // Something unexpected
 	  return res
 		.status(500)
 		.json({ error: `Unexpected verification status: ${verification.status}` });
 	}
-  } catch (error) {
-	console.error("[sendCode] Twilio error:", error);
+  } catch (err) {
+	console.error("[/api/sendCode] error =>", err);
 	return res.status(500).json({ error: "Failed to send verification code" });
   }
 }
