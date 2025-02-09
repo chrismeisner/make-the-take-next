@@ -76,10 +76,12 @@ export async function getServerSideProps(context) {
 	return { notFound: true };
   }
 
-  // Dynamically build the base URL from the incoming request
-  const protocol = context.req.headers["x-forwarded-proto"] || "http";
-  const host = context.req.headers["x-forwarded-host"] || context.req.headers.host;
-  const origin = `${protocol}://${host}`;
+  // Use SITE_URL if defined; otherwise fall back to constructing the origin from headers.
+  const origin =
+	process.env.SITE_URL ||
+	`${context.req.headers["x-forwarded-proto"] || "http"}://${
+	  context.req.headers["x-forwarded-host"] || context.req.headers.host
+	}`;
 
   const packData = await fetchPackByURL(packURL, origin);
   if (!packData) {
@@ -94,7 +96,7 @@ export async function getServerSideProps(context) {
 }
 
 /**
- * Helper to fetch a pack (and new fields) by URL, using dynamic origin.
+ * Helper to fetch a pack (and new fields) by URL, using a dynamic origin.
  */
 async function fetchPackByURL(packURL, origin) {
   try {
