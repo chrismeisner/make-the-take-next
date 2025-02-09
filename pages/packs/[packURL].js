@@ -62,7 +62,7 @@ export default function PackPage({ packData }) {
 		  Pack URL: <span className="italic">/packs/[packURL]</span>
 		</p>
 
-		{/* If no props, display a message. Otherwise list them */}
+		{/* If no props, display a message. Otherwise, list them */}
 		{props.length === 0 ? (
 		  <p className="text-gray-600">No propositions found for this pack.</p>
 		) : (
@@ -100,7 +100,11 @@ export async function getServerSideProps(context) {
  */
 async function fetchPackByURL(packURL) {
   try {
-	const response = await fetch(`http://localhost:3000/api/packs/${packURL}`);
+	// Use an environment variable (SITE_URL) OR dynamically construct the URL.
+	// Fallback to localhost when not set:
+	const baseUrl = process.env.SITE_URL || "http://localhost:3000";
+
+	const response = await fetch(`${baseUrl}/api/packs/${encodeURIComponent(packURL)}`);
 	const data = await response.json();
 	if (!response.ok || !data.success) {
 	  return null;
