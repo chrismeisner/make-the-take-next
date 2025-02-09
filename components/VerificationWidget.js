@@ -1,14 +1,11 @@
-// components/VerificationWidget.js
-
-import { useState, useEffect } from "react";
+// File: /components/VerificationWidget.js
+import { useState, useEffect, useRef } from "react";
 import InputMask from "react-input-mask";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession, signIn } from "next-auth/react";
 
-/** 
- * 1) Helper to compute side percentages with an offset to avoid 0%
- */
+// 1) Helper function: compute side percentages
 function computeSidePercents(aCount, bCount) {
   const aWithOffset = aCount + 1;
   const bWithOffset = bCount + 1;
@@ -18,9 +15,7 @@ function computeSidePercents(aCount, bCount) {
   return { aPct, bPct };
 }
 
-/** 
- * 2) Choice subcomponent 
- */
+// 2) Choice subcomponent
 function Choice({
   label,
   percentage,
@@ -32,37 +27,33 @@ function Choice({
   onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
-
-  // Only clickable if the prop is open
   const clickable = propStatus === "open";
-  const backgroundColor = !anySideSelected ? "#f9f9f9" : "#ffffff";
-  const outlineStyle = isSelected ? "2px solid #3b82f6" : "none";
-  const baseBorder = "1px solid #ddd";
-  const hoverBorder = "1px solid #aaa";
 
+  // The “filling bar” style is reverted to inline styling:
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
-  const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
   const fillWidth = showResults ? `${percentage}%` : "0%";
+  const fillColor = `rgba(219, 234, 254, ${fillOpacity})`; // original color logic
+
+  // Tailwind for the choice container (minus the bar)
+  const containerClasses = [
+	"relative", 
+	"mb-2", 
+	"p-3", 
+	"rounded-md", 
+	"transition-colors",
+	clickable ? "cursor-pointer" : "cursor-default",
+	isSelected ? "border-2 border-blue-500 bg-white" : "border border-gray-300 bg-gray-50",
+	isHovered && clickable && !isSelected ? "border-gray-400" : ""
+  ].join(" ");
 
   return (
 	<div
+	  className={containerClasses}
 	  onClick={clickable ? onSelect : undefined}
 	  onMouseEnter={() => clickable && setIsHovered(true)}
 	  onMouseLeave={() => clickable && setIsHovered(false)}
-	  style={{
-		position: "relative",
-		marginBottom: "0.5rem",
-		padding: "1rem",
-		cursor: clickable ? "pointer" : "default",
-		backgroundColor,
-		border: isHovered && clickable ? hoverBorder : baseBorder,
-		outline: outlineStyle,
-		overflow: "hidden",
-		textAlign: "left",
-		opacity: clickable ? 1 : 0.8,
-		transition: "border-color 0.2s ease",
-	  }}
 	>
+	  {/* The background highlight (bar) behind the label, using original inline styles */}
 	  <div
 		style={{
 		  position: "absolute",
@@ -75,18 +66,19 @@ function Choice({
 		  transition: "width 0.4s ease",
 		}}
 	  />
-	  <div style={{ position: "relative", zIndex: 1 }}>
+
+	  <div className="relative z-10">
 		{isVerified ? "🏴‍☠️ " : ""}
 		{label}
-		{showResults && <span style={{ marginLeft: 6 }}>({percentage}%)</span>}
+		{showResults && (
+		  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
+		)}
 	  </div>
 	</div>
   );
 }
 
-/** 
- * 3) PropChoices for side A/B 
- */
+// 3) PropChoices
 function PropChoices({
   propStatus,
   selectedChoice,
@@ -105,7 +97,7 @@ function PropChoices({
   ];
 
   return (
-	<div style={{ marginBottom: "1rem" }}>
+	<div className="mb-4">
 	  {choices.map((choice) => {
 		const isSelected = selectedChoice === choice.value;
 		const isVerified = alreadyTookSide === choice.value;
@@ -127,9 +119,7 @@ function PropChoices({
   );
 }
 
-/** 
- * 4) PhoneNumberForm => step "phone"
- */
+// 4) PhoneNumberForm => step "phone"
 function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
   const [error, setError] = useState("");
@@ -154,32 +144,37 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
   }
 
   return (
-	<div style={{ marginBottom: "1rem" }}>
-	  <label style={{ display: "block", marginBottom: "0.5rem" }}>
+	<div className="mb-4">
+	  <label className="block mb-2 font-semibold text-gray-700">
 		Enter Your Phone Number:
 	  </label>
-	  <div style={{ display: "flex", gap: "0.5rem" }}>
+	  <div className="flex gap-2">
 		<InputMask
 		  mask="(999) 999-9999"
 		  value={localPhone}
 		  onChange={(e) => setLocalPhone(e.target.value)}
 		>
-		  {() => <input type="tel" style={{ flex: 1, padding: "0.5rem" }} />}
+		  {() => (
+			<input
+			  type="tel"
+			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+			  placeholder="(555) 555-1234"
+			/>
+		  )}
 		</InputMask>
-		<button onClick={handleSendCode} style={{ padding: "0.5rem 1rem" }}>
+		<button
+		  onClick={handleSendCode}
+		  className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none"
+		>
 		  Send Code
 		</button>
 	  </div>
-	  {error && (
-		<div style={{ color: "red", marginTop: "0.5rem" }}>{error}</div>
-	  )}
+	  {error && <div className="mt-1 text-red-600">{error}</div>}
 	</div>
   );
 }
 
-/** 
- * 5) VerificationForm => step "code"
- */
+// 5) VerificationForm => step "code"
 function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -196,7 +191,6 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 	  setError("Verification failed: " + (result.error || "Invalid code"));
 	  return;
 	}
-
 	// 2) Create the take
 	try {
 	  const takeResp = await fetch("/api/take", {
@@ -208,12 +202,10 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 	  const takeData = await takeResp.json();
 	  if (!takeData.success) {
 		setError(
-		  "Error submitting your vote: " +
-			(takeData.error || "Unknown error")
+		  "Error submitting your vote: " + (takeData.error || "Unknown error")
 		);
 		return;
 	  }
-
 	  onComplete(takeData.newTakeID, {
 		success: true,
 		sideACount: takeData.sideACount,
@@ -226,15 +218,15 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   function handleResend() {
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
-	// Optionally trigger resend logic
+	// Optionally call /api/sendCode again or do nothing
   }
 
   return (
-	<div style={{ marginBottom: "1rem" }}>
-	  <label style={{ display: "block", marginBottom: "0.5rem" }}>
+	<div className="mb-4">
+	  <label className="block mb-2 font-semibold text-gray-700">
 		Enter Your 6-Digit Code:
 	  </label>
-	  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+	  <div className="flex items-center gap-2">
 		<InputMask
 		  mask="999999"
 		  value={code}
@@ -244,27 +236,29 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 			<input
 			  type="text"
 			  placeholder="123456"
-			  style={{ width: "100px", padding: "0.5rem" }}
+			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			/>
 		  )}
 		</InputMask>
-		<button onClick={handleVerify} style={{ padding: "0.5rem 1rem" }}>
+		<button
+		  onClick={handleVerify}
+		  className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none"
+		>
 		  Verify
 		</button>
-		<button onClick={handleResend} style={{ padding: "0.5rem" }}>
+		<button
+		  onClick={handleResend}
+		  className="px-3 py-2 text-sm text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none"
+		>
 		  Resend
 		</button>
 	  </div>
-	  {error && (
-		<div style={{ color: "red", marginTop: "0.5rem" }}>{error}</div>
-	  )}
+	  {error && <div className="mt-1 text-red-600">{error}</div>}
 	</div>
   );
 }
 
-/** 
- * 6) MakeTakeButton
- */
+// 6) MakeTakeButton
 function MakeTakeButton({
   selectedChoice,
   propID,
@@ -274,7 +268,6 @@ function MakeTakeButton({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
-
   const userHasExistingTake = !!alreadyTookSide;
   const isSameAsVerified =
 	userHasExistingTake && selectedChoice === alreadyTookSide;
@@ -313,35 +306,30 @@ function MakeTakeButton({
   }
 
   return (
-	<div style={{ margin: "1rem 0" }}>
+	<div className="mt-4">
 	  <button
 		onClick={handleClick}
 		disabled={disabled}
-		style={{
-		  backgroundColor: disabled ? "#888" : "#0070f3",
-		  color: "#fff",
-		  padding: "0.5rem 1rem",
-		  cursor: disabled ? "not-allowed" : "pointer",
-		}}
+		className={[
+		  "px-4 py-2 rounded-md focus:outline-none text-white",
+		  disabled
+			? "bg-gray-400 cursor-not-allowed"
+			: "bg-blue-600 hover:bg-blue-700",
+		].join(" ")}
 	  >
 		{buttonLabel}
 	  </button>
 	  {confirming && !disabled && (
-		<span style={{ marginLeft: "0.5rem", color: "blue" }}>
-		  Click again to confirm your take on side "{selectedChoice}"!
+		<span className="ml-2 text-blue-600">
+		  Click again to confirm your take on side “{selectedChoice}”!
 		</span>
 	  )}
-	  {error && (
-		<div style={{ color: "red", marginTop: "0.5rem" }}>{error}</div>
-	  )}
+	  {error && <div className="mt-2 text-red-600">{error}</div>}
 	</div>
   );
 }
 
-/** 
- * 7) CompleteStep 
- *  -- We'll add PropChoices here to show bars in the success screen.
- */
+// 7) CompleteStep
 function CompleteStep({
   takeID,
   sideACount,
@@ -353,11 +341,9 @@ function CompleteStep({
   sideBLabel,
 }) {
   if (!takeID) return null;
-
-  // Recompute final percentages to show the bars
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
-  const takeUrl = `/takes/${takeID}`;
 
+  const takeUrl = `/takes/${takeID}`;
   const tweetText =
 	typeof window !== "undefined"
 	  ? `I just made my take! Check it out:\n\n${window.location.origin + takeUrl} #MakeTheTake`
@@ -367,20 +353,12 @@ function CompleteStep({
   )}`;
 
   return (
-	<div style={{ marginTop: "1rem" }}>
-	  <h3>Thanks!</h3>
+	<div className="mt-4">
+	  <h3 className="text-lg font-semibold">Thanks!</h3>
 	  <p>Your take was logged successfully.</p>
-	  {/* Show the final bars and highlight */}
-	  <div
-		style={{
-		  marginTop: "1rem",
-		  border: "1px solid #ccc",
-		  padding: "1rem",
-		}}
-	  >
-		<h4>Final Results for {propTitle}</h4>
+	  <div className="mt-4 border border-gray-300 p-4 rounded-md">
+		<h4 className="font-semibold mb-2">Final Results for {propTitle}</h4>
 		<PropChoices
-		  // We pass "closed" so it’s not clickable
 		  propStatus="closed"
 		  alreadyTookSide={alreadyTookSide}
 		  selectedChoice={selectedChoice}
@@ -391,26 +369,21 @@ function CompleteStep({
 		  sideALabel={sideALabel}
 		  sideBLabel={sideBLabel}
 		/>
-		<p>
+		<p className="text-sm text-gray-600">
 		  Side A Count: {sideACount} | Side B Count: {sideBCount}
 		</p>
 	  </div>
-	  {/* Link to the newly created take */}
-	  <p style={{ marginTop: "0.5rem" }}>
-		<Link
-		  href={takeUrl}
-		  style={{ color: "blue", textDecoration: "underline" }}
-		>
+	  <p className="mt-2 text-sm">
+		<Link href={takeUrl} className="text-blue-600 underline">
 		  View your new take here
 		</Link>
 	  </p>
-	  {/* Tweet link (optional) */}
-	  <p style={{ marginTop: "0.5rem" }}>
+	  <p className="mt-2 text-sm">
 		<a
 		  href={tweetHref}
 		  target="_blank"
 		  rel="noreferrer"
-		  style={{ color: "blue", textDecoration: "underline" }}
+		  className="text-blue-600 underline"
 		>
 		  Tweet this take
 		</a>
@@ -419,20 +392,14 @@ function CompleteStep({
   );
 }
 
-/** 
- * 8) Main VerificationWidget 
- *  -- We pass the needed props to CompleteStep so it can show the bars.
- *  -- Added a link to the prop detail page at the top.
- *  -- Also, if the user is logged in and already has a take, we display
- *     a link to view their existing take under the "Logged in as" line.
- */
+// 8) Main VerificationWidget
 export default function VerificationWidget({
   embeddedPropID,
   redirectOnSuccess = false,
+  onVerificationComplete,
 }) {
   const { data: session } = useSession();
   const router = useRouter();
-
   const [currentStep, setCurrentStep] = useState("phone");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedChoice, setSelectedChoice] = useState("");
@@ -445,6 +412,9 @@ export default function VerificationWidget({
   const [alreadyTookSide, setAlreadyTookSide] = useState(null);
   const [userTakeID, setUserTakeID] = useState(null);
 
+  const alreadyVerifiedCalled = useRef(false);
+
+  // Load prop data
   useEffect(() => {
 	if (!embeddedPropID) return;
 	fetch(`/api/prop?propID=${encodeURIComponent(embeddedPropID)}`)
@@ -465,8 +435,9 @@ export default function VerificationWidget({
 	  });
   }, [embeddedPropID]);
 
+  // If user is logged in, check existing take
   useEffect(() => {
-	if (session && propData?.propID) {
+	if (session && propData?.propID && !alreadyVerifiedCalled.current) {
 	  fetch(`/api/userTakes?propID=${propData.propID}`)
 		.then((res) => res.json())
 		.then((data) => {
@@ -475,18 +446,27 @@ export default function VerificationWidget({
 			setAlreadyTookSide(data.side);
 			setUserTakeID(data.takeID);
 			setResultsRevealed(true);
+			if (onVerificationComplete) {
+			  onVerificationComplete();
+			  alreadyVerifiedCalled.current = true;
+			}
 		  }
 		})
 		.catch((err) => {
-		  console.error("Error fetching user take:", err);
+		  console.error("[VerificationWidget] error loading userTakes =>", err);
 		});
 	}
-  }, [session, propData]);
+  }, [session, propData, onVerificationComplete]);
 
+  // Called after a successful new take
   function handleComplete(newTakeID, freshData) {
 	if (freshData?.success) {
 	  setSideACount(freshData.sideACount || 0);
 	  setSideBCount(freshData.sideBCount || 0);
+	  if (onVerificationComplete && !alreadyVerifiedCalled.current) {
+		onVerificationComplete();
+		alreadyVerifiedCalled.current = true;
+	  }
 	}
 	if (redirectOnSuccess) {
 	  router.push(`/takes/${newTakeID}`);
@@ -502,32 +482,32 @@ export default function VerificationWidget({
   }
 
   if (loading) {
-	return <div>Loading proposition...</div>;
+	return <div className="text-gray-600">Loading proposition...</div>;
   }
   if (!propData?.success) {
-	return <div>Prop not found or error loading prop.</div>;
+	return (
+	  <div className="text-red-600">
+		Prop not found or error loading prop.
+	  </div>
+	);
   }
 
   const propStatus = propData.propStatus || "open";
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
 
-  // If the user has completed voting, show the complete step with the bars
+  // If the user just completed the flow
   if (currentStep === "complete") {
 	return (
-	  <div style={{ border: "1px solid #ccc", padding: "1rem", marginTop: "1rem" }}>
-		{/* Link to the full prop detail page */}
-		<div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
+		<div className="mb-2 text-sm text-gray-600">
 		  <Link href={`/props/${embeddedPropID}`}>
 			View full details for this proposition
 		  </Link>
 		</div>
-		{/* If the user already has a take, display a link to their take */}
 		{session?.user && userTakeID && (
-		  <div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
-			<Link href={`/takes/${userTakeID}`}>
-			  See your take here
-			</Link>
+		  <div className="mb-4 text-sm text-gray-600">
+			<Link href={`/takes/${userTakeID}`}>See your take here</Link>
 		  </div>
 		)}
 		<CompleteStep
@@ -544,31 +524,32 @@ export default function VerificationWidget({
 	);
   }
 
+  // If prop is no longer open
   if (propStatus !== "open") {
 	return (
-	  <div style={{ border: "1px solid #ccc", padding: "1rem", marginTop: "1rem" }}>
-		<h4>{propData.propTitle}</h4>
+	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
+		<h4 className="font-semibold mb-1">{propData.propTitle}</h4>
 		<p>Status: {propStatus}</p>
 		<p>Total Takes: {totalTakes}</p>
 	  </div>
 	);
   }
 
-  // Main widget
+  // Normal open prop flow
   return (
-	<div style={{ border: "1px solid #ccc", padding: "1rem", marginTop: "1rem" }}>
-	  {/* Link to the full prop detail page */}
-	  <div style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
+	<div className="border border-gray-300 p-4 mt-4 rounded-md">
+	  <div className="mb-2 text-sm text-gray-600">
 		<Link href={`/props/${embeddedPropID}`}>
 		  View full details for this proposition
 		</Link>
 	  </div>
-	  <h4>{propData.propTitle}</h4>
+	  <h4 className="text-lg font-semibold">{propData.propTitle}</h4>
+
 	  {session?.user ? (
-		<div style={{ marginBottom: "1rem", color: "#0070f3" }}>
+		<div className="mb-4 text-sm text-blue-600">
 		  Logged in as: {session.user.phone}
 		  {userTakeID && (
-			<div style={{ fontSize: "0.9rem" }}>
+			<div>
 			  <Link href={`/takes/${userTakeID}`}>
 				See your take here
 			  </Link>
@@ -576,10 +557,9 @@ export default function VerificationWidget({
 		  )}
 		</div>
 	  ) : (
-		<div style={{ marginBottom: "1rem", color: "#777" }}>
-		  Not logged in
-		</div>
+		<div className="mb-4 text-sm text-gray-700">Not logged in</div>
 	  )}
+
 	  <PropChoices
 		propStatus="open"
 		selectedChoice={selectedChoice}
@@ -591,7 +571,9 @@ export default function VerificationWidget({
 		sideBLabel={propData.PropSideBShort || "Side B"}
 		alreadyTookSide={alreadyTookSide}
 	  />
-	  <p>Total Takes: {totalTakes}</p>
+
+	  <p className="text-sm text-gray-600">Total Takes: {totalTakes}</p>
+
 	  {session?.user ? (
 		<MakeTakeButton
 		  selectedChoice={selectedChoice}
@@ -601,7 +583,7 @@ export default function VerificationWidget({
 		  alreadyTookSide={alreadyTookSide}
 		/>
 	  ) : (
-		<div style={{ marginTop: "1rem" }}>
+		<div className="mt-4">
 		  {currentStep === "phone" && (
 			<PhoneNumberForm
 			  phoneNumber={phoneNumber}
