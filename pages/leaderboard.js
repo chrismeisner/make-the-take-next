@@ -9,23 +9,32 @@ export default function LeaderboardPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // 1) Load distinct subjects on mount
+  // Utility function to obscure the phone
+  function obscurePhone(e164Phone) {
+	const stripped = e164Phone.replace(/\D/g, "");
+	let digits = stripped;
+	if (digits.startsWith("1") && digits.length === 11) {
+	  digits = digits.slice(1);
+	}
+	if (digits.length !== 10) {
+	  return e164Phone;
+	}
+	const area = digits.slice(0, 3);
+	const middle = digits.slice(3, 6);
+	return `(${area}) ${middle} ****`;
+  }
+
   useEffect(() => {
 	fetch('/api/subjectIDs')
 	  .then((res) => res.json())
 	  .then((data) => {
-		if (!data.success) {
-		  console.error('Error fetching subjectIDs:', data.error);
-		  return;
+		if (data.success) {
+		  setSubjectIDs(data.subjectIDs || []);
 		}
-		setSubjectIDs(data.subjectIDs || []);
 	  })
-	  .catch((err) => {
-		console.error('Error =>', err);
-	  });
+	  .catch((err) => console.error('[leaderboard] subjectIDs error =>', err));
   }, []);
 
-  // 2) Function to fetch the leaderboard
   const fetchLeaderboard = useCallback((subjectID) => {
 	setLoading(true);
 	setError('');
@@ -47,18 +56,17 @@ export default function LeaderboardPage() {
 		setLoading(false);
 	  })
 	  .catch((err) => {
-		console.error('[LeaderboardPage] fetch error =>', err);
-		setError('Could not fetch leaderboard. Please try again later.');
+		console.error('[leaderboard] fetch error =>', err);
+		setError('Could not fetch leaderboard');
 		setLoading(false);
 	  });
   }, []);
 
-  // 3) On first load, fetch "All" subjects
+  // On first load, fetch "All"
   useEffect(() => {
 	fetchLeaderboard('');
   }, [fetchLeaderboard]);
 
-  // 4) When user picks a subject
   function handleSubjectChange(e) {
 	const val = e.target.value;
 	setSelectedSubject(val);
@@ -69,7 +77,6 @@ export default function LeaderboardPage() {
 	<div style={{ padding: '2rem' }}>
 	  <h2>Subject Leaderboard</h2>
 
-	  {/* Subject dropdown */}
 	  <div style={{ marginBottom: '1rem' }}>
 		<label style={{ marginRight: '0.5rem' }}>Choose Subject:</label>
 		<select value={selectedSubject} onChange={handleSubjectChange}>
@@ -85,7 +92,7 @@ export default function LeaderboardPage() {
 	  {loading ? (
 		<p>Loading leaderboard...</p>
 	  ) : error ? (
-		<div style={{ marginBottom: '1rem', color: 'red' }}>{error}</div>
+		<div style={{ color: 'red' }}>{error}</div>
 	  ) : leaderboard.length === 0 ? (
 		<p>No data found for this subject.</p>
 	  ) : (
@@ -95,7 +102,6 @@ export default function LeaderboardPage() {
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Phone</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Takes</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Points</th>
-			  {/* Add a new column: Record */}
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Record</th>
 			</tr>
 		  </thead>
@@ -105,15 +111,14 @@ export default function LeaderboardPage() {
 				<td style={{ padding: '0.5rem' }}>
 				  {item.profileID ? (
 					<Link href={`/profile/${item.profileID}`}>
-					  {item.phone}
+					  {obscurePhone(item.phone)}
 					</Link>
 				  ) : (
-					item.phone
+					obscurePhone(item.phone)
 				  )}
 				</td>
 				<td style={{ padding: '0.5rem' }}>{item.count}</td>
 				<td style={{ padding: '0.5rem' }}>{Math.round(item.points)}</td>
-				{/* Display "Record" as W-L */}
 				<td style={{ padding: '0.5rem' }}>
 				  {item.won}-{item.lost}
 				</td>
