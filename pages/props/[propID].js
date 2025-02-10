@@ -47,7 +47,10 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 	  </Head>
 
 	  <div style={{ padding: "1rem", maxWidth: "800px", margin: "0 auto" }}>
-		<h1>{propTitle}</h1>
+		{/* Make the proposition title bigger, like an H1 */}
+		<h1 className="text-3xl font-bold mb-3">{propTitle}</h1>
+
+		{/* Subject Logo */}
 		{subjectLogoUrl && (
 		  <img
 			src={subjectLogoUrl}
@@ -60,6 +63,8 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 			}}
 		  />
 		)}
+
+		{/* Content Image */}
 		{contentImageUrl && (
 		  <div style={{ margin: "1rem 0" }}>
 			<img
@@ -69,30 +74,36 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 			/>
 		  </div>
 		)}
+
+		{/* Subject title and Created date */}
 		<div style={{ color: "#555", marginBottom: "1rem" }}>
 		  {subjectTitle && <p>Subject: {subjectTitle}</p>}
 		  <p>Created: {formattedDate}</p>
 		</div>
+
+		{/* Summary */}
 		<p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>
 		  {propSummary}
 		</p>
+
+		{/* Vote widget */}
 		<section style={{ marginBottom: "1rem" }}>
 		  <h3>Vote on This Prop</h3>
 		  <VerificationWidget embeddedPropID={propID} />
 		</section>
+
+		{/* Related prop(s) */}
 		{propSubjectID ? (
 		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
 			<h3>Related Proposition</h3>
-			<RelatedProp
-			  currentSubjectID={propSubjectID}
-			  currentPropID={propID}
-			/>
+			<RelatedProp currentSubjectID={propSubjectID} currentPropID={propID} />
 		  </section>
 		) : (
 		  <p style={{ color: "#999" }}>
 			No subject information available for related props.
 		  </p>
 		)}
+
 		<p style={{ marginTop: "1rem" }}>
 		  <Link href="/">Back to Home</Link>
 		</p>
@@ -114,9 +125,7 @@ export async function getServerSideProps({ params }) {
 	const data = await response.json();
 
 	if (!data.success) {
-	  return {
-		notFound: true,
-	  };
+	  return { notFound: true };
 	}
 
 	// Build the dynamic cover image URL for social previews.
@@ -131,8 +140,6 @@ export async function getServerSideProps({ params }) {
 	};
   } catch (error) {
 	console.error("Error fetching prop data:", error);
-	return {
-	  notFound: true,
-	};
+	return { notFound: true };
   }
 }

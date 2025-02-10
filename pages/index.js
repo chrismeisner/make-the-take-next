@@ -8,7 +8,6 @@ export default function HomePage() {
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(true);
   const [propsError, setPropsError] = useState("");
-  // Mapping from propID to { side, takeID }
   const [userTakesMap, setUserTakesMap] = useState({});
   const [loadingTakes, setLoadingTakes] = useState(false);
 
@@ -37,7 +36,7 @@ export default function HomePage() {
 	loadProps();
   }, []);
 
-  // 2) Fetch user takes (if logged in)
+  // 2) If logged in => load userTakesAll
   useEffect(() => {
 	if (!session?.user) return;
 
@@ -51,7 +50,7 @@ export default function HomePage() {
 		  setLoadingTakes(false);
 		  return;
 		}
-		// Build a mapping: { propID: { side, takeID } }
+		// Build a map => { propID: { side: "A"/"B", takeID: ..., ... } }
 		const map = {};
 		data.userTakes.forEach((take) => {
 		  map[take.propID] = take;
@@ -67,18 +66,21 @@ export default function HomePage() {
   }, [session]);
 
   if (loadingProps) return <div className="p-4">Loading props...</div>;
-  if (propsError)
+  if (propsError) {
 	return <div className="p-4 text-red-600">Error: {propsError}</div>;
-  if (propsList.length === 0)
+  }
+  if (propsList.length === 0) {
 	return <div className="p-4">No props found.</div>;
+  }
 
   return (
 	<div className="p-4">
 	  <h2 className="text-2xl font-bold mb-4">All Propositions</h2>
 	  <div className="space-y-6">
 		{propsList.map((prop) => {
-		  // Look up the user's take (if any) by this prop's ID
 		  const userTake = userTakesMap[prop.propID];
+		  // If userTake => userTake.side is "A" or "B"
+		  // sideLabel is for display
 		  let sideLabel = "";
 		  if (userTake) {
 			sideLabel =
@@ -86,19 +88,19 @@ export default function HomePage() {
 				? prop.PropSideAShort || "Side A"
 				: prop.PropSideBShort || "Side B";
 		  }
+
 		  return (
 			<div key={prop.propID} className="border p-4 rounded">
 			  <div className="flex items-center">
-				{prop.subjectLogoUrls &&
-				  prop.subjectLogoUrls.length > 0 && (
-					<div className="w-10 aspect-square overflow-hidden rounded mr-2">
-					  <img
-						src={prop.subjectLogoUrls[0]}
-						alt={prop.subjectTitle || "Subject Logo"}
-						className="w-full h-full object-cover"
-					  />
-					</div>
-				  )}
+				{prop.subjectLogoUrls && prop.subjectLogoUrls.length > 0 && (
+				  <div className="w-10 aspect-square overflow-hidden rounded mr-2">
+					<img
+					  src={prop.subjectLogoUrls[0]}
+					  alt={prop.subjectTitle || "Subject Logo"}
+					  className="w-full h-full object-cover"
+					/>
+				  </div>
+				)}
 				<h3 className="text-xl font-semibold">
 				  <Link
 					href={`/props/${prop.propID}`}
@@ -114,10 +116,14 @@ export default function HomePage() {
 				  {prop.subjectTitle && prop.propStatus && (
 					<span className="ml-4">Status: {prop.propStatus}</span>
 				  )}
-				  {!prop.subjectTitle && prop.propStatus && <>Status: {prop.propStatus}</>}
+				  {!prop.subjectTitle && prop.propStatus && (
+					<>Status: {prop.propStatus}</>
+				  )}
 				</p>
 			  )}
 			  <p className="mt-1 text-gray-500">Created: {prop.createdAt}</p>
+
+			  {/* Content image or placeholder */}
 			  <div className="mt-4">
 				{prop.contentImageUrls && prop.contentImageUrls.length > 0 ? (
 				  <Link href={`/props/${prop.propID}`}>
@@ -137,6 +143,7 @@ export default function HomePage() {
 				  </Link>
 				)}
 			  </div>
+
 			  <p className="mt-2">{prop.propSummary}</p>
 			  <p className="mt-2 text-sm font-semibold">Make The Take:</p>
 			  <p>
@@ -147,6 +154,7 @@ export default function HomePage() {
 				  {prop.propShort || "View Prop"}
 				</Link>
 			  </p>
+
 			  {/* "Your Take" section */}
 			  <div className="mt-4">
 				<p className="text-sm font-semibold">Your Take:</p>
@@ -160,15 +168,11 @@ export default function HomePage() {
 				) : loadingTakes ? (
 				  <p className="text-gray-600">Loading your takes...</p>
 				) : userTake ? (
-				  <p className="text-gray-600">
-					You chose{" "}
-					<Link
-					  href={`/takes/${userTake.takeID}`}
-					  className="text-blue-600 hover:underline"
-					>
-					  <strong>{sideLabel}</strong>
-					</Link>
-				  </p>
+				  <UserTakeLine
+					prop={prop}
+					userTake={userTake}
+					sideLabel={sideLabel}
+				  />
 				) : (
 				  <p className="text-gray-600">No take on this prop yet.</p>
 				)}
@@ -178,5 +182,37 @@ export default function HomePage() {
 		})}
 	  </div>
 	</div>
+  );
+}
+
+/**
+ * Renders a single line: 🏴‍☠️ + (✅ or ❌) + link to the user's take
+ */
+function UserTakeLine({ prop, userTake, sideLabel }) {
+  // 1) Decide if there's a "graded" status
+  //    e.g. "gradedA" => side A is the winner
+  //         "gradedB" => side B is the winner
+  //    If the userTake.side matches the winner => ✅, otherwise ❌
+  let gradeEmoji = "";
+  if (prop.propStatus === "gradedA") {
+	gradeEmoji = userTake.side === "A" ? "✅" : "❌";
+  } else if (prop.propStatus === "gradedB") {
+	gradeEmoji = userTake.side === "B" ? "✅" : "❌";
+  }
+
+  // 2) We always show the pirate flag
+  const pirateEmoji = "🏴‍☠️";
+
+  // 3) The link to the user’s take
+  const takeUrl = `/takes/${userTake.takeID}`;
+
+  // 4) Combine them in a single line
+  return (
+	<p className="text-gray-600">
+	  {pirateEmoji} {gradeEmoji}{" "}
+	  <Link href={takeUrl} className="text-blue-600 hover:underline">
+		<strong>{sideLabel}</strong>
+	  </Link>
+	</p>
   );
 }
