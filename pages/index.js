@@ -1,44 +1,65 @@
-// pages/index.js
+// File: /pages/index.js
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 
 export default function HomePage() {
   const { data: session } = useSession();
+
+  // Store *all* props loaded so far
   const [propsList, setPropsList] = useState([]);
+  // If there's an offset (from Airtable) for the next page
+  const [nextOffset, setNextOffset] = useState(null);
+  // Loading + error states
   const [loadingProps, setLoadingProps] = useState(true);
   const [propsError, setPropsError] = useState("");
+
+  // For user takes
   const [userTakesMap, setUserTakesMap] = useState({});
   const [loadingTakes, setLoadingTakes] = useState(false);
 
-  // 1) Fetch props
+  // 1) On mount, fetch first 10 props from /api/props?limit=10
   useEffect(() => {
-	async function loadProps() {
-	  try {
-		const res = await fetch("/api/props");
-		const data = await res.json();
-		if (!data.success) {
-		  setPropsError(data.error || "Unknown error fetching props");
-		  setLoadingProps(false);
-		  return;
-		}
-		const filteredProps = (data.props || []).filter(
-		  (prop) => prop.propStatus !== "archived"
-		);
-		setPropsList(filteredProps);
-	  } catch (err) {
-		console.error("[HomePage] error:", err);
-		setPropsError("Could not fetch props");
-	  } finally {
-		setLoadingProps(false);
-	  }
-	}
-	loadProps();
+	fetchPropsData(null); // pass null offset
   }, []);
 
-  // 2) If logged in => load userTakesAll
+  async function fetchPropsData(offsetValue) {
+	setLoadingProps(true);
+	setPropsError("");
+
+	try {
+	  let url = "/api/props?limit=10"; 
+	  if (offsetValue) {
+		url += `&offset=${offsetValue}`;
+	  }
+
+	  const res = await fetch(url);
+	  const data = await res.json();
+	  if (!data.success) {
+		setPropsError(data.error || "Error fetching props");
+		setLoadingProps(false);
+		return;
+	  }
+
+	  // data => { success: true, props: [...], nextOffset: "xxx" | null }
+	  const newProps = data.props || [];
+	  const newOffset = data.nextOffset || null;
+
+	  // Append to our existing list
+	  setPropsList((prev) => [...prev, ...newProps]);
+	  setNextOffset(newOffset);
+	} catch (err) {
+	  console.error("[HomePage] fetchPropsData error:", err);
+	  setPropsError("Could not fetch props");
+	} finally {
+	  setLoadingProps(false);
+	}
+  }
+
+  // 2) If user logged in => load their takes once
+  const { user } = session || {};
   useEffect(() => {
-	if (!session?.user) return;
+	if (!user?.phone) return;
 
 	setLoadingTakes(true);
 	async function loadUserTakes() {
@@ -47,10 +68,9 @@ export default function HomePage() {
 		const data = await res.json();
 		if (!data.success) {
 		  console.error("[HomePage] userTakesAll error:", data.error);
-		  setLoadingTakes(false);
 		  return;
 		}
-		// Build a map => { propID: { side: "A"/"B", takeID: ..., ... } }
+		// Build map => { propID: { side: "A"/"B", takeID, ... } }
 		const map = {};
 		data.userTakes.forEach((take) => {
 		  map[take.propID] = take;
@@ -63,40 +83,41 @@ export default function HomePage() {
 	  }
 	}
 	loadUserTakes();
-  }, [session]);
+  }, [user]);
 
-  if (loadingProps) return <div className="p-4">Loading props...</div>;
+  // Show errors or loading states
   if (propsError) {
 	return <div className="p-4 text-red-600">Error: {propsError}</div>;
   }
-  if (propsList.length === 0) {
-	return <div className="p-4">No props found.</div>;
+
+  if (propsList.length === 0 && loadingProps) {
+	return <div className="p-4">Loading props...</div>;
   }
 
   return (
 	<div className="p-4">
 	  <h2 className="text-2xl font-bold mb-4">All Propositions</h2>
+
+	  {/* Render the props so far */}
 	  <div className="space-y-6">
 		{propsList.map((prop) => {
 		  const userTake = userTakesMap[prop.propID];
-		  // If userTake => userTake.side is "A" or "B"
-		  // sideLabel is for display
-		  let sideLabel = "";
-		  if (userTake) {
-			sideLabel =
-			  userTake.side === "A"
-				? prop.PropSideAShort || "Side A"
-				: prop.PropSideBShort || "Side B";
-		  }
+		  const sideLabel = userTake
+			? userTake.side === "A"
+			  ? prop.PropSideAShort || "Side A"
+			  : prop.PropSideBShort || "Side B"
+			: "";
 
 		  return (
 			<div key={prop.propID} className="border p-4 rounded">
+			  {/* Title / Subject */}
 			  <div className="flex items-center">
+				{/* subjectLogo, if any */}
 				{prop.subjectLogoUrls && prop.subjectLogoUrls.length > 0 && (
 				  <div className="w-10 aspect-square overflow-hidden rounded mr-2">
 					<img
 					  src={prop.subjectLogoUrls[0]}
-					  alt={prop.subjectTitle || "Subject Logo"}
+					  alt={prop.propTitle || "Subject Logo"}
 					  className="w-full h-full object-cover"
 					/>
 				  </div>
@@ -110,20 +131,15 @@ export default function HomePage() {
 				  </Link>
 				</h3>
 			  </div>
-			  {(prop.subjectTitle || prop.propStatus) && (
+
+			  {prop.propStatus && (
 				<p className="mt-1 text-sm text-gray-600">
-				  {prop.subjectTitle && <>Subject: {prop.subjectTitle}</>}
-				  {prop.subjectTitle && prop.propStatus && (
-					<span className="ml-4">Status: {prop.propStatus}</span>
-				  )}
-				  {!prop.subjectTitle && prop.propStatus && (
-					<>Status: {prop.propStatus}</>
-				  )}
+				  Status: {prop.propStatus}
 				</p>
 			  )}
 			  <p className="mt-1 text-gray-500">Created: {prop.createdAt}</p>
 
-			  {/* Content image or placeholder */}
+			  {/* Possibly show content images */}
 			  <div className="mt-4">
 				{prop.contentImageUrls && prop.contentImageUrls.length > 0 ? (
 				  <Link href={`/props/${prop.propID}`}>
@@ -155,7 +171,7 @@ export default function HomePage() {
 				</Link>
 			  </p>
 
-			  {/* "Your Take" section */}
+			  {/* Example: Your Take section */}
 			  <div className="mt-4">
 				<p className="text-sm font-semibold">Your Take:</p>
 				{!session?.user ? (
@@ -168,11 +184,7 @@ export default function HomePage() {
 				) : loadingTakes ? (
 				  <p className="text-gray-600">Loading your takes...</p>
 				) : userTake ? (
-				  <UserTakeLine
-					prop={prop}
-					userTake={userTake}
-					sideLabel={sideLabel}
-				  />
+				  <UserTakeLine prop={prop} userTake={userTake} sideLabel={sideLabel} />
 				) : (
 				  <p className="text-gray-600">No take on this prop yet.</p>
 				)}
@@ -181,32 +193,40 @@ export default function HomePage() {
 		  );
 		})}
 	  </div>
+
+	  {/* If there's a nextOffset, show "Load More" button */}
+	  {nextOffset && !loadingProps && (
+		<div className="mt-6">
+		  <button
+			onClick={() => fetchPropsData(nextOffset)}
+			className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+		  >
+			Load More
+		  </button>
+		</div>
+	  )}
+
+	  {/* Optionally show a spinner if we’re in the middle of loading more */}
+	  {loadingProps && propsList.length > 0 && (
+		<div className="mt-2 text-gray-500">Loading more...</div>
+	  )}
 	</div>
   );
 }
 
 /**
- * Renders a single line: 🏴‍☠️ + (✅ or ❌) + link to the user's take
+ * Example subcomponent to show 🏴‍☠️ + (✅ or ❌) + side label
  */
 function UserTakeLine({ prop, userTake, sideLabel }) {
-  // 1) Decide if there's a "graded" status
-  //    e.g. "gradedA" => side A is the winner
-  //         "gradedB" => side B is the winner
-  //    If the userTake.side matches the winner => ✅, otherwise ❌
   let gradeEmoji = "";
   if (prop.propStatus === "gradedA") {
 	gradeEmoji = userTake.side === "A" ? "✅" : "❌";
   } else if (prop.propStatus === "gradedB") {
 	gradeEmoji = userTake.side === "B" ? "✅" : "❌";
   }
-
-  // 2) We always show the pirate flag
   const pirateEmoji = "🏴‍☠️";
-
-  // 3) The link to the user’s take
   const takeUrl = `/takes/${userTake.takeID}`;
 
-  // 4) Combine them in a single line
   return (
 	<p className="text-gray-600">
 	  {pirateEmoji} {gradeEmoji}{" "}

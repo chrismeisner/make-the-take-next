@@ -1,4 +1,4 @@
-// pages/api/prop.js
+// File: /pages/api/prop.js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -29,7 +29,11 @@ export default async function handler(req, res) {
 
 	// 2) Extract additional fields for display (subject logo and content image)
 	let subjectLogoUrl = '';
-	if (data.subjectLogo && Array.isArray(data.subjectLogo) && data.subjectLogo.length > 0) {
+	if (
+	  data.subjectLogo &&
+	  Array.isArray(data.subjectLogo) &&
+	  data.subjectLogo.length > 0
+	) {
 	  subjectLogoUrl = data.subjectLogo[0].url || '';
 	}
 
@@ -74,6 +78,8 @@ export default async function handler(req, res) {
 	});
   } catch (error) {
 	console.error('[API Prop] Error:', error);
-	return res.status(500).json({ success: false, error: 'Server error fetching prop data' });
+	return res
+	  .status(500)
+	  .json({ success: false, error: 'Server error fetching prop data' });
   }
 }
