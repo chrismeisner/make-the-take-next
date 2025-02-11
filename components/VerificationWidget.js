@@ -6,7 +6,7 @@ import { useRouter } from "next/router";
 import { useSession, signIn } from "next-auth/react";
 
 /**
- * Helper: compute side percentages (with +1 offset)
+ * 1) Helper function: compute side percentages (+1 offset)
  */
 function computeSidePercents(aCount, bCount) {
   const aWithOffset = aCount + 1;
@@ -18,36 +18,24 @@ function computeSidePercents(aCount, bCount) {
 }
 
 /**
- * Single Choice subcomponent
+ * 2) Choice subcomponent
  */
 function Choice({
   label,
-  sideValue,
   percentage,
   isSelected,
-  userSide,
-  gradedSide,
+  isVerified,
+  anySideSelected,
   showResults,
   propStatus,
   onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
-
-  const isUserSide = userSide && userSide === sideValue;
   const clickable = propStatus === "open";
 
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
-
-  let displayedLabel = label;
-  if (gradedSide) {
-	displayedLabel =
-	  sideValue === gradedSide ? `✅ ${displayedLabel}` : `❌ ${displayedLabel}`;
-  }
-  if (isUserSide) {
-	displayedLabel = `🏴‍☠️ ${displayedLabel}`;
-  }
 
   const containerClasses = [
 	"relative",
@@ -56,7 +44,9 @@ function Choice({
 	"rounded-md",
 	"transition-colors",
 	clickable ? "cursor-pointer" : "cursor-default",
-	isSelected ? "border-2 border-blue-500 bg-white" : "border border-gray-300 bg-gray-50",
+	isSelected
+	  ? "border-2 border-blue-500 bg-white"
+	  : "border border-gray-300 bg-gray-50",
 	isHovered && clickable && !isSelected ? "border-gray-400" : "",
   ].join(" ");
 
@@ -67,7 +57,7 @@ function Choice({
 	  onMouseEnter={() => clickable && setIsHovered(true)}
 	  onMouseLeave={() => clickable && setIsHovered(false)}
 	>
-	  {/* Filling bar */}
+	  {/* Fill bar */}
 	  <div
 		style={{
 		  position: "absolute",
@@ -81,7 +71,8 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{displayedLabel}
+		{isVerified ? "🏴‍☠️ " : ""}
+		{label}
 		{showResults && (
 		  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
 		)}
@@ -91,53 +82,51 @@ function Choice({
 }
 
 /**
- * PropChoices
+ * 3) PropChoices
  */
 function PropChoices({
   propStatus,
   selectedChoice,
+  resultsRevealed,
   onSelectChoice,
   sideAPct,
   sideBPct,
   sideALabel,
   sideBLabel,
-  userSide,
-  resultsRevealed,
+  alreadyTookSide,
 }) {
-  const isOpen = propStatus === "open";
-  const showResults = resultsRevealed || !isOpen;
-
-  let gradedSide = "";
-  if (propStatus === "gradedA") gradedSide = "A";
-  else if (propStatus === "gradedB") gradedSide = "B";
-
+  const anySideSelected = selectedChoice !== "";
   const choices = [
-	{ sideValue: "A", label: sideALabel, pct: sideAPct },
-	{ sideValue: "B", label: sideBLabel, pct: sideBPct },
+	{ value: "A", label: sideALabel, percentage: sideAPct },
+	{ value: "B", label: sideBLabel, percentage: sideBPct },
   ];
 
   return (
 	<div className="mb-4">
-	  {choices.map((c) => (
-		<Choice
-		  key={c.sideValue}
-		  label={c.label}
-		  sideValue={c.sideValue}
-		  percentage={c.pct}
-		  isSelected={selectedChoice === c.sideValue}
-		  userSide={userSide}
-		  gradedSide={gradedSide}
-		  showResults={showResults}
-		  propStatus={propStatus}
-		  onSelect={() => onSelectChoice(c.sideValue)}
-		/>
-	  ))}
+	  {choices.map((choice) => {
+		const isSelected = selectedChoice === choice.value;
+		const isVerified = alreadyTookSide === choice.value;
+		return (
+		  <Choice
+			key={choice.value}
+			label={choice.label}
+			percentage={choice.percentage}
+			isSelected={isSelected}
+			isVerified={isVerified}
+			anySideSelected={anySideSelected}
+			showResults={resultsRevealed}
+			propStatus={propStatus}
+			onSelect={() => onSelectChoice(choice.value)}
+		  />
+		);
+	  })}
 	</div>
   );
 }
 
 /**
- * PhoneNumberForm => "phone"
+ * 4) PhoneNumberForm => step "phone"
+ *    Now we ensure type="tel" to bring up a phone keypad on mobile
  */
 function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
@@ -175,7 +164,7 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 		>
 		  {() => (
 			<input
-			  type="tel"
+			  type="tel" // "tel" => numeric keypad for phone
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
 			/>
@@ -194,7 +183,8 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 }
 
 /**
- * VerificationForm => "code"
+ * 5) VerificationForm => step "code"
+ *    type="text" + inputMode="numeric" + pattern="[0-9]*" => numeric keypad
  */
 function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
   const [code, setCode] = useState("");
@@ -202,7 +192,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   async function handleVerify() {
 	setError("");
-	// 1) signIn with next-auth credentials
+	// 1) Verify code
 	const result = await signIn("credentials", {
 	  redirect: false,
 	  phone: phoneNumber,
@@ -255,6 +245,8 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		  {() => (
 			<input
 			  type="text"
+			  inputMode="numeric" // ensures numeric keyboard
+			  pattern="[0-9]*"    // hints that we only want digits
 			  placeholder="123456"
 			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			/>
@@ -279,7 +271,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 }
 
 /**
- * MakeTakeButton
+ * 6) MakeTakeButton
  */
 function MakeTakeButton({
   selectedChoice,
@@ -291,7 +283,8 @@ function MakeTakeButton({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const userHasExistingTake = !!alreadyTookSide;
-  const isSameAsVerified = userHasExistingTake && selectedChoice === alreadyTookSide;
+  const isSameAsVerified =
+	userHasExistingTake && selectedChoice === alreadyTookSide;
   const disabled = !selectedChoice || isSameAsVerified;
   const buttonLabel = userHasExistingTake ? "Update Take" : "Make The Take";
 
@@ -351,7 +344,7 @@ function MakeTakeButton({
 }
 
 /**
- * CompleteStep
+ * 7) CompleteStep
  */
 function CompleteStep({
   takeID,
@@ -359,7 +352,7 @@ function CompleteStep({
   sideBCount,
   selectedChoice,
   alreadyTookSide,
-  propShort,
+  propTitle,
   sideALabel,
   sideBLabel,
 }) {
@@ -380,11 +373,12 @@ function CompleteStep({
 	  <h3 className="text-lg font-semibold">Thanks!</h3>
 	  <p>Your take was logged successfully.</p>
 	  <div className="mt-4 border border-gray-300 p-4 rounded-md">
-		<h4 className="font-semibold mb-2">Final Results for {propShort}</h4>
+		<h4 className="font-semibold mb-2">Final Results for {propTitle}</h4>
 		<PropChoices
 		  propStatus="closed"
-		  userSide={alreadyTookSide}
+		  alreadyTookSide={alreadyTookSide}
 		  selectedChoice={selectedChoice}
+		  resultsRevealed={true}
 		  onSelectChoice={() => {}}
 		  sideAPct={aPct}
 		  sideBPct={bPct}
@@ -415,8 +409,7 @@ function CompleteStep({
 }
 
 /**
- * Main VerificationWidget
- * - The only change is that we now show "propShort" instead of "propTitle".
+ * 8) Main VerificationWidget
  */
 export default function VerificationWidget({
   embeddedPropID,
@@ -439,7 +432,7 @@ export default function VerificationWidget({
 
   const alreadyVerifiedCalled = useRef(false);
 
-  // 1) Load the prop data
+  // Load prop data
   useEffect(() => {
 	if (!embeddedPropID) return;
 	fetch(`/api/prop?propID=${encodeURIComponent(embeddedPropID)}`)
@@ -460,7 +453,7 @@ export default function VerificationWidget({
 	  });
   }, [embeddedPropID]);
 
-  // 2) If logged in => see if user has a latest take
+  // If user is logged in, check existing take
   useEffect(() => {
 	if (session && propData?.propID && !alreadyVerifiedCalled.current) {
 	  fetch(`/api/userTakes?propID=${propData.propID}`)
@@ -483,7 +476,7 @@ export default function VerificationWidget({
 	}
   }, [session, propData, onVerificationComplete]);
 
-  // 3) After successful new take
+  // Called after a successful new take
   function handleComplete(newTakeID, freshData) {
 	if (freshData?.success) {
 	  setSideACount(freshData.sideACount || 0);
@@ -501,13 +494,11 @@ export default function VerificationWidget({
 	}
   }
 
-  // 4) user picks a side
   function handleSelectChoice(sideValue) {
 	setSelectedChoice(sideValue);
 	setResultsRevealed(true);
   }
 
-  // 5) if loading or error
   if (loading) {
 	return <div className="text-gray-600">Loading proposition...</div>;
   }
@@ -519,12 +510,11 @@ export default function VerificationWidget({
 	);
   }
 
-  // 6) Decide if open, graded, or closed
   const propStatus = propData.propStatus || "open";
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
 
-  // 7) If user just finished => show CompleteStep
+  // If user just completed the flow
   if (currentStep === "complete") {
 	return (
 	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
@@ -544,8 +534,7 @@ export default function VerificationWidget({
 		  sideBCount={sideBCount}
 		  selectedChoice={selectedChoice}
 		  alreadyTookSide={alreadyTookSide}
-		  // changed to propShort
-		  propShort={propData.propShort || "(Untitled)"}
+		  propTitle={propData.propTitle}
 		  sideALabel={propData.PropSideAShort || "Side A"}
 		  sideBLabel={propData.PropSideBShort || "Side B"}
 		/>
@@ -553,32 +542,18 @@ export default function VerificationWidget({
 	);
   }
 
-  // 8) If not open => graded or closed
+  // If prop is no longer open
   if (propStatus !== "open") {
 	return (
 	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
-		<h4 className="text-lg font-semibold">
-		  {/* changed to propShort */}
-		  {propData.propShort || "(Untitled)"}
-		</h4>
-		<p className="text-sm text-gray-600">Status: {propStatus}</p>
-		<p className="mt-2 text-sm text-gray-600">Total Takes: {totalTakes}</p>
-		<PropChoices
-		  propStatus={propStatus}
-		  selectedChoice={selectedChoice}
-		  onSelectChoice={() => {}}
-		  sideAPct={aPct}
-		  sideBPct={bPct}
-		  sideALabel={propData.PropSideAShort || "Side A"}
-		  sideBLabel={propData.PropSideBShort || "Side B"}
-		  userSide={alreadyTookSide}
-		  // no resultsRevealed needed, because not open => always show
-		/>
+		<h4 className="font-semibold mb-1">{propData.propTitle}</h4>
+		<p>Status: {propStatus}</p>
+		<p>Total Takes: {totalTakes}</p>
 	  </div>
 	);
   }
 
-  // 9) Otherwise it's open => normal flow
+  // Normal open prop flow
   return (
 	<div className="border border-gray-300 p-4 mt-4 rounded-md">
 	  <div className="mb-2 text-sm text-gray-600">
@@ -586,10 +561,7 @@ export default function VerificationWidget({
 		  View full details for this proposition
 		</Link>
 	  </div>
-	  <h4 className="text-lg font-semibold">
-		{/* changed to propShort */}
-		{propData.propShort || "(Untitled)"}
-	  </h4>
+	  <h4 className="text-lg font-semibold">{propData.propTitle}</h4>
 
 	  {session?.user ? (
 		<div className="mb-4 text-sm text-blue-600">
@@ -609,13 +581,13 @@ export default function VerificationWidget({
 	  <PropChoices
 		propStatus="open"
 		selectedChoice={selectedChoice}
+		resultsRevealed={resultsRevealed}
 		onSelectChoice={handleSelectChoice}
 		sideAPct={aPct}
 		sideBPct={bPct}
 		sideALabel={propData.PropSideAShort || "Side A"}
 		sideBLabel={propData.PropSideBShort || "Side B"}
-		userSide={alreadyTookSide}
-		resultsRevealed={resultsRevealed}
+		alreadyTookSide={alreadyTookSide}
 	  />
 
 	  <p className="text-sm text-gray-600">Total Takes: {totalTakes}</p>
