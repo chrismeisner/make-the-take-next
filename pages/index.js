@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
- 
+
 export default function HomePage() {
   const { data: session } = useSession();
 
@@ -27,7 +27,7 @@ export default function HomePage() {
 	setPropsError("");
 
 	try {
-	  let url = "/api/props?limit=10"; 
+	  let url = "/api/props?limit=10";
 	  if (offsetValue) {
 		url += `&offset=${offsetValue}`;
 	  }
@@ -39,7 +39,7 @@ export default function HomePage() {
 		setLoadingProps(false);
 		return;
 	  }
- 
+
 	  // data => { success: true, props: [...], nextOffset: "xxx" | null }
 	  const newProps = data.props || [];
 	  const newOffset = data.nextOffset || null;
@@ -54,7 +54,7 @@ export default function HomePage() {
 	  setLoadingProps(false);
 	}
   }
- 
+
   // 2) If user logged in => load their takes once
   const { user } = session || {};
   useEffect(() => {
@@ -118,7 +118,7 @@ export default function HomePage() {
 					  <div key={index} className="w-10 aspect-square overflow-hidden rounded">
 						<img
 						  src={logoUrl}
-						  alt={prop.subjectTitles[index] || "Subject Logo"}
+						  alt={prop.subjectTitles && prop.subjectTitles[index] ? prop.subjectTitles[index] : "Subject Logo"}
 						  className="w-full h-full object-cover"
 						/>
 					  </div>

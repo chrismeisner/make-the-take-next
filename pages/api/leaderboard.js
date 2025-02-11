@@ -1,10 +1,12 @@
+//pages/api/leaderboard.js
+
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
   const { subjectID } = req.query;
-
+ 
   try {
 	// Fetch profiles so we can map phone -> profileID
 	const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();

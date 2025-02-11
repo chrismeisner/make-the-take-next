@@ -1,3 +1,5 @@
+//pages/leaderboard.js
+
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
@@ -7,7 +9,7 @@ export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
- 
+
   // Utility function to obscure the phone
   function obscurePhone(e164Phone) {
 	const stripped = e164Phone.replace(/\D/g, "");
@@ -43,7 +45,7 @@ export default function LeaderboardPage() {
 	if (subjectID) {
 	  url += `?subjectID=${encodeURIComponent(subjectID)}`;
 	}
- 
+
 	fetch(url)
 	  .then((res) => res.json())
 	  .then((data) => {

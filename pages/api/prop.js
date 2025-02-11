@@ -1,7 +1,8 @@
+//pages/api/props.js
+
 import Airtable from 'airtable';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
   const { propID } = req.query;
@@ -29,12 +30,12 @@ export default async function handler(req, res) {
 	// 2) Extract additional fields for display (subject logos and content image)
 	let subjectLogoUrls = [];
 	if (Array.isArray(data.subjectLogo) && data.subjectLogo.length > 0) {
-	  subjectLogoUrls = data.subjectLogo.map((logo) => logo.url || '');
+	  subjectLogoUrls = data.subjectLogo.map((logo) => logo.url || ''); // Handle multiple subject logos
 	}
 
 	let contentImageUrl = '';
 	if (Array.isArray(data.contentImage) && data.contentImage.length > 0) {
-	  contentImageUrl = data.contentImage[0].url || '';
+	  contentImageUrl = data.contentImage[0].url || ''; // Get the first content image URL
 	}
 
 	// 3) Build a list of related content if available
@@ -65,16 +66,15 @@ export default async function handler(req, res) {
 	  propID,
 	  ...data,
 	  createdAt,
-	  subjectLogoUrls,  // Updated to handle an array of subject logos
-	  contentImageUrl,
-	  content: contentList,
+	  subjectLogoUrls,  // Return an array of subject logos
+	  contentImageUrl,  // Single content image URL
+	  content: contentList,  // List of related content
 	  sideACount,
 	  sideBCount,
 	});
   } catch (error) {
 	console.error('[API Prop] Error:', error);
-	return res
-	  .status(500)
-	  .json({ success: false, error: 'Server error fetching prop data' });
+	return res.status(500).json({ success: false, error: 'Server error fetching prop data' });
   }
 }
+
