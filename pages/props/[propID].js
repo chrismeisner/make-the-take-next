@@ -23,15 +23,15 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
   if (!propData) {
 	return <div style={{ color: "red" }}>No prop data found.</div>;
   }
-
+ 
   const {
 	propTitle = "Untitled Proposition",
 	propSummary = "No summary provided",
-	subjectLogoUrl,
-	subjectTitle,
+	subjectLogoUrls = [],
+	subjectTitles = [],
 	contentImageUrl,
 	createdAt,
-	propSubjectID,
+	propSubjectIDs = [],
 	propID,
   } = propData;
 
@@ -74,18 +74,24 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 		{/* Title */}
 		<h1 className="text-3xl font-bold mb-3">{propTitle}</h1>
 
-		{/* Subject Logo */}
-		{subjectLogoUrl && (
-		  <img
-			src={subjectLogoUrl}
-			alt={subjectTitle || "Subject Logo"}
-			style={{
-			  width: "80px",
-			  height: "80px",
-			  objectFit: "cover",
-			  borderRadius: "4px",
-			}}
-		  />
+		{/* Subject Logos */}
+		{subjectLogoUrls.length > 0 && (
+		  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+			{subjectLogoUrls.map((logoUrl, index) => (
+			  <div key={index} style={{ width: "80px", height: "80px", borderRadius: "4px" }}>
+				<img
+				  src={logoUrl}
+				  alt={subjectTitles[index] || "Subject Logo"}
+				  style={{
+					width: "100%",
+					height: "100%",
+					objectFit: "cover",
+					borderRadius: "4px",
+				  }}
+				/>
+			  </div>
+			))}
+		  </div>
 		)}
  
 		{/* Content Image */}
@@ -101,7 +107,9 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 
 		{/* Subject + Created date */}
 		<div style={{ color: "#555", marginBottom: "1rem" }}>
-		  {subjectTitle && <p>Subject: {subjectTitle}</p>}
+		  {subjectTitles.length > 0 && (
+			<p>Subjects: {subjectTitles.join(", ")}</p>
+		  )}
 		  <p>Created: {formattedDate}</p>
 		</div>
 
@@ -159,19 +167,15 @@ export async function getServerSideProps({ params }) {
 	  propID: f.propID || propID,
 	  propTitle: f.propTitle || "Untitled Proposition",
 	  propSummary: f.propSummary || "No summary provided",
-	  subjectLogoUrl: "",
-	  subjectTitle: f.subjectTitle || "",
+	  subjectLogoUrls: f.subjectLogo || [],
+	  subjectTitles: f.subjectTitle || [],
 	  contentImageUrl: "",
 	  createdAt: record._rawJson.createdTime,
-	  propSubjectID: f.propSubjectID || "",
+	  propSubjectIDs: f.propSubjectID || [],
 	  propCoverStatus: f.propCoverStatus || "",
 	  propCoverURL: f.propCoverURL || "",
 	};
 
-	// 2) If there's a subjectLogo array, use the first
-	if (Array.isArray(f.subjectLogo) && f.subjectLogo.length > 0) {
-	  propData.subjectLogoUrl = f.subjectLogo[0].url;
-	}
 	// If there's a contentImage array, use the first
 	if (Array.isArray(f.contentImage) && f.contentImage.length > 0) {
 	  propData.contentImageUrl = f.contentImage[0].url;
@@ -262,7 +266,8 @@ async function generateAndUploadCover({ propID, fields }) {
 	  const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 	  const data = imageData.data;
 	  for (let i = 0; i < data.length; i += 4) {
-		const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+		const gray =
+		  0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 		data[i] = gray;
 		data[i + 1] = gray;
 		data[i + 2] = gray;

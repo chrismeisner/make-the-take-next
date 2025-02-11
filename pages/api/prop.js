@@ -1,4 +1,3 @@
-// File: /pages/api/prop.js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -27,14 +26,10 @@ export default async function handler(req, res) {
 	const data = record.fields;
 	const createdAt = record._rawJson.createdTime;
 
-	// 2) Extract additional fields for display (subject logo and content image)
-	let subjectLogoUrl = '';
-	if (
-	  data.subjectLogo &&
-	  Array.isArray(data.subjectLogo) &&
-	  data.subjectLogo.length > 0
-	) {
-	  subjectLogoUrl = data.subjectLogo[0].url || '';
+	// 2) Extract additional fields for display (subject logos and content image)
+	let subjectLogoUrls = [];
+	if (Array.isArray(data.subjectLogo) && data.subjectLogo.length > 0) {
+	  subjectLogoUrls = data.subjectLogo.map((logo) => logo.url || '');
 	}
 
 	let contentImageUrl = '';
@@ -56,7 +51,7 @@ export default async function handler(req, res) {
 		filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`,
 	  })
 	  .all();
- 
+
 	let sideACount = 0;
 	let sideBCount = 0;
 	takesRecords.forEach((take) => {
@@ -64,13 +59,13 @@ export default async function handler(req, res) {
 	  if (take.fields.propSide === 'B') sideBCount++;
 	});
 
-	// 5) Return the full prop data along with the vote counts
+	// 5) Return the full prop data along with the vote counts and associated subjects
 	return res.status(200).json({
 	  success: true,
 	  propID,
 	  ...data,
 	  createdAt,
-	  subjectLogoUrl,
+	  subjectLogoUrls,  // Updated to handle an array of subject logos
 	  contentImageUrl,
 	  content: contentList,
 	  sideACount,

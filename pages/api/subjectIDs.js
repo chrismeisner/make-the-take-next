@@ -1,4 +1,3 @@
-// pages/api/subjectIDs.js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
@@ -10,11 +9,14 @@ export default async function handler(req, res) {
 
 	const subjectSet = new Set();
 	takes.forEach((take) => {
-	  const subjectID = take.fields.propSubjectID || [];
-	  if (Array.isArray(subjectID)) {
-		subjectID.forEach((id) => subjectSet.add(id));
+	  // Expecting an array of subject IDs for each take's prop
+	  const subjectIDs = take.fields.propSubjectID || [];
+	  if (Array.isArray(subjectIDs)) {
+		// Add all subject IDs to the set
+		subjectIDs.forEach((id) => subjectSet.add(id));
 	  } else {
-		subjectSet.add(subjectID);
+		// In case it's a single subject ID
+		subjectSet.add(subjectIDs);
 	  }
 	});
 
@@ -26,4 +28,3 @@ export default async function handler(req, res) {
 	res.status(500).json({ success: false, error: 'Failed to fetch subject IDs' });
   }
 }
- 

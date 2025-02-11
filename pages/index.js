@@ -1,8 +1,7 @@
-// File: /pages/index.js
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-
+ 
 export default function HomePage() {
   const { data: session } = useSession();
 
@@ -112,17 +111,21 @@ export default function HomePage() {
 			<div key={prop.propID} className="border p-4 rounded">
 			  {/* Title / Subject */}
 			  <div className="flex items-center">
-				{/* subjectLogo, if any */}
+				{/* subjectLogo(s), if any */}
 				{prop.subjectLogoUrls && prop.subjectLogoUrls.length > 0 && (
-				  <div className="w-10 aspect-square overflow-hidden rounded mr-2">
-					<img
-					  src={prop.subjectLogoUrls[0]}
-					  alt={prop.propTitle || "Subject Logo"}
-					  className="w-full h-full object-cover"
-					/>
+				  <div className="flex items-center gap-2">
+					{prop.subjectLogoUrls.map((logoUrl, index) => (
+					  <div key={index} className="w-10 aspect-square overflow-hidden rounded">
+						<img
+						  src={logoUrl}
+						  alt={prop.subjectTitles[index] || "Subject Logo"}
+						  className="w-full h-full object-cover"
+						/>
+					  </div>
+					))}
 				  </div>
 				)}
-				<h3 className="text-xl font-semibold">
+				<h3 className="text-xl font-semibold ml-2">
 				  <Link
 					href={`/props/${prop.propID}`}
 					className="text-blue-600 hover:underline"

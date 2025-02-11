@@ -1,4 +1,3 @@
-// pages/api/leaderboard.js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
@@ -22,14 +21,12 @@ export default async function handler(req, res) {
 	  maxRecords: 5000,
 	  filterByFormula: '{takeStatus} != "overwritten"',
 	}).all();
- 
+
 	// If a subjectID is provided, filter by subject
 	if (subjectID) {
 	  allTakes = allTakes.filter((take) => {
 		const propSubj = take.fields.propSubjectID || [];
-		return Array.isArray(propSubj)
-		  ? propSubj.includes(subjectID)
-		  : propSubj === subjectID;
+		return Array.isArray(propSubj) ? propSubj.includes(subjectID) : propSubj === subjectID;
 	  });
 	}
 
