@@ -1,6 +1,8 @@
+//pages/api/prop-cover/[propID].js
+
 import Airtable from 'airtable';
 import { createCanvas, loadImage } from 'canvas';
-import { storageBucket } from '../../lib/firebaseAdmin';
+import { storageBucket } from '../../../lib/firebaseAdmin';
 
 // Initialize Airtable base
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
