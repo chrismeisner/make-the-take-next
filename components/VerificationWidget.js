@@ -6,7 +6,7 @@ import { useRouter } from "next/router";
 import { useSession, signIn } from "next-auth/react";
 
 /**
- * 1) Helper function: compute side percentages (+1 offset)
+ * 1) Helper: compute side percentages (+1 offset)
  */
 function computeSidePercents(aCount, bCount) {
   const aWithOffset = aCount + 1;
@@ -18,9 +18,12 @@ function computeSidePercents(aCount, bCount) {
 }
 
 /**
- * 2) Helper function: which emoji to show if the prop is graded
- * If propStatus = "gradedA", side A is correct => show "✅" for A, "❌" for B
- * If propStatus = "gradedB", side B is correct => show "✅" for B, "❌" for A
+ * 2) Helper: return a "✅" or "❌" if the prop is graded,
+ * showing which side is correct for ALL users (logged in or not).
+ *
+ * - If propStatus = "gradedA", side A is correct => "✅" for A, "❌" for B.
+ * - If propStatus = "gradedB", side B is correct => "✅" for B, "❌" for A.
+ * - Otherwise (open, closed, etc.), return "".
  */
 function getGradeEmoji(propStatus, sideValue) {
   if (propStatus === "gradedA") {
@@ -42,26 +45,24 @@ function Choice({
   anySideSelected,
   showResults,
   propStatus,
-  onSelect,
   sideValue,
+  onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
   // Only clickable if propStatus is open
   const clickable = propStatus === "open";
 
-  // Decide how much fill to show
-  // If showResults=true, we fill the bar; otherwise, 0
+  // Decide bar fill
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
-  // pale-blue background
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
 
-  // If user is verified AND prop is graded => check if correct or incorrect
-  let gradeSymbol = "";
-  if (isVerified && (propStatus === "gradedA" || propStatus === "gradedB")) {
-	gradeSymbol = getGradeEmoji(propStatus, sideValue);
-  }
+  // If the prop is graded, we show a check or x for each side
+  const gradeSymbol =
+	propStatus === "gradedA" || propStatus === "gradedB"
+	  ? getGradeEmoji(propStatus, sideValue)
+	  : "";
 
   const containerClasses = [
 	"relative",
@@ -97,9 +98,9 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{/* 🏴‍☠️ if isVerified, plus ✅ or ❌ if graded */}
-		{isVerified && "🏴‍☠️"}
-		{gradeSymbol && ` ${gradeSymbol}`}{" "}
+		{/* Pirate flag if user took that side, then the grade symbol if it's graded */}
+		{isVerified ? "🏴‍☠️ " : ""}
+		{gradeSymbol ? `${gradeSymbol} ` : ""}
 		{label}
 		{showResults && (
 		  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
@@ -145,6 +146,7 @@ function PropChoices({
 		return (
 		  <Choice
 			key={choice.value}
+			sideValue={choice.value}
 			label={choice.label}
 			percentage={choice.percentage}
 			isSelected={isSelected}
@@ -153,7 +155,6 @@ function PropChoices({
 			showResults={resultsRevealed}
 			propStatus={propStatus}
 			onSelect={() => onSelectChoice(choice.value)}
-			sideValue={choice.value}
 		  />
 		);
 	  })}
@@ -264,7 +265,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   function handleResend() {
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
-	// you could re-send with /api/sendCode or similar if you wish
+	// you could re-send with /api/sendCode or a similar approach
   }
 
   return (
@@ -574,14 +575,12 @@ export default function VerificationWidget({
 	);
   }
 
+  // If the prop is not open, we won't let them pick a side,
+  // but we still show final bars + who took which side.
   const propStatus = propData.propStatus || "open";
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
-
-  // If the prop is not open, we won't let them pick a side,
-  // but we still show final bars + who took which side.
   const readOnly = propStatus !== "open";
-  // We reveal results if it's readOnly OR user has chosen a side
   const showResults = readOnly || resultsRevealed;
 
   return (
@@ -598,9 +597,7 @@ export default function VerificationWidget({
 		  Logged in as: {session.user.phone}
 		  {userTakeID && (
 			<div>
-			  <Link href={`/takes/${userTakeID}`}>
-				See your take here
-			  </Link>
+			  <Link href={`/takes/${userTakeID}`}>See your take here</Link>
 			</div>
 		  )}
 		</div>
@@ -608,7 +605,6 @@ export default function VerificationWidget({
 		<div className="mb-4 text-sm text-gray-700">Not logged in</div>
 	  )}
 
-	  {/* Show the choice bars with final percentages if showResults=true */}
 	  <PropChoices
 		propStatus={propStatus}
 		selectedChoice={selectedChoice}
