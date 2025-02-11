@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 	  const text = await airtableRes.text();
 	  return res.status(airtableRes.status).json({ success: false, error: text });
 	}
-
+ 
 	const data = await airtableRes.json();
 	// data => { records: [...], offset?: string }
 

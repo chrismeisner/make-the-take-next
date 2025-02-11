@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 	  const takeRecords = await base('Takes')
 		.select({ filterByFormula, maxRecords: 5000 })
 		.all();
-
+ 
 	  // Filter out any takes that have been overwritten and map the fields
 	  userTakes = takeRecords
 		.filter((t) => t.fields.takeStatus !== 'overwritten')

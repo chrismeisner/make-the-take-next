@@ -44,7 +44,7 @@ export default function LeaderboardPage() {
 	if (subjectID) {
 	  url += `?subjectID=${encodeURIComponent(subjectID)}`;
 	}
-
+ 
 	fetch(url)
 	  .then((res) => res.json())
 	  .then((data) => {

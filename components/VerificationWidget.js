@@ -561,16 +561,17 @@ export default function VerificationWidget({
 			<Link href={`/takes/${userTakeID}`}>See your take here</Link>
 		  </div>
 		)}
-		<CompleteStep
+<CompleteStep
 		  takeID={takeID}
 		  sideACount={sideACount}
 		  sideBCount={sideBCount}
 		  selectedChoice={selectedChoice}
 		  alreadyTookSide={alreadyTookSide}
-		  propTitle={propData.propTitle}
+		  propTitle={propData.propShort || propData.propTitle}
 		  sideALabel={propData.PropSideAShort || "Side A"}
 		  sideBLabel={propData.PropSideBShort || "Side B"}
 		/>
+
 	  </div>
 	);
   }
@@ -590,7 +591,7 @@ export default function VerificationWidget({
 		  View full details for this proposition
 		</Link>
 	  </div>
-	  <h4 className="text-lg font-semibold">{propData.propTitle}</h4>
+	  <h4 className="text-lg font-semibold">{propData.propShort || propData.propTitle}</h4>
 
 	  {session?.user ? (
 		<div className="mb-4 text-sm text-blue-600">

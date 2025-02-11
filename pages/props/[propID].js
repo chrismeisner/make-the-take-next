@@ -1,10 +1,7 @@
-// File: /pages/props/[propID].js
-
 import React from "react";
 import Head from "next/head";
 import Link from "next/link";
 import VerificationWidget from "../../components/VerificationWidget";
-import RelatedProp from "../../components/RelatedProp";
 
 // -- NEW IMPORTS FOR DIRECT COVER GENERATION --
 import Airtable from "airtable";
@@ -14,10 +11,10 @@ import { storageBucket } from "../../lib/firebaseAdmin";
 // Initialize Airtable base
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
-
+ 
 /**
  * PropDetailPage displays a proposition with dynamic OG/Twitter meta tags,
- * plus a phone-verification voting widget and a related prop.
+ * plus a phone-verification voting widget.
  *
  * We now generate the cover image inline (via Node Canvas + Firebase)
  * if `propCoverStatus` is not "generated".
@@ -90,7 +87,7 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 			}}
 		  />
 		)}
-
+ 
 		{/* Content Image */}
 		{contentImageUrl && (
 		  <div style={{ margin: "1rem 0" }}>
@@ -118,18 +115,6 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 		  <h3>Vote on This Prop</h3>
 		  <VerificationWidget embeddedPropID={propID} />
 		</section>
-
-		{/* Related Prop */}
-		{propSubjectID ? (
-		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
-			<h3>Related Proposition</h3>
-			<RelatedProp currentSubjectID={propSubjectID} currentPropID={propID} />
-		  </section>
-		) : (
-		  <p style={{ color: "#999" }}>
-			No subject information available for related props.
-		  </p>
-		)}
 
 		<p style={{ marginTop: "1rem" }}>
 		  <Link href="/">Back to Home</Link>

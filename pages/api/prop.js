@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 		filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`,
 	  })
 	  .all();
-
+ 
 	let sideACount = 0;
 	let sideBCount = 0;
 	takesRecords.forEach((take) => {

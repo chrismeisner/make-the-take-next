@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 	  maxRecords: 5000,
 	  filterByFormula: '{takeStatus} != "overwritten"',
 	}).all();
-
+ 
 	// If a subjectID is provided, filter by subject
 	if (subjectID) {
 	  allTakes = allTakes.filter((take) => {

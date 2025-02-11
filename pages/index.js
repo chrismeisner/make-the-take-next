@@ -40,7 +40,7 @@ export default function HomePage() {
 		setLoadingProps(false);
 		return;
 	  }
-
+ 
 	  // data => { success: true, props: [...], nextOffset: "xxx" | null }
 	  const newProps = data.props || [];
 	  const newOffset = data.nextOffset || null;
@@ -55,7 +55,7 @@ export default function HomePage() {
 	  setLoadingProps(false);
 	}
   }
-
+ 
   // 2) If user logged in => load their takes once
   const { user } = session || {};
   useEffect(() => {

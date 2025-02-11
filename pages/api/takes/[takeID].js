@@ -41,7 +41,7 @@ export default async function handler(req, res) {
 	  propSideAShort: record.fields.propSideAShort || "Side A",
 	  propSideBShort: record.fields.propSideBShort || "Side B",
 	};
-
+ 
 	// Optionally, include related prop data:
 	let prop = null;
 	let content = [];
