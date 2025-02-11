@@ -1,4 +1,4 @@
-// pages/props/[propID].js
+// File: /pages/props/[propID].js
 import Head from "next/head";
 import Link from "next/link";
 import VerificationWidget from "../../components/VerificationWidget";
@@ -119,17 +119,26 @@ export async function getServerSideProps({ params }) {
   // Build the page URL for canonical and og:url tags.
   const pageUrl = `${baseUrl}/props/${propID}`;
 
+  console.log(`[PropDetailPage] getServerSideProps => propID="${propID}"`);
+  console.log(`[PropDetailPage] Using baseUrl="${baseUrl}" => will fetch prop data & build cover URL`);
+
   try {
-	// Fetch the prop data from your API.
-	const response = await fetch(`${baseUrl}/api/prop?propID=${propID}`);
+	// 1) Fetch the prop data from your API
+	const propApiUrl = `${baseUrl}/api/prop?propID=${propID}`;
+	console.log(`[PropDetailPage] Fetching prop data from => ${propApiUrl}`);
+	const response = await fetch(propApiUrl);
 	const data = await response.json();
 
 	if (!data.success) {
+	  console.error(`[PropDetailPage] /api/prop returned error =>`, data.error);
 	  return { notFound: true };
 	}
+	console.log("[PropDetailPage] Received prop data =>", data.propID, data.propTitle);
 
-	// Build the dynamic cover image URL for social previews.
+	// 2) Build the dynamic cover image URL for social previews => /api/prop-cover/<propID>
+	// This is the route that might log into Dropbox or skip if already generated
 	const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
+	console.log(`[PropDetailPage] Will use coverImageUrl => ${coverImageUrl}`);
 
 	return {
 	  props: {
@@ -139,7 +148,7 @@ export async function getServerSideProps({ params }) {
 	  },
 	};
   } catch (error) {
-	console.error("Error fetching prop data:", error);
+	console.error("[PropDetailPage] Error fetching prop data =>", error);
 	return { notFound: true };
   }
 }

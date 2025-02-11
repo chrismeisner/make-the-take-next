@@ -3,16 +3,12 @@ import { createCanvas, loadImage } from "canvas";
 import Airtable from "airtable";
 import fetch from "node-fetch";
 
-//
-// 1) Airtable + Dropbox Setup
-//
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
 const DROPBOX_TOKEN = process.env.DROPBOX_ACCESS_TOKEN;
-const DROPBOX_FOLDER_PATH = "/Make The Take/Covers"; // Adjust to your Dropbox folder
+const DROPBOX_FOLDER_PATH = "/Make The Take/Covers"; // Adjust as needed
 
-// Node Canvas dimensions + styling
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 630;
 const FONT_FAMILY = "Helvetica";
@@ -21,7 +17,7 @@ const LINE_HEIGHT = 70;
 const TEXT_MAX_WIDTH = 1000;
 
 export default async function handler(req, res) {
-  console.log("[prop-cover] Handler start => Query:", req.query);
+  console.log("[prop-cover] Handler start => req.query:", req.query);
 
   try {
 	const { propID } = req.query;
@@ -30,8 +26,7 @@ export default async function handler(req, res) {
 	  return res.status(400).send("Missing propID");
 	}
 
-	// 1) Fetch the prop from Airtable
-	console.log(`[prop-cover] Looking up propID="${propID}" in Airtable...`);
+	console.log(`[prop-cover] Fetching Airtable record for propID="${propID}"...`);
 	const records = await base("Props")
 	  .select({
 		filterByFormula: `{propID}="${propID}"`,
@@ -40,7 +35,7 @@ export default async function handler(req, res) {
 	  .firstPage();
 
 	if (!records.length) {
-	  console.error(`[prop-cover] propID="${propID}" not found in Airtable.`);
+	  console.error(`[prop-cover] Not found => propID="${propID}"`);
 	  return res.status(404).send("Prop not found in Airtable");
 	}
 
@@ -48,30 +43,24 @@ export default async function handler(req, res) {
 	const f = propRecord.fields;
 	const propShort = f.propShort || `Prop #${propID}`;
 
-	console.log(`[prop-cover] Found record => ID:${propRecord.id}, title:"${propShort}"`);
-
-	// 2) Check if we already have a generated cover
+	// If we already generated & have a URL, just redirect
 	if (f.propCoverStatus === "generated" && f.propCoverURL) {
 	  console.log("[prop-cover] Already generated => redirecting to existing URL =>", f.propCoverURL);
 	  return res.redirect(f.propCoverURL);
 	}
 
-	// If no existing cover, proceed to generate
-	console.log("[prop-cover] Generating new cover for propID =>", propID);
+	console.log("[prop-cover] No existing cover => generating a new one...");
 
-	// 3) Node Canvas => create the image
+	// Node Canvas
 	const contentImage = f.contentImage || [];
 	const contentImageUrl = contentImage[0]?.url;
-	console.log("[prop-cover] contentImageUrl =>", contentImageUrl || "(none)");
+	console.log("[prop-cover] Content image URL =>", contentImageUrl || "(none)");
 
 	const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
 	const ctx = canvas.getContext("2d");
-
-	// Fill background
 	ctx.fillStyle = "#202020";
 	ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-	// Optionally load + grayscale
 	if (contentImageUrl) {
 	  try {
 		console.log("[prop-cover] Loading background image...");
@@ -88,7 +77,7 @@ export default async function handler(req, res) {
 		const y = (CANVAS_HEIGHT - scaledHeight) / 2;
 		ctx.drawImage(bg, x, y, scaledWidth, scaledHeight);
 
-		// Convert entire canvas to grayscale
+		// Convert to grayscale
 		console.log("[prop-cover] Converting to grayscale...");
 		const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 		const data = imageData.data;
@@ -100,33 +89,32 @@ export default async function handler(req, res) {
 		  data[i] = gray;
 		  data[i + 1] = gray;
 		  data[i + 2] = gray;
-		  // alpha => data[i+3] remains the same
 		}
 		ctx.putImageData(imageData, 0, 0);
 	  } catch (err) {
-		console.warn("[prop-cover] Could not load or grayscale background:", err);
+		console.warn("[prop-cover] Error loading/grayscaling background =>", err);
 	  }
 	}
 
-	// 4) 50% black overlay
+	// 50% black overlay
 	ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
 	ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-	// 5) Draw text in yellow
+	// Draw the text
 	ctx.fillStyle = "#ffff00";
 	ctx.textAlign = "left";
 	ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
 	wrapText(ctx, propShort, 100, 450, TEXT_MAX_WIDTH, LINE_HEIGHT);
 
-	// Convert to PNG buffer
-	console.log("[prop-cover] Converting Canvas to PNG buffer...");
+	// Convert to PNG
 	const pngBuffer = canvas.toBuffer("image/png");
+	console.log("[prop-cover] Canvas to buffer complete, size =", pngBuffer.length);
 
-	// 6) Upload to Dropbox
+	// -------------- DROPBOX UPLOAD --------------
 	const dropboxFilename = `prop-${propID}.png`;
-	console.log(`[prop-cover] Uploading to Dropbox => folder:"${DROPBOX_FOLDER_PATH}", file:"${dropboxFilename}"`);
+	console.log("[prop-cover] Uploading to Dropbox => path:", `${DROPBOX_FOLDER_PATH}/${dropboxFilename}`);
 
-	// Step A => "files/upload"
+	// Step A => /files/upload
 	const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
 	  method: "POST",
 	  headers: {
@@ -141,18 +129,20 @@ export default async function handler(req, res) {
 	  body: pngBuffer,
 	});
 
+	console.log("[prop-cover] Dropbox upload response =>", uploadRes.status, uploadRes.statusText);
 	if (!uploadRes.ok) {
-	  const errText = await uploadRes.text();
-	  console.error("[prop-cover] Dropbox upload error =>", errText);
+	  const uploadErr = await uploadRes.text();
+	  console.error("[prop-cover] Dropbox upload error =>", uploadErr);
 	  return res.status(500).send("Error uploading to Dropbox");
 	}
 	console.log("[prop-cover] Dropbox upload successful!");
 
 	const uploadJson = await uploadRes.json();
 	const dropboxPath = uploadJson.path_lower;
+	console.log("[prop-cover] file path_lower =>", dropboxPath);
 
-	// Step B => create_shared_link_with_settings => to get a public share link
-	console.log("[prop-cover] Creating share link for =>", dropboxPath);
+	// Step B => create_shared_link_with_settings
+	console.log("[prop-cover] Creating shared link for =>", dropboxPath);
 	const shareRes = await fetch("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings", {
 	  method: "POST",
 	  headers: {
@@ -161,30 +151,26 @@ export default async function handler(req, res) {
 	  },
 	  body: JSON.stringify({
 		path: dropboxPath,
-		settings: {
-		  requested_visibility: "public",
-		},
+		settings: { requested_visibility: "public" },
 	  }),
 	});
+
+	console.log("[prop-cover] shareRes =>", shareRes.status, shareRes.statusText);
 
 	let finalLink = "";
 	if (shareRes.ok) {
 	  const shareData = await shareRes.json();
-	  finalLink = shareData.url;
-	  // Replace ?dl=0 with ?raw=1 => direct image
-	  finalLink = finalLink.replace("?dl=0", "?raw=1");
-	  console.log("[prop-cover] Received share link =>", finalLink);
+	  finalLink = shareData.url.replace("?dl=0", "?raw=1");
+	  console.log("[prop-cover] Final share link =>", finalLink);
 	} else {
-	  // Possibly the file was already shared => parse error
-	  const shareErrText = await shareRes.text();
-	  console.warn("[prop-cover] Dropbox share error =>", shareErrText);
-
-	  // fallback link
+	  const shareErr = await shareRes.text();
+	  console.warn("[prop-cover] share link error =>", shareErr);
 	  finalLink = "https://www.dropbox.com" + dropboxPath + "?raw=1";
+	  console.log("[prop-cover] Using fallback =>", finalLink);
 	}
 
-	// 7) Update Airtable => propCoverURL, propCoverStatus = "generated"
-	console.log("[prop-cover] Updating Airtable record with finalLink =>", finalLink);
+	// --------------- Update Airtable ---------------
+	console.log("[prop-cover] Updating Airtable => coverURL:", finalLink);
 	await base("Props").update([
 	  {
 		id: propRecord.id,
@@ -194,19 +180,20 @@ export default async function handler(req, res) {
 		},
 	  },
 	]);
-	console.log("[prop-cover] Airtable updated successfully!");
+	console.log("[prop-cover] Airtable update success => saved link!");
 
-	// 8) Redirect the user to the Dropbox link
-	console.log("[prop-cover] Redirecting user to =>", finalLink);
+	// --------------- redirect to finalLink ---------------
+	console.log("[prop-cover] Redirecting =>", finalLink);
 	return res.redirect(finalLink);
+
   } catch (err) {
-	console.error("[prop-cover] Error =>", err);
+	console.error("[prop-cover] Exception =>", err);
 	return res.status(500).send("Error generating or uploading image");
   }
 }
 
 /**
- * Helper function for text wrapping
+ * Helper to wrap text
  */
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   const words = text.split(" ");
