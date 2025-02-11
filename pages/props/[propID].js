@@ -1,4 +1,5 @@
 // File: /pages/props/[propID].js
+
 import Head from "next/head";
 import Link from "next/link";
 import VerificationWidget from "../../components/VerificationWidget";
@@ -6,7 +7,8 @@ import RelatedProp from "../../components/RelatedProp";
 
 /**
  * PropDetailPage displays a proposition with dynamic Open Graph and Twitter meta tags.
- * Ensure that the SITE_URL environment variable is correctly set in production.
+ * Now we check if there's already a "propCoverURL" (Dropbox direct link) in Airtable,
+ * so we can use that for "og:image" and iMessage doesn't run into a 302 redirect.
  */
 export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
   if (!propData) {
@@ -25,7 +27,9 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
   } = propData;
 
   // Format date if available
-  const formattedDate = createdAt ? new Date(createdAt).toLocaleDateString() : "Unknown date";
+  const formattedDate = createdAt
+	? new Date(createdAt).toLocaleDateString()
+	: "Unknown date";
 
   return (
 	<>
@@ -96,7 +100,10 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 		{propSubjectID ? (
 		  <section style={{ border: "1px solid #ccc", padding: "1rem" }}>
 			<h3>Related Proposition</h3>
-			<RelatedProp currentSubjectID={propSubjectID} currentPropID={propID} />
+			<RelatedProp
+			  currentSubjectID={propSubjectID}
+			  currentPropID={propID}
+			/>
 		  </section>
 		) : (
 		  <p style={{ color: "#999" }}>
@@ -114,13 +121,15 @@ export default function PropDetailPage({ propData, coverImageUrl, pageUrl }) {
 
 export async function getServerSideProps({ params }) {
   const { propID } = params;
-  // Ensure that SITE_URL is correctly set in production.
   const baseUrl = process.env.SITE_URL || "http://localhost:3000";
-  // Build the page URL for canonical and og:url tags.
   const pageUrl = `${baseUrl}/props/${propID}`;
 
-  console.log(`[PropDetailPage] getServerSideProps => propID="${propID}"`);
-  console.log(`[PropDetailPage] Using baseUrl="${baseUrl}" => will fetch prop data & build cover URL`);
+  console.log(
+	`[PropDetailPage] getServerSideProps => propID="${propID}"`
+  );
+  console.log(
+	`[PropDetailPage] Using baseUrl="${baseUrl}" => will fetch prop data & possibly build direct cover URL`
+  );
 
   try {
 	// 1) Fetch the prop data from your API
@@ -133,12 +142,29 @@ export async function getServerSideProps({ params }) {
 	  console.error(`[PropDetailPage] /api/prop returned error =>`, data.error);
 	  return { notFound: true };
 	}
-	console.log("[PropDetailPage] Received prop data =>", data.propID, data.propTitle);
+	console.log(
+	  "[PropDetailPage] Received prop data =>",
+	  data.propID,
+	  data.propTitle
+	);
 
-	// 2) Build the dynamic cover image URL for social previews => /api/prop-cover/<propID>
-	// This is the route that might log into Dropbox or skip if already generated
-	const coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
-	console.log(`[PropDetailPage] Will use coverImageUrl => ${coverImageUrl}`);
+	// 2) Determine the best "coverImageUrl"
+	let coverImageUrl;
+	if (data.propCoverStatus === "generated" && data.propCoverURL) {
+	  // Already have a final Dropbox link => use that
+	  coverImageUrl = data.propCoverURL;
+	  console.log(
+		"[PropDetailPage] Using existing propCoverURL =>",
+		coverImageUrl
+	  );
+	} else {
+	  // Fallback => dynamic route => /api/prop-cover/<propID> which might do a fresh upload
+	  coverImageUrl = `${baseUrl}/api/prop-cover/${propID}`;
+	  console.log(
+		"[PropDetailPage] No direct URL => using dynamic =>",
+		coverImageUrl
+	  );
+	}
 
 	return {
 	  props: {
