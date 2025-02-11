@@ -18,7 +18,21 @@ function computeSidePercents(aCount, bCount) {
 }
 
 /**
- * 2) Choice subcomponent
+ * 2) Helper function: which emoji to show if the prop is graded
+ * If propStatus = "gradedA", side A is correct => show "✅" for A, "❌" for B
+ * If propStatus = "gradedB", side B is correct => show "✅" for B, "❌" for A
+ */
+function getGradeEmoji(propStatus, sideValue) {
+  if (propStatus === "gradedA") {
+	return sideValue === "A" ? "✅" : "❌";
+  } else if (propStatus === "gradedB") {
+	return sideValue === "B" ? "✅" : "❌";
+  }
+  return "";
+}
+
+/**
+ * 3) Choice subcomponent
  */
 function Choice({
   label,
@@ -29,13 +43,25 @@ function Choice({
   showResults,
   propStatus,
   onSelect,
+  sideValue,
 }) {
   const [isHovered, setIsHovered] = useState(false);
+
+  // Only clickable if propStatus is open
   const clickable = propStatus === "open";
 
+  // Decide how much fill to show
+  // If showResults=true, we fill the bar; otherwise, 0
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
+  // pale-blue background
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
+
+  // If user is verified AND prop is graded => check if correct or incorrect
+  let gradeSymbol = "";
+  if (isVerified && (propStatus === "gradedA" || propStatus === "gradedB")) {
+	gradeSymbol = getGradeEmoji(propStatus, sideValue);
+  }
 
   const containerClasses = [
 	"relative",
@@ -71,7 +97,9 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{isVerified ? "🏴‍☠️ " : ""}
+		{/* 🏴‍☠️ if isVerified, plus ✅ or ❌ if graded */}
+		{isVerified && "🏴‍☠️"}
+		{gradeSymbol && ` ${gradeSymbol}`}{" "}
 		{label}
 		{showResults && (
 		  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
@@ -82,7 +110,7 @@ function Choice({
 }
 
 /**
- * 3) PropChoices
+ * 4) PropChoices
  */
 function PropChoices({
   propStatus,
@@ -97,8 +125,16 @@ function PropChoices({
 }) {
   const anySideSelected = selectedChoice !== "";
   const choices = [
-	{ value: "A", label: sideALabel, percentage: sideAPct },
-	{ value: "B", label: sideBLabel, percentage: sideBPct },
+	{
+	  value: "A",
+	  label: sideALabel,
+	  percentage: sideAPct,
+	},
+	{
+	  value: "B",
+	  label: sideBLabel,
+	  percentage: sideBPct,
+	},
   ];
 
   return (
@@ -117,6 +153,7 @@ function PropChoices({
 			showResults={resultsRevealed}
 			propStatus={propStatus}
 			onSelect={() => onSelectChoice(choice.value)}
+			sideValue={choice.value}
 		  />
 		);
 	  })}
@@ -125,8 +162,7 @@ function PropChoices({
 }
 
 /**
- * 4) PhoneNumberForm => step "phone"
- *    Now we ensure type="tel" to bring up a phone keypad on mobile
+ * 5) PhoneNumberForm => step "phone"
  */
 function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
@@ -164,7 +200,7 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 		>
 		  {() => (
 			<input
-			  type="tel" // "tel" => numeric keypad for phone
+			  type="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
 			/>
@@ -183,8 +219,7 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 }
 
 /**
- * 5) VerificationForm => step "code"
- *    type="text" + inputMode="numeric" + pattern="[0-9]*" => numeric keypad
+ * 6) VerificationForm => step "code"
  */
 function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
   const [code, setCode] = useState("");
@@ -229,6 +264,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   function handleResend() {
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
+	// you could re-send with /api/sendCode or similar if you wish
   }
 
   return (
@@ -245,8 +281,8 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		  {() => (
 			<input
 			  type="text"
-			  inputMode="numeric" // ensures numeric keyboard
-			  pattern="[0-9]*"    // hints that we only want digits
+			  inputMode="numeric"
+			  pattern="[0-9]*"
 			  placeholder="123456"
 			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			/>
@@ -271,7 +307,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 }
 
 /**
- * 6) MakeTakeButton
+ * 7) MakeTakeButton
  */
 function MakeTakeButton({
   selectedChoice,
@@ -344,7 +380,7 @@ function MakeTakeButton({
 }
 
 /**
- * 7) CompleteStep
+ * 8) CompleteStep
  */
 function CompleteStep({
   takeID,
@@ -409,7 +445,7 @@ function CompleteStep({
 }
 
 /**
- * 8) Main VerificationWidget
+ * 9) Main VerificationWidget
  */
 export default function VerificationWidget({
   embeddedPropID,
@@ -510,10 +546,6 @@ export default function VerificationWidget({
 	);
   }
 
-  const propStatus = propData.propStatus || "open";
-  const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
-  const totalTakes = sideACount + sideBCount + 2;
-
   // If user just completed the flow
   if (currentStep === "complete") {
 	return (
@@ -542,18 +574,16 @@ export default function VerificationWidget({
 	);
   }
 
-  // If prop is no longer open
-  if (propStatus !== "open") {
-	return (
-	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
-		<h4 className="font-semibold mb-1">{propData.propTitle}</h4>
-		<p>Status: {propStatus}</p>
-		<p>Total Takes: {totalTakes}</p>
-	  </div>
-	);
-  }
+  const propStatus = propData.propStatus || "open";
+  const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
+  const totalTakes = sideACount + sideBCount + 2;
 
-  // Normal open prop flow
+  // If the prop is not open, we won't let them pick a side,
+  // but we still show final bars + who took which side.
+  const readOnly = propStatus !== "open";
+  // We reveal results if it's readOnly OR user has chosen a side
+  const showResults = readOnly || resultsRevealed;
+
   return (
 	<div className="border border-gray-300 p-4 mt-4 rounded-md">
 	  <div className="mb-2 text-sm text-gray-600">
@@ -578,11 +608,12 @@ export default function VerificationWidget({
 		<div className="mb-4 text-sm text-gray-700">Not logged in</div>
 	  )}
 
+	  {/* Show the choice bars with final percentages if showResults=true */}
 	  <PropChoices
-		propStatus="open"
+		propStatus={propStatus}
 		selectedChoice={selectedChoice}
-		resultsRevealed={resultsRevealed}
-		onSelectChoice={handleSelectChoice}
+		resultsRevealed={showResults}
+		onSelectChoice={readOnly ? () => {} : handleSelectChoice}
 		sideAPct={aPct}
 		sideBPct={bPct}
 		sideALabel={propData.PropSideAShort || "Side A"}
@@ -592,7 +623,11 @@ export default function VerificationWidget({
 
 	  <p className="text-sm text-gray-600">Total Takes: {totalTakes}</p>
 
-	  {session?.user ? (
+	  {readOnly ? (
+		<p className="mt-2 text-gray-500 italic">
+		  This proposition is no longer open for new takes.
+		</p>
+	  ) : session?.user ? (
 		<MakeTakeButton
 		  selectedChoice={selectedChoice}
 		  propID={propData.propID}
