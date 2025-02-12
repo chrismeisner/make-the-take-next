@@ -1,14 +1,13 @@
-//pages/api/leaderboard.js
-
+// File: /pages/api/leaderboard.js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
-  const { subjectID } = req.query;
- 
+  const { subjectID, packURL } = req.query;
+
   try {
-	// Fetch profiles so we can map phone -> profileID
+	// 1) Fetch all profiles so we can map phone -> profileID
 	const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
 	const phoneToProfileID = new Map();
 	allProfiles.forEach((profile) => {
@@ -18,17 +17,71 @@ export default async function handler(req, res) {
 	  }
 	});
 
-	// Fetch Takes (excluding overwritten)
-	let allTakes = await base('Takes').select({
-	  maxRecords: 5000,
-	  filterByFormula: '{takeStatus} != "overwritten"',
-	}).all();
+	// 2) If packURL is given => we gather propIDs from that pack
+	let packPropIDs = null;
+	if (packURL) {
+	  // Find the pack by packURL
+	  const packRecords = await base("Packs")
+		.select({
+		  filterByFormula: `{packURL} = "${packURL}"`,
+		  maxRecords: 1,
+		})
+		.firstPage();
 
-	// If a subjectID is provided, filter by subject
+	  if (packRecords.length === 0) {
+		return res.status(404).json({
+		  success: false,
+		  error: `Pack not found for packURL="${packURL}"`,
+		});
+	  }
+
+	  const packFields = packRecords[0].fields;
+	  const linkedPropRecordIDs = packFields.Props || []; // array of record IDs from the "Props" field
+
+	  if (linkedPropRecordIDs.length > 0) {
+		// Build formula to fetch those prop records, then extract the actual propID field
+		const formula = `OR(${linkedPropRecordIDs
+		  .map((id) => `RECORD_ID()='${id}'`)
+		  .join(",")})`;
+
+		const propsRecords = await base("Props")
+		  .select({
+			filterByFormula: formula,
+			maxRecords: 500,
+		  })
+		  .all();
+
+		packPropIDs = propsRecords.map((r) => r.fields.propID).filter(Boolean);
+	  } else {
+		// If no Props in this pack, the leaderboard is empty
+		return res.status(200).json({ success: true, leaderboard: [] });
+	  }
+	}
+
+	// 3) Fetch Takes (excluding overwritten)
+	let allTakes = await base('Takes')
+	  .select({
+		maxRecords: 5000,
+		filterByFormula: '{takeStatus} != "overwritten"',
+	  })
+	  .all();
+
+	// 4) If we have a packURL => filter out any takes that do NOT match those pack propIDs
+	if (packPropIDs) {
+	  allTakes = allTakes.filter((take) => {
+		const tPropID = take.fields.propID;
+		return packPropIDs.includes(tPropID);
+	  });
+	}
+
+	// 5) If a subjectID is provided, further filter by subject
+	//    (If you don't want both packURL & subjectID combined, you could do an 'else if' instead.)
 	if (subjectID) {
 	  allTakes = allTakes.filter((take) => {
 		const propSubj = take.fields.propSubjectID || [];
-		return Array.isArray(propSubj) ? propSubj.includes(subjectID) : propSubj === subjectID;
+		return Array.isArray(propSubj)
+		  ? propSubj.includes(subjectID)
+		  : propSubj === subjectID;
 	  });
 	}
 
@@ -46,17 +99,14 @@ export default async function handler(req, res) {
 	  const points = take.fields.takePTS || 0;
 	  const result = take.fields.takeResult || ''; // "Won", "Lost", etc.
 
-	  // If we don’t have a stats object yet, initialize
 	  if (!phoneStats.has(phone)) {
 		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0 });
 	  }
 
 	  const currentStats = phoneStats.get(phone);
 
-	  // increment their total # of takes
-	  currentStats.takes += 1;
-	  // add any points
-	  currentStats.points += points;
+	  currentStats.takes += 1;      // increment total # of takes
+	  currentStats.points += points; // add any points
 
 	  // if takeResult is "Won" => increment won
 	  // if "Lost" => increment lost

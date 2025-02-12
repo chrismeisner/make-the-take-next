@@ -19,7 +19,10 @@ export default async function handler(req, res) {
 
   try {
 	// 1) Check environment
-	console.log("AIRTABLE_API_KEY starts with:", process.env.AIRTABLE_API_KEY?.slice?.(0,4));
+	console.log(
+	  "AIRTABLE_API_KEY starts with:",
+	  process.env.AIRTABLE_API_KEY?.slice?.(0, 4)
+	);
 	console.log("AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
 
 	// 2) Find the pack record matching the given packURL
@@ -30,7 +33,10 @@ export default async function handler(req, res) {
 	  })
 	  .firstPage();
 
-	console.log("[API /packs/[packURL]] => packRecords length:", packRecords?.length);
+	console.log(
+	  "[API /packs/[packURL]] => packRecords length:",
+	  packRecords?.length
+	);
 
 	if (!packRecords || packRecords.length === 0) {
 	  console.log("[API /packs/[packURL]] => No matching pack => 404");
@@ -62,7 +68,10 @@ export default async function handler(req, res) {
 		})
 		.all();
 
-	  console.log("[API /packs/[packURL]] => propsRecords length:", propsRecords?.length);
+	  console.log(
+		"[API /packs/[packURL]] => propsRecords length:",
+		propsRecords?.length
+	  );
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
@@ -94,7 +103,11 @@ export default async function handler(req, res) {
 	}
 
 	// 5) Return the pack data
-	console.log("[API /packs/[packURL]] => returning success, propsData length:", propsData.length);
+	console.log(
+	  "[API /packs/[packURL]] => returning success, propsData length:",
+	  propsData.length
+	);
+
 	return res.status(200).json({
 	  success: true,
 	  pack: {

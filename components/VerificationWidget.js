@@ -1,4 +1,5 @@
 // File: /components/VerificationWidget.js
+
 import { useState, useEffect, useRef } from "react";
 import InputMask from "react-input-mask";
 import Link from "next/link";
@@ -309,6 +310,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
 /**
  * 7) MakeTakeButton
+ *   -> Single-click submission + "Sending..." state
  */
 function MakeTakeButton({
   selectedChoice,
@@ -317,20 +319,18 @@ function MakeTakeButton({
   sessionUser,
   alreadyTookSide,
 }) {
-  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const userHasExistingTake = !!alreadyTookSide;
   const isSameAsVerified =
 	userHasExistingTake && selectedChoice === alreadyTookSide;
-  const disabled = !selectedChoice || isSameAsVerified;
+  const disabled = !selectedChoice || isSameAsVerified || isSubmitting;
   const buttonLabel = userHasExistingTake ? "Update Take" : "Make The Take";
 
   async function handleClick() {
 	setError("");
-	if (!confirming) {
-	  setConfirming(true);
-	  return;
-	}
+	setIsSubmitting(true);
 	try {
 	  const resp = await fetch("/api/take", {
 		method: "POST",
@@ -341,18 +341,17 @@ function MakeTakeButton({
 	  const data = await resp.json();
 	  if (!data.success) {
 		setError("Error submitting vote: " + (data.error || "Unknown error"));
-		setConfirming(false);
-		return;
+	  } else {
+		onTakeComplete(data.newTakeID, {
+		  success: true,
+		  sideACount: data.sideACount,
+		  sideBCount: data.sideBCount,
+		});
 	  }
-	  onTakeComplete(data.newTakeID, {
-		success: true,
-		sideACount: data.sideACount,
-		sideBCount: data.sideBCount,
-	  });
-	  setConfirming(false);
 	} catch (err) {
 	  setError("An error occurred while submitting your vote.");
-	  setConfirming(false);
+	} finally {
+	  setIsSubmitting(false);
 	}
   }
 
@@ -368,13 +367,8 @@ function MakeTakeButton({
 			: "bg-blue-600 hover:bg-blue-700",
 		].join(" ")}
 	  >
-		{buttonLabel}
+		{isSubmitting ? "Sending..." : buttonLabel}
 	  </button>
-	  {confirming && !disabled && (
-		<span className="ml-2 text-blue-600">
-		  Click again to confirm your take on side “{selectedChoice}”!
-		</span>
-	  )}
 	  {error && <div className="mt-2 text-red-600">{error}</div>}
 	</div>
   );
@@ -382,6 +376,7 @@ function MakeTakeButton({
 
 /**
  * 8) CompleteStep
+ *   -> Shows final results and includes pirate flag 🏴‍☠️ next to the side the user chose
  */
 function CompleteStep({
   takeID,
@@ -395,6 +390,14 @@ function CompleteStep({
 }) {
   if (!takeID) return null;
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
+
+  // We'll display a line: "You chose: 🏴‍☠️ Side A" (or B)
+  let chosenSideLabel = "";
+  if (selectedChoice === "A") {
+	chosenSideLabel = `🏴‍☠️ ${sideALabel}`;
+  } else if (selectedChoice === "B") {
+	chosenSideLabel = `🏴‍☠️ ${sideBLabel}`;
+  }
 
   const takeUrl = `/takes/${takeID}`;
   const tweetText =
@@ -425,6 +428,13 @@ function CompleteStep({
 		<p className="text-sm text-gray-600">
 		  Side A Count: {sideACount} | Side B Count: {sideBCount}
 		</p>
+
+		{/* Show the user’s chosen side (with 🏴‍☠️) */}
+		{chosenSideLabel && (
+		  <p className="mt-2 text-green-700 font-semibold">
+			You chose: {chosenSideLabel}
+		  </p>
+		)}
 	  </div>
 	  <p className="mt-2 text-sm">
 		<Link href={takeUrl} className="text-blue-600 underline">
@@ -561,7 +571,7 @@ export default function VerificationWidget({
 			<Link href={`/takes/${userTakeID}`}>See your take here</Link>
 		  </div>
 		)}
-<CompleteStep
+		<CompleteStep
 		  takeID={takeID}
 		  sideACount={sideACount}
 		  sideBCount={sideBCount}
@@ -571,7 +581,6 @@ export default function VerificationWidget({
 		  sideALabel={propData.PropSideAShort || "Side A"}
 		  sideBLabel={propData.PropSideBShort || "Side B"}
 		/>
-
 	  </div>
 	);
   }
@@ -591,7 +600,9 @@ export default function VerificationWidget({
 		  View full details for this proposition
 		</Link>
 	  </div>
-	  <h4 className="text-lg font-semibold">{propData.propShort || propData.propTitle}</h4>
+	  <h4 className="text-lg font-semibold">
+		{propData.propShort || propData.propTitle}
+	  </h4>
 
 	  {session?.user ? (
 		<div className="mb-4 text-sm text-blue-600">

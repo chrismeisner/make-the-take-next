@@ -4,12 +4,12 @@ import StickyProgressHeader from "../../components/StickyProgressHeader";
 import PropCard from "../../components/PropCard";
 import { PackContextProvider } from "../../contexts/PackContext";
 
-export default function PackPage({ packData, debugLogs }) {
+export default function PackPage({ packData, leaderboard, debugLogs }) {
   const { data: session } = useSession();
 
   // Print out any server-side logs we included
   if (debugLogs && typeof window !== "undefined") {
-	// Just so you can see them in the browser console as well
+	// Just so you can see them in the browser console
 	console.log("[PackPage] debugLogs =>", debugLogs);
   }
 
@@ -69,10 +69,80 @@ export default function PackPage({ packData, debugLogs }) {
 			))}
 		  </div>
 		)}
+
+		{/* NEW: Render the pack-specific leaderboard at the bottom */}
+		<PackLeaderboard leaderboard={leaderboard} />
 	  </div>
 	</PackContextProvider>
   );
 }
+
+/**
+ * Subcomponent to show the leaderboard for this pack.
+ */
+function PackLeaderboard({ leaderboard }) {
+  return (
+	<div className="mt-8 pt-4 border-t border-gray-300">
+	  <h2 className="text-xl font-bold mb-2">Leaderboard for This Pack</h2>
+
+	  {(!leaderboard || leaderboard.length === 0) ? (
+		<p>No participants yet.</p>
+	  ) : (
+		<table className="w-full border-collapse">
+		  <thead>
+			<tr className="border-b">
+			  <th className="text-left py-2 px-3">Phone</th>
+			  <th className="text-left py-2 px-3">Takes</th>
+			  <th className="text-left py-2 px-3">Points</th>
+			  <th className="text-left py-2 px-3">Record</th>
+			</tr>
+		  </thead>
+		  <tbody>
+			{leaderboard.map((item) => (
+			  <tr key={item.phone} className="border-b">
+				<td className="py-2 px-3">
+				  {item.profileID ? (
+					<a
+					  href={`/profile/${item.profileID}`}
+					  className="text-blue-600 underline"
+					>
+					  {obscurePhone(item.phone)}
+					</a>
+				  ) : (
+					obscurePhone(item.phone)
+				  )}
+				</td>
+				<td className="py-2 px-3">{item.count}</td>
+				<td className="py-2 px-3">{Math.round(item.points)}</td>
+				<td className="py-2 px-3">
+				  {item.won}-{item.lost}
+				</td>
+			  </tr>
+			))}
+		  </tbody>
+		</table>
+	  )}
+	</div>
+  );
+}
+
+/**
+ * Utility function to obscure the phone number
+ */
+function obscurePhone(e164Phone) {
+  const stripped = e164Phone.replace(/\D/g, "");
+  let digits = stripped;
+  if (digits.startsWith("1") && digits.length === 11) {
+	digits = digits.slice(1);
+  }
+  if (digits.length !== 10) {
+	return e164Phone; // fallback, no formatting
+  }
+  const area = digits.slice(0, 3);
+  const middle = digits.slice(3, 6);
+  return `(${area}) ${middle} ****`;
+}
+
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -101,16 +171,34 @@ export async function getServerSideProps(context) {
 	return { notFound: true };
   }
 
-  // 4) Return the pack data plus any debug logs you want the client to see
+  // 4) Fetch the pack-specific leaderboard from /api/leaderboard?packURL=...
+  let leaderboard = [];
+  try {
+	const lbUrl = `${origin}/api/leaderboard?packURL=${encodeURIComponent(packURL)}`;
+	console.log("[PackPage] fetching pack leaderboard =>", lbUrl);
+	const lbResp = await fetch(lbUrl);
+	const lbData = await lbResp.json();
+	if (lbData.success) {
+	  leaderboard = lbData.leaderboard || [];
+	} else {
+	  console.log("[PackPage] could not load leaderboard =>", lbData.error);
+	}
+  } catch (err) {
+	console.error("[PackPage] error fetching leaderboard =>", err);
+  }
+
+  // 5) Return the pack data, leaderboard, plus any debug logs you want the client to see
   const debugLogs = {
 	packURL,
 	origin,
 	packDataReceived: !!packData,
+	leaderboardCount: leaderboard.length,
   };
 
   return {
 	props: {
 	  packData,
+	  leaderboard,
 	  debugLogs,
 	},
   };
