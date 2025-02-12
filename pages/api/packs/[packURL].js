@@ -7,7 +7,10 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
 
 export default async function handler(req, res) {
   const { packURL } = req.query;
+  console.log("[API /packs/[packURL]] handler => packURL:", packURL);
+
   if (!packURL) {
+	console.log("[API /packs/[packURL]] => missing packURL param => 400");
 	return res.status(400).json({
 	  success: false,
 	  error: "Missing packURL parameter",
@@ -15,7 +18,11 @@ export default async function handler(req, res) {
   }
 
   try {
-	// 1) Find the pack record matching the given packURL
+	// 1) Check environment
+	console.log("AIRTABLE_API_KEY starts with:", process.env.AIRTABLE_API_KEY?.slice?.(0,4));
+	console.log("AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
+
+	// 2) Find the pack record matching the given packURL
 	const packRecords = await base("Packs")
 	  .select({
 		filterByFormula: `{packURL} = "${packURL}"`,
@@ -23,7 +30,10 @@ export default async function handler(req, res) {
 	  })
 	  .firstPage();
 
+	console.log("[API /packs/[packURL]] => packRecords length:", packRecords?.length);
+
 	if (!packRecords || packRecords.length === 0) {
+	  console.log("[API /packs/[packURL]] => No matching pack => 404");
 	  return res.status(404).json({
 		success: false,
 		error: "Pack not found",
@@ -33,8 +43,10 @@ export default async function handler(req, res) {
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
 
-	// 2) Build the Props data by retrieving linked record IDs from "Props" field
+	// 3) Build the Props data by retrieving linked record IDs
 	const linkedPropIDs = packFields.Props || [];
+	console.log("[API /packs/[packURL]] => linkedPropIDs:", linkedPropIDs);
+
 	let propsData = [];
 
 	if (linkedPropIDs.length > 0) {
@@ -49,6 +61,8 @@ export default async function handler(req, res) {
 		  maxRecords: 100,
 		})
 		.all();
+
+	  console.log("[API /packs/[packURL]] => propsRecords length:", propsRecords?.length);
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
@@ -65,22 +79,22 @@ export default async function handler(req, res) {
 		  propTitle: f.propTitle || "Untitled",
 		  propSummary: f.propSummary || "",
 		  propStatus: f.propStatus || "open",
-		  contentImageUrls, // new field
+		  contentImageUrls,
 		};
 	  });
 	}
 
-	// 3) Parse the "packPrizeImage" attachment field
+	// 4) Parse the "packPrizeImage" attachment field
 	let packPrizeImage = [];
 	if (Array.isArray(packFields.packPrizeImage)) {
 	  packPrizeImage = packFields.packPrizeImage.map((img) => ({
 		url: img.url,
 		filename: img.filename,
-		// add more properties if desired (e.g., size, type)
 	  }));
 	}
 
-	// 4) Return the pack data, including the new prize-related fields
+	// 5) Return the pack data
+	console.log("[API /packs/[packURL]] => returning success, propsData length:", propsData.length);
 	return res.status(200).json({
 	  success: true,
 	  pack: {
@@ -88,15 +102,15 @@ export default async function handler(req, res) {
 		packTitle: packFields.packTitle || "Untitled Pack",
 		packURL: packFields.packURL,
 		props: propsData,
-		// NEW fields:
+		// Additional fields:
 		packPrize: packFields.packPrize || "",
-		packPrizeImage, // the parsed attachment array
+		packPrizeImage,
 		prizeSummary: packFields.prizeSummary || "",
 		packPrizeURL: packFields.packPrizeURL || "",
 	  },
 	});
   } catch (error) {
-	console.error("Error in /api/packs/[packURL].js:", error);
+	console.error("[API /packs/[packURL]] => Error:", error);
 	return res.status(500).json({
 	  success: false,
 	  error: "Internal server error",
