@@ -52,13 +52,20 @@ export default async function handler(req, res) {
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
+
+		// Parse the contentImage attachments into an array of URLs
+		let contentImageUrls = [];
+		if (Array.isArray(f.contentImage)) {
+		  contentImageUrls = f.contentImage.map((img) => img.url);
+		}
+
 		return {
 		  airtableId: record.id,
 		  propID: f.propID || null,
 		  propTitle: f.propTitle || "Untitled",
 		  propSummary: f.propSummary || "",
 		  propStatus: f.propStatus || "open",
-		  // Include other fields from the Props table if needed
+		  contentImageUrls, // new field
 		};
 	  });
 	}

@@ -25,9 +25,22 @@ export default function PropCard({ prop }) {
 	}
   }
 
+  // If prop.contentImageUrls doesn't exist, default to empty array:
+  const { contentImageUrls = [] } = prop;
+
   return (
 	<div className="border border-gray-300 rounded-md p-4">
-	  {/* Larger & bolder title */}
+	  {/* Display the first content image (if any) above the title */}
+	  {contentImageUrls.length > 0 && (
+		<div className="mb-2">
+		  <img
+			src={contentImageUrls[0]}
+			alt="Prop Content"
+			className="w-full max-h-64 object-cover rounded"
+		  />
+		</div>
+	  )}
+
 	  <h3 className="text-2xl font-extrabold mb-1">{prop.propTitle}</h3>
 	  <p className="text-sm text-gray-700">{prop.propSummary}</p>
 
