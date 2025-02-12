@@ -25,12 +25,15 @@ export default function PropCard({ prop }) {
 	}
   }
 
-  // If prop.contentImageUrls doesn't exist, default to empty array:
-  const { contentImageUrls = [] } = prop;
+  // Destructure any new fields from the prop object
+  const {
+	contentImageUrls = [],
+	contentLinks = [], // e.g. [{ title: 'ESPN', url: 'https://espn.com' }, ...]
+  } = prop;
 
   return (
 	<div className="border border-gray-300 rounded-md p-4">
-	  {/* Display the first content image (if any) above the title */}
+	  {/* If there's a contentImage, show it */}
 	  {contentImageUrls.length > 0 && (
 		<div className="mb-2">
 		  <img
@@ -41,6 +44,7 @@ export default function PropCard({ prop }) {
 		</div>
 	  )}
 
+	  {/* Larger & bolder title */}
 	  <h3 className="text-2xl font-extrabold mb-1">{prop.propTitle}</h3>
 	  <p className="text-sm text-gray-700">{prop.propSummary}</p>
 
@@ -54,7 +58,29 @@ export default function PropCard({ prop }) {
 		</p>
 	  )}
 
-	  {/* VerificationWidget has tailwind styling internally, plus the original "filling bar" for each choice */}
+	  {/* Display the contentLinks if present */}
+	  {contentLinks.length > 0 && (
+		<div className="mt-3">
+		  <h4 className="text-sm font-semibold mb-1">Related Links:</h4>
+		  <ul className="list-disc list-inside pl-1">
+			{contentLinks.map((linkObj, idx) => (
+			  <li key={idx}>
+				<a
+				  href={linkObj.url}
+				  target="_blank"
+				  rel="noopener noreferrer"
+				  className="text-blue-600 underline"
+				>
+				  {/* If there's no title, fallback to "Open link" */}
+				  {linkObj.title || "Open link"}
+				</a>
+			  </li>
+			))}
+		  </ul>
+		</div>
+	  )}
+
+	  {/* VerificationWidget */}
 	  <div className="mt-4">
 		<VerificationWidget
 		  embeddedPropID={prop.propID}

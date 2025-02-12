@@ -82,6 +82,20 @@ export default async function handler(req, res) {
 		  contentImageUrls = f.contentImage.map((img) => img.url);
 		}
 
+		// Parse contentTitles & contentURLs
+		const contentTitles = Array.isArray(f.contentTitles)
+		  ? f.contentTitles
+		  : [];
+		const contentURLs = Array.isArray(f.contentURLs)
+		  ? f.contentURLs
+		  : [];
+
+		// Build an array of { title, url } pairs
+		const contentLinks = contentTitles.map((title, i) => {
+		  const url = contentURLs[i] || "#";
+		  return { title, url };
+		});
+
 		return {
 		  airtableId: record.id,
 		  propID: f.propID || null,
@@ -89,6 +103,7 @@ export default async function handler(req, res) {
 		  propSummary: f.propSummary || "",
 		  propStatus: f.propStatus || "open",
 		  contentImageUrls,
+		  contentLinks, // NEW field
 		};
 	  });
 	}
