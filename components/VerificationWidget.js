@@ -21,10 +21,6 @@ function computeSidePercents(aCount, bCount) {
 /**
  * 2) Helper: return a "✅" or "❌" if the prop is graded,
  * showing which side is correct for ALL users (logged in or not).
- *
- * - If propStatus = "gradedA", side A is correct => "✅" for A, "❌" for B.
- * - If propStatus = "gradedB", side B is correct => "✅" for B, "❌" for A.
- * - Otherwise (open, closed, etc.), return "".
  */
 function getGradeEmoji(propStatus, sideValue) {
   if (propStatus === "gradedA") {
@@ -203,6 +199,7 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 		  {() => (
 			<input
 			  type="tel"
+			  autoComplete="tel" // <-- autocomplete for phone
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
 			/>
@@ -283,6 +280,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		  {() => (
 			<input
 			  type="text"
+			  autoComplete="one-time-code" // <-- autocomplete for code
 			  inputMode="numeric"
 			  pattern="[0-9]*"
 			  placeholder="123456"
@@ -376,7 +374,6 @@ function MakeTakeButton({
 
 /**
  * 8) CompleteStep
- *   -> Shows final results and includes pirate flag 🏴‍☠️ next to the side the user chose
  */
 function CompleteStep({
   takeID,
@@ -391,7 +388,6 @@ function CompleteStep({
   if (!takeID) return null;
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
 
-  // We'll display a line: "You chose: 🏴‍☠️ Side A" (or B)
   let chosenSideLabel = "";
   if (selectedChoice === "A") {
 	chosenSideLabel = `🏴‍☠️ ${sideALabel}`;
@@ -429,7 +425,6 @@ function CompleteStep({
 		  Side A Count: {sideACount} | Side B Count: {sideBCount}
 		</p>
 
-		{/* Show the user’s chosen side (with 🏴‍☠️) */}
 		{chosenSideLabel && (
 		  <p className="mt-2 text-green-700 font-semibold">
 			You chose: {chosenSideLabel}
