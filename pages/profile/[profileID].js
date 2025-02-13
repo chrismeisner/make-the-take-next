@@ -1,4 +1,5 @@
 // File: /pages/profile/[profileID].js
+
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -31,7 +32,7 @@ export default function ProfilePage() {
 		if (data.success) {
 		  setProfile(data.profile);
 
-		  // Sort by createdTime descending
+		  // Sort userTakes by createdTime descending
 		  const sortedTakes = (data.userTakes || []).sort((a, b) => {
 			return new Date(b.createdTime) - new Date(a.createdTime);
 		  });
@@ -59,19 +60,29 @@ export default function ProfilePage() {
 
 	takenArr.forEach((take) => {
 	  points += take.takePTS || 0;
-	  if (take.takeResult === "Won") wins++;
-	  else if (take.takeResult === "Lost") losses++;
-	  else if (take.takeResult === "Pending") pending++;
+	  if (take.takeResult === "Won") {
+		wins++;
+	  } else if (take.takeResult === "Lost") {
+		losses++;
+	  } else if (take.takeResult === "Pending") {
+		pending++;
+	  }
 	});
 
-	// Round points
+	// Round total points
 	points = Math.round(points);
 	setUserStats({ points, wins, losses, pending });
   };
 
-  if (loading) return <div className="p-4">Loading profile...</div>;
-  if (error) return <div className="p-4 text-red-600">{error}</div>;
-  if (!profile) return <div className="p-4">Profile not found.</div>;
+  if (loading) {
+	return <div className="p-4">Loading profile...</div>;
+  }
+  if (error) {
+	return <div className="p-4 text-red-600">{error}</div>;
+  }
+  if (!profile) {
+	return <div className="p-4">Profile not found.</div>;
+  }
 
   const isOwnProfile =
 	session?.user && session.user.profileID === profile.profileID;
@@ -135,67 +146,89 @@ export default function ProfilePage() {
 		<p>You haven't made any takes yet.</p>
 	  ) : (
 		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-		  {userTakes.map((take) => (
-			<div
-			  key={take.airtableRecordId}
-			  className="border p-4 rounded shadow-sm bg-white"
-			>
-			  {/* Show first image from take.takeContentImageUrls (if any) */}
-			  {take.takeContentImageUrls && take.takeContentImageUrls.length > 0 && (
-				<div className="mb-2">
-				  <img
-					src={take.takeContentImageUrls[0]}
-					alt="Take Content"
-					className="w-full h-32 object-cover rounded"
-				  />
-				</div>
-			  )}
+		  {userTakes.map((take) => {
+			// Decide color for result pill
+			let resultStyles = "bg-gray-300 text-gray-800";
+			if (take.takeResult === "Pending") {
+			  resultStyles = "bg-yellow-100 text-yellow-800";
+			} else if (take.takeResult === "Won") {
+			  resultStyles = "bg-green-100 text-green-800";
+			} else if (take.takeResult === "Lost") {
+			  resultStyles = "bg-red-100 text-red-800";
+			}
 
-			  {/* MAIN Title from the Takes table => takeTitle */}
-			  <h4 className="text-lg font-semibold mb-1">
-				{take.takeTitle || "No Title"}
-			  </h4>
+			const takePoints = Math.round(take.takePTS || 0);
 
-			  {/* Could also display the propTitle beneath it */}
-			  {take.propTitle && (
-				<p className="text-sm text-gray-600">
-				  Prop: {take.propTitle}
+			return (
+			  <div
+				key={take.airtableRecordId}
+				className="border p-4 rounded shadow-sm bg-white"
+			  >
+				{/* Show first image if we have contentImage URLs */}
+				{take.takeContentImageUrls &&
+				  take.takeContentImageUrls.length > 0 && (
+					<div className="mb-2">
+					  <img
+						src={take.takeContentImageUrls[0]}
+						alt="Take Content"
+						className="w-full h-32 object-cover rounded"
+					  />
+					</div>
+				  )}
+
+				{/* MAIN Title from the Takes table => takeTitle */}
+				<h4 className="text-lg font-semibold mb-1">
+				  {take.takeTitle || "No Title"}
+				</h4>
+
+				{/* The "Prop:" text now links to /props/[propID] */}
+				{take.propID && take.propTitle && (
+				  <p className="text-sm text-gray-600">
+					Prop:{" "}
+					<Link
+					  href={`/props/${take.propID}`}
+					  className="text-blue-600 underline"
+					>
+					  {take.propTitle}
+					</Link>
+				  </p>
+				)}
+
+				{/* We REMOVE the "Take ID" line and "Side" line */}
+				{/* Pill for result */}
+				<p className="text-sm mt-1 flex items-center gap-1">
+				  Result:
+				  <span
+					className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${resultStyles}`}
+				  >
+					{take.takeResult || "Pending"}
+				  </span>
 				</p>
-			  )}
 
-			  <p className="text-sm text-gray-600">
-				Take ID:{" "}
+				{/* Round the points to 0 decimals */}
+				<p className="text-sm">Points: {takePoints}</p>
+
+				{take.subjectTitle && (
+				  <p className="text-sm">
+					Subject:{" "}
+					<span className="text-gray-700">{take.subjectTitle}</span>
+				  </p>
+				)}
+
+				<p className="text-xs text-gray-500 mt-1">
+				  Created: {take.createdTime}
+				</p>
+
+				{/* We could still link to the individual take if desired */}
 				<Link
 				  href={`/takes/${take.takeID}`}
-				  className="text-blue-600 underline"
+				  className="inline-block mt-2 text-blue-600 underline text-sm"
 				>
-				  {take.takeID}
+				  View Take Details
 				</Link>
-			  </p>
-
-			  <p className="text-sm mt-1">Side: {take.propSide || "N/A"}</p>
-			  <p className="text-sm">Result: {take.takeResult || "Pending"}</p>
-			  <p className="text-sm">Points: {take.takePTS || 0}</p>
-
-			  {take.subjectTitle && (
-				<p className="text-sm">
-				  Subject:{" "}
-				  <span className="text-gray-700">{take.subjectTitle}</span>
-				</p>
-			  )}
-
-			  <p className="text-xs text-gray-500 mt-1">
-				Created: {take.createdTime}
-			  </p>
-
-			  <Link
-				href={`/takes/${take.takeID}`}
-				className="inline-block mt-2 text-blue-600 underline text-sm"
-			  >
-				View Take Details
-			  </Link>
-			</div>
-		  ))}
+			  </div>
+			);
+		  })}
 		</div>
 	  )}
 

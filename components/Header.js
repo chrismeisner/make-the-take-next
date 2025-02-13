@@ -1,5 +1,6 @@
 // File: /components/Header.js
-import { useEffect } from "react";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut, useSession } from "next-auth/react";
@@ -7,15 +8,43 @@ import { signOut, useSession } from "next-auth/react";
 export default function Header() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const [userPoints, setUserPoints] = useState(null);
 
   useEffect(() => {
 	console.log("[Header] Session status:", status);
 	console.log("[Header] Session data:", session);
+
+	// If user is logged in => fetch total points
+	async function fetchPoints() {
+	  if (!session?.user?.phone) {
+		setUserPoints(null);
+		return;
+	  }
+	  try {
+		const resp = await fetch("/api/userPoints");
+		const data = await resp.json();
+		if (data.success) {
+		  // Round to 0 decimals
+		  const roundedPts = Math.round(data.totalPoints || 0);
+		  setUserPoints(roundedPts);
+		} else {
+		  console.log("[Header] /api/userPoints error =>", data.error);
+		  setUserPoints(null);
+		}
+	  } catch (err) {
+		console.error("[Header] fetchPoints error =>", err);
+		setUserPoints(null);
+	  }
+	}
+
+	if (session?.user) {
+	  fetchPoints();
+	} else {
+	  setUserPoints(null);
+	}
   }, [session, status]);
 
-  // No logout here; you said you'd put it on the profile page.
-
-  // For “Leaderboard,” show trophy on mobile, text on sm+.
+  // Link to leaderboard => trophy on mobile, text on sm+.
   function LeaderboardLink() {
 	return (
 	  <Link href="/leaderboard" className="hover:text-gray-300 transition-colors">
@@ -27,7 +56,19 @@ export default function Header() {
 	);
   }
 
-  // The login link is styled like a small button
+  // Link to prizes => gift on mobile, text on sm+
+  function PrizesLink() {
+	return (
+	  <Link href="/prizes" className="hover:text-gray-300 transition-colors">
+		<span className="inline-block sm:hidden" aria-label="Prizes">
+		  🎁
+		</span>
+		<span className="hidden sm:inline">Prizes</span>
+	  </Link>
+	);
+  }
+
+  // The login link
   function LoginButton() {
 	return (
 	  <Link
@@ -53,34 +94,27 @@ export default function Header() {
   }
 
   return (
-	// Sticky header, single row, top-0
 	<header className="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md border-b border-gray-300">
 	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-		{/* A single row => height is stable, so it never changes on mobile */}
+		{/* Single row => brand on left, nav on right */}
 		<div className="flex items-center justify-between h-12">
-		  {/* Left side: brand link => smaller text on mobile, bigger on sm+ */}
 		  <Link href="/" className="font-bold hover:text-gray-200 text-base sm:text-2xl">
 			Make The Take
 		  </Link>
 
-		  {/* Right side: nav items in a row */}
 		  <nav className="flex items-center space-x-4 text-sm">
-			{/* Status line => hidden on mobile, shown on sm+ */}
-			<span className="hidden sm:inline text-xs opacity-90">
-			  Status:{" "}
-			  <strong>
-				{status === "loading"
-				  ? "Checking..."
-				  : session?.user
-				  ? "Authenticated"
-				  : "Not Authenticated"}
-			  </strong>
-			</span>
+			{/* Show user points if logged in */}
+			{session?.user ? (
+			  <div className="text-xs sm:text-sm">
+				PTS: <span className="font-bold">{userPoints ?? "..."}</span>
+			  </div>
+			) : (
+			  <div className="hidden sm:block text-xs opacity-90">Not logged in</div>
+			)}
 
-			{/* The “Leaderboard” => trophy on mobile, text on bigger screens */}
 			<LeaderboardLink />
+			<PrizesLink />
 
-			{/* If user is logged in => skull, else => login button */}
 			{session?.user && session.user.profileID ? (
 			  <ProfileSkull profileID={session.user.profileID} />
 			) : (
