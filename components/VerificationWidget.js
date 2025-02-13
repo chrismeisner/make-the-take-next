@@ -19,8 +19,7 @@ function computeSidePercents(aCount, bCount) {
 }
 
 /**
- * 2) Helper: return a "✅" or "❌" if the prop is graded,
- * showing which side is correct for ALL users (logged in or not).
+ * 2) Helper: return a "✅" or "❌" if the prop is graded
  */
 function getGradeEmoji(propStatus, sideValue) {
   if (propStatus === "gradedA") {
@@ -55,7 +54,6 @@ function Choice({
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
 
-  // If the prop is graded, we show a check or x for each side
   const gradeSymbol =
 	propStatus === "gradedA" || propStatus === "gradedB"
 	  ? getGradeEmoji(propStatus, sideValue)
@@ -95,7 +93,6 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{/* Pirate flag if user took that side, then the grade symbol if it's graded */}
 		{isVerified ? "🏴‍☠️ " : ""}
 		{gradeSymbol ? `${gradeSymbol} ` : ""}
 		{label}
@@ -161,8 +158,9 @@ function PropChoices({
 
 /**
  * 5) PhoneNumberForm => step "phone"
+ *    We receive "selectedChoice" to know if a side is chosen; if not, disable the button.
  */
-function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
+function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
   const [error, setError] = useState("");
 
@@ -199,15 +197,22 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone }) {
 		  {() => (
 			<input
 			  type="tel"
-			  autoComplete="tel" // <-- autocomplete for phone
+			  autoComplete="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
 			/>
 		  )}
 		</InputMask>
+		{/* Disable if no side chosen */}
 		<button
 		  onClick={handleSendCode}
-		  className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none"
+		  disabled={!selectedChoice} // <-- Key line
+		  className={[
+			"px-4 py-2 rounded-md focus:outline-none text-white",
+			!selectedChoice
+			  ? "bg-gray-400 cursor-not-allowed"
+			  : "bg-blue-600 hover:bg-blue-700",
+		  ].join(" ")}
 		>
 		  Send Code
 		</button>
@@ -263,7 +268,6 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   function handleResend() {
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
-	// you could re-send with /api/sendCode or a similar approach
   }
 
   return (
@@ -280,7 +284,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		  {() => (
 			<input
 			  type="text"
-			  autoComplete="one-time-code" // <-- autocomplete for code
+			  autoComplete="one-time-code"
 			  inputMode="numeric"
 			  pattern="[0-9]*"
 			  placeholder="123456"
@@ -581,7 +585,7 @@ export default function VerificationWidget({
   }
 
   // If the prop is not open, we won't let them pick a side,
-  // but we still show final bars + who took which side.
+  // but we still show final bars
   const propStatus = propData.propStatus || "open";
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
@@ -643,6 +647,7 @@ export default function VerificationWidget({
 		  {currentStep === "phone" && (
 			<PhoneNumberForm
 			  phoneNumber={phoneNumber}
+			  selectedChoice={selectedChoice} // Pass down so we can disable
 			  onSubmittedPhone={(phone) => {
 				setPhoneNumber(phone);
 				setCurrentStep("code");
