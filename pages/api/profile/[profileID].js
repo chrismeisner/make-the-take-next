@@ -1,3 +1,4 @@
+// File: /pages/api/profile/[profileID].js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -12,7 +13,7 @@ export default async function handler(req, res) {
   const { profileID } = req.query;
 
   try {
-	// Fetch the profile record from the Profiles table
+	// 1) Fetch the profile record from the Profiles table
 	const found = await base('Profiles')
 	  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
 	  .all();
@@ -27,6 +28,7 @@ export default async function handler(req, res) {
 	// Initialize an array to hold the user's takes
 	let userTakes = [];
 	let userPacks = [];
+
 	if (Array.isArray(pf.Takes) && pf.Takes.length > 0) {
 	  // Build a filter formula to fetch all takes linked to this profile
 	  const filterByFormula = `OR(${pf.Takes.map((id) => `RECORD_ID()='${id}'`).join(',')})`;
@@ -41,11 +43,16 @@ export default async function handler(req, res) {
 		  const tf = t.fields;
 		  
 		  // Collect all the Packs linked to the take
-		  const packs = tf.Packs || []; // Packs field is an array of linked records
+		  const packs = tf.Packs || []; // array of linked Pack IDs
 
-		  // Add linked packs to the userPacks array if the take is verified (not Pending)
-		  if (tf.takeResult === 'Won' || tf.takeResult === 'Lost') {
-			userPacks.push(...packs); // Spread the packs to collect them all
+		  // Add linked packs to the userPacks array if the take is verified (not overwritten)
+		  // (or you can do it unconditionally if you like)
+		  userPacks.push(...packs);
+
+		  // 2) Parse contentImage (if it's a lookup attachment field)
+		  let contentImageUrls = [];
+		  if (Array.isArray(tf.contentImage)) {
+			contentImageUrls = tf.contentImage.map((att) => att.url);
 		  }
 
 		  return {
@@ -60,19 +67,23 @@ export default async function handler(req, res) {
 			takeStatus: tf.takeStatus || '',
 			takeResult: tf.takeResult || '',
 			takePTS: tf.takePTS || 0,
+			
+			// NEW fields:
+			takeTitle: tf.takeTitle || '',  // <---- from Takes table
+			takeContentImageUrls: contentImageUrls,  // <---- array of image URLs
+
 			packs, // Return the packs linked to the take
 		  };
 		});
 	}
 
-	// Fetch packURL for each unique pack
-	const uniquePacks = [...new Set(userPacks)];
+	// 3) Fetch packURL for each unique pack
+	const uniquePackIDs = [...new Set(userPacks)];
 	const packDetails = await Promise.all(
-	  uniquePacks.map(async (packId) => {
+	  uniquePackIDs.map(async (packId) => {
 		const packRecord = await base('Packs')
 		  .select({ filterByFormula: `RECORD_ID()="${packId}"`, maxRecords: 1 })
 		  .firstPage();
-
 		if (packRecord.length > 0) {
 		  const pack = packRecord[0].fields;
 		  return {
@@ -83,9 +94,7 @@ export default async function handler(req, res) {
 		return null;
 	  })
 	);
-
-	// Filter out any null values if the pack URL was not found
-	const validPacks = packDetails.filter((pack) => pack !== null);
+	const validPacks = packDetails.filter((p) => p !== null);
 
 	// Build the profile data object
 	const profileData = {
@@ -102,10 +111,12 @@ export default async function handler(req, res) {
 	  profile: profileData,
 	  totalTakes: userTakes.length,
 	  userTakes,
-	  userPacks: validPacks, // Send packs with the packURL for the front end to use
+	  userPacks: validPacks,
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);
-	return res.status(500).json({ success: false, error: 'Server error fetching profile' });
+	return res
+	  .status(500)
+	  .json({ success: false, error: 'Server error fetching profile' });
   }
 }
