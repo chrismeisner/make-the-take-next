@@ -1,20 +1,37 @@
 // File: /pages/packs/[packURL].js
+
 import { useSession } from "next-auth/react";
 import StickyProgressHeader from "../../components/StickyProgressHeader";
 import PropCard from "../../components/PropCard";
-import { PackContextProvider } from "../../contexts/PackContext";
+import { PackContextProvider, usePackContext } from "../../contexts/PackContext";
 
+/**
+ * The top-level component just provides PackContext and fetches data server-side.
+ */
 export default function PackPage({ packData, leaderboard, debugLogs }) {
-  const { data: session } = useSession();
+  // We wrap everything in <PackContextProvider> so child can access verifiedProps, etc.
+  return (
+	<PackContextProvider packData={packData}>
+	  <PackInner packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} />
+	</PackContextProvider>
+  );
+}
 
-  // Print out any server-side logs we included
-  if (debugLogs && typeof window !== "undefined") {
-	// Just so you can see them in the browser console
-	console.log("[PackPage] debugLogs =>", debugLogs);
-  }
+/**
+ * Child component: uses usePackContext() to know which props are verified,
+ * sorts them so unverified appear at top, renders them, then shows the leaderboard.
+ */
+function PackInner({ packData, leaderboard, debugLogs }) {
+  const { data: session } = useSession();
+  const { verifiedProps } = usePackContext();
 
   if (!packData) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
+  }
+
+  // Log server-side logs in client console for debugging
+  if (debugLogs && typeof window !== "undefined") {
+	console.log("[PackInner] debugLogs =>", debugLogs);
   }
 
   const {
@@ -26,8 +43,16 @@ export default function PackPage({ packData, leaderboard, debugLogs }) {
 	packPrizeURL,
   } = packData;
 
+  // Sort: unverified => top, verified => bottom
+  const sortedProps = [...props].sort((a, b) => {
+	const aVerified = verifiedProps.has(a.propID);
+	const bVerified = verifiedProps.has(b.propID);
+	if (aVerified === bVerified) return 0; // both same => no change
+	return aVerified ? 1 : -1; // unverified => -1 => top
+  });
+
   return (
-	<PackContextProvider packData={packData}>
+	<>
 	  <StickyProgressHeader />
 	  <div className="p-4 max-w-4xl mx-auto">
 		<h1 className="text-2xl font-bold mb-2">{packTitle}</h1>
@@ -55,36 +80,34 @@ export default function PackPage({ packData, leaderboard, debugLogs }) {
 		  <p className="text-sm text-gray-700 mb-6">{prizeSummary}</p>
 		)}
 
-		{/* Debugging: Show the URL param + mention we are in /packs/[packURL] */}
 		<p className="text-sm text-gray-600 mb-4">
 		  Pack detail route: <span className="italic">/packs/[packURL]</span>
 		</p>
 
-		{props.length === 0 ? (
+		{sortedProps.length === 0 ? (
 		  <p className="text-gray-600">No propositions found for this pack.</p>
 		) : (
 		  <div className="space-y-6">
-			{props.map((prop) => (
+			{sortedProps.map((prop) => (
 			  <PropCard key={prop.propID} prop={prop} />
 			))}
 		  </div>
 		)}
 
-		{/* NEW: Render the pack-specific leaderboard at the bottom */}
+		{/* Render the pack-specific leaderboard at the bottom */}
 		<PackLeaderboard leaderboard={leaderboard} />
 	  </div>
-	</PackContextProvider>
+	</>
   );
 }
 
 /**
- * Subcomponent to show the leaderboard for this pack.
+ * Subcomponent to display the pack leaderboard at the bottom.
  */
 function PackLeaderboard({ leaderboard }) {
   return (
 	<div className="mt-8 pt-4 border-t border-gray-300">
 	  <h2 className="text-xl font-bold mb-2">Leaderboard for This Pack</h2>
-
 	  {(!leaderboard || leaderboard.length === 0) ? (
 		<p>No participants yet.</p>
 	  ) : (
@@ -126,9 +149,6 @@ function PackLeaderboard({ leaderboard }) {
   );
 }
 
-/**
- * Utility function to obscure the phone number
- */
 function obscurePhone(e164Phone) {
   const stripped = e164Phone.replace(/\D/g, "");
   let digits = stripped;
@@ -136,14 +156,16 @@ function obscurePhone(e164Phone) {
 	digits = digits.slice(1);
   }
   if (digits.length !== 10) {
-	return e164Phone; // fallback, no formatting
+	return e164Phone; // fallback
   }
   const area = digits.slice(0, 3);
   const middle = digits.slice(3, 6);
   return `(${area}) ${middle} ****`;
 }
 
-
+/**
+ * Standard SSR to fetch pack data + leaderboard
+ */
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
   if (!packURL) {
@@ -165,13 +187,13 @@ export async function getServerSideProps(context) {
   // 2) Fetch the pack data from your API route
   const packData = await fetchPackByURL(packURL, origin);
 
-  // 3) If we got nothing, return notFound to trigger Next.js 404
+  // If we got nothing, return 404
   if (!packData) {
-	console.log("[PackPage] getServerSideProps => packData is null => returning 404");
+	console.log("[PackPage] => packData is null => 404");
 	return { notFound: true };
   }
 
-  // 4) Fetch the pack-specific leaderboard from /api/leaderboard?packURL=...
+  // 3) Fetch the pack-specific leaderboard from /api/leaderboard?packURL=...
   let leaderboard = [];
   try {
 	const lbUrl = `${origin}/api/leaderboard?packURL=${encodeURIComponent(packURL)}`;
@@ -187,7 +209,7 @@ export async function getServerSideProps(context) {
 	console.error("[PackPage] error fetching leaderboard =>", err);
   }
 
-  // 5) Return the pack data, leaderboard, plus any debug logs you want the client to see
+  // 4) Return the pack data, leaderboard, plus any debug logs you want the client to see
   const debugLogs = {
 	packURL,
 	origin,
@@ -214,7 +236,7 @@ async function fetchPackByURL(packURL, origin) {
 
 	const response = await fetch(apiUrl);
 	if (!response.ok) {
-	  console.log("[fetchPackByURL]  response not OK =>", response.status);
+	  console.log("[fetchPackByURL] response not OK =>", response.status);
 	  return null;
 	}
 	const data = await response.json();
