@@ -1,3 +1,5 @@
+// File: /pages/login.js
+
 import { useState } from "react";
 import { useRouter } from "next/router";
 import InputMask from "react-input-mask";
@@ -33,10 +35,12 @@ export default function LoginPage() {
   async function handleVerifyCode(e) {
 	e.preventDefault();
 	setError("");
+
 	if (!code) {
 	  setError("Please enter your 6-digit code");
 	  return;
 	}
+
 	// Call NextAuth signIn with credentials
 	const result = await signIn("credentials", {
 	  redirect: false,
@@ -52,40 +56,74 @@ export default function LoginPage() {
   }
 
   return (
-	<div style={{ maxWidth: 400, margin: "2rem auto" }}>
-	  <h1>Phone Login</h1>
-	  {error && <p style={{ color: "red" }}>{error}</p>}
+	<div className="max-w-md mx-auto mt-10 p-4 border rounded shadow-sm">
+	  <h1 className="text-2xl font-bold mb-4">Phone Login</h1>
+
+	  {error && <p className="text-red-600 mb-2">{error}</p>}
+
 	  {step === "phone" && (
 		<form onSubmit={handleSendCode}>
-		  <label>
+		  <label className="block mb-2 font-semibold text-gray-700">
 			Enter your phone:
-			<InputMask
-			  mask="(999) 999-9999"
-			  value={phone}
-			  onChange={(e) => setPhone(e.target.value)}
-			>
-			  {() => <input type="tel" placeholder="(555) 555-1234" />}
-			</InputMask>
 		  </label>
-		  <div style={{ marginTop: "1rem" }}>
-			<button type="submit">Send Code</button>
+		  <InputMask
+			mask="(999) 999-9999"
+			value={phone}
+			onChange={(e) => setPhone(e.target.value)}
+		  >
+			{() => (
+			  <input
+				type="tel"
+				name="phone"
+				autoComplete="tel"
+				className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+				placeholder="(555) 555-1234"
+			  />
+			)}
+		  </InputMask>
+
+		  <div className="mt-4">
+			<button
+			  type="submit"
+			  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+			>
+			  Send Code
+			</button>
 		  </div>
 		</form>
 	  )}
+
 	  {step === "code" && (
 		<form onSubmit={handleVerifyCode}>
-		  <label>
+		  <label className="block mb-2 font-semibold text-gray-700">
 			Enter the 6-digit code:
-			<InputMask
-			  mask="999999"
-			  value={code}
-			  onChange={(e) => setCode(e.target.value)}
-			>
-			  {() => <input type="tel" placeholder="123456" />}
-			</InputMask>
 		  </label>
-		  <div style={{ marginTop: "1rem" }}>
-			<button type="submit">Verify &amp; Log In</button>
+		  <InputMask
+			mask="999999"
+			value={code}
+			onChange={(e) => setCode(e.target.value)}
+		  >
+			{() => (
+			  <input
+				type="text"
+				name="verificationCode"
+				autoComplete="one-time-code"
+				inputMode="numeric"
+				pattern="[0-9]*"
+				maxLength={6}
+				className="w-32 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+				placeholder="123456"
+			  />
+			)}
+		  </InputMask>
+
+		  <div className="mt-4">
+			<button
+			  type="submit"
+			  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+			>
+			  Verify &amp; Log In
+			</button>
 		  </div>
 		</form>
 	  )}

@@ -1,4 +1,5 @@
 // File: /pages/api/updateTeam.js
+
 import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
 
@@ -6,7 +7,6 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== "POST") {
 	console.error("[updateTeam] Invalid method =>", req.method);
 	return res
@@ -20,10 +20,12 @@ export default async function handler(req, res) {
 
   if (!token || !token.phone) {
 	console.error("[updateTeam] No valid token or phone found => Unauthorized");
-	return res.status(401).json({ success: false, error: "Unauthorized" });
+	return res
+	  .status(401)
+	  .json({ success: false, error: "Unauthorized" });
   }
 
-  // Extract 'team' from request body – this is the team value like "suns", "lakers", or "pistons"
+  // 'team' is something like "lakers", "suns", etc.
   const { team } = req.body || {};
   if (!team) {
 	console.error("[updateTeam] No team provided in body");
@@ -44,7 +46,9 @@ export default async function handler(req, res) {
 
 	if (teamRecords.length === 0) {
 	  console.error("[updateTeam] Team not found for teamID:", team);
-	  return res.status(404).json({ success: false, error: "Team not found" });
+	  return res
+		.status(404)
+		.json({ success: false, error: "Team not found" });
 	}
 	const teamRecordId = teamRecords[0].id;
 	console.log("[updateTeam] Found Team record =>", teamRecordId);
@@ -59,26 +63,25 @@ export default async function handler(req, res) {
 
 	if (profileRecords.length === 0) {
 	  console.error("[updateTeam] Profile not found for phone =>", phone);
-	  return res.status(404).json({ success: false, error: "Profile not found" });
+	  return res
+		.status(404)
+		.json({ success: false, error: "Profile not found" });
 	}
 	const profileRec = profileRecords[0];
 	console.log("[updateTeam] Found Profile =>", profileRec.id);
 
-	// 3) Update the profileTeam field as a linked record
-	// This sets the field to an array containing just the new team record id,
-	// thereby overwriting any existing team link.
+	// 3) Update the profileTeam field as a linked record array with the new team record
 	await base("Profiles").update([
 	  {
 		id: profileRec.id,
 		fields: {
-		  profileTeam: [teamRecordId],
+		  profileTeam: [teamRecordId], // Overwrite existing with new single team
 		},
 	  },
 	]);
 
 	console.log("[updateTeam] Successfully updated team to", team);
 	return res.status(200).json({ success: true, message: "Team updated" });
-
   } catch (err) {
 	console.error("[updateTeam] Error =>", err);
 	return res

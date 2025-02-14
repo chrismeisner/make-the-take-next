@@ -25,10 +25,11 @@ export default async function handler(req, res) {
 	const profRec = found[0];
 	const pf = profRec.fields;
 
-	// Initialize an array to hold the user's takes
+	// Initialize arrays to hold user's takes & packs
 	let userTakes = [];
 	let userPacks = [];
 
+	// 2) If the profile has "Takes" linked, fetch them
 	if (Array.isArray(pf.Takes) && pf.Takes.length > 0) {
 	  // Build a filter formula to fetch all takes linked to this profile
 	  const filterByFormula = `OR(${pf.Takes.map((id) => `RECORD_ID()='${id}'`).join(',')})`;
@@ -36,19 +37,19 @@ export default async function handler(req, res) {
 		.select({ filterByFormula, maxRecords: 5000 })
 		.all();
 
-	  // Filter out any takes that have been overwritten and map the fields
+	  // Filter out any takes that have been overwritten
 	  userTakes = takeRecords
 		.filter((t) => t.fields.takeStatus !== 'overwritten')
 		.map((t) => {
 		  const tf = t.fields;
-		  
-		  // Collect all the Packs linked to the take
-		  const packs = tf.Packs || []; // array of linked Pack IDs
 
-		  // Add linked packs to the userPacks array if the take is verified (not overwritten)
+		  // Collect all the Packs linked to the take
+		  const packs = tf.Packs || [];
+
+		  // Add linked packs to userPacks array if the take is verified
 		  userPacks.push(...packs);
 
-		  // 2) Parse contentImage (if it's a lookup attachment field)
+		  // Possibly parse contentImage (if it's a lookup attachment field)
 		  let contentImageUrls = [];
 		  if (Array.isArray(tf.contentImage)) {
 			contentImageUrls = tf.contentImage.map((att) => att.url);
@@ -66,10 +67,10 @@ export default async function handler(req, res) {
 			takeStatus: tf.takeStatus || '',
 			takeResult: tf.takeResult || '',
 			takePTS: tf.takePTS || 0,
-			
-			// NEW fields:
-			takeTitle: tf.takeTitle || '',  // <---- from Takes table
-			takeContentImageUrls: contentImageUrls,  // <---- array of image URLs
+
+			// Additional fields:
+			takeTitle: tf.takeTitle || '',
+			takeContentImageUrls: contentImageUrls,
 
 			packs, // Return the packs linked to the take
 		  };
@@ -95,17 +96,52 @@ export default async function handler(req, res) {
 	);
 	const validPacks = packDetails.filter((p) => p !== null);
 
-	// Build the profile data object (FIX: include profileTeam)
+	// 4) Also fetch the "Teams" record if profileTeam is linked
+	//    "profileTeam" might be an array of record IDs, so we handle that below
+	let profileTeamData = null;
+	if (Array.isArray(pf.profileTeam) && pf.profileTeam.length > 0) {
+	  // We'll assume the user has only one team linked. If multiple, pick the first.
+	  const teamRecordId = pf.profileTeam[0];
+	  if (teamRecordId) {
+		try {
+		  const teamRec = await base('Teams').find(teamRecordId);
+		  const tf = teamRec.fields;
+
+		  // Gather the team logo attachments
+		  let teamLogo = [];
+		  if (Array.isArray(tf.teamLogo)) {
+			teamLogo = tf.teamLogo.map((img) => ({
+			  url: img.url,
+			  filename: img.filename,
+			}));
+		  }
+
+		  profileTeamData = {
+			airtableId: teamRec.id,
+			teamID: tf.teamID || '',
+			teamName: tf.teamName || '',
+			teamLogo,
+		  };
+		} catch (err) {
+		  console.error('[profile] Error fetching team record =>', err);
+		}
+	  }
+	}
+
+	// 5) Build the profile data object
 	const profileData = {
 	  airtableRecordId: profRec.id,
 	  profileID: pf.profileID,
 	  profileMobile: pf.profileMobile,
 	  profileUsername: pf.profileUsername || '',
 	  profileAvatar: pf.profileAvatar || [],
-	  profileTeam: pf.profileTeam || '', // <-- This line was added to return the user's favorite team.
+	  // We no longer store just the raw profileTeam ID here
+	  // Instead, we store the new object for the front-end:
+	  profileTeamData, // can be null if no team or error
 	  createdTime: profRec._rawJson.createdTime,
 	};
 
+	// 6) Return everything
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,

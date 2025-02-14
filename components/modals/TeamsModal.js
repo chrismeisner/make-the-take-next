@@ -15,12 +15,17 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 
   useEffect(() => {
 	if (!isOpen) return;
+
 	async function fetchTeams() {
+	  setLoading(true);
+	  setError("");
 	  try {
 		const res = await fetch("/api/teams");
 		const data = await res.json();
 		if (data.success) {
-		  setTeams(data.teams);
+		  // Sort teams by teamID (alphabetically)
+		  const sorted = data.teams.sort((a, b) => a.teamID.localeCompare(b.teamID));
+		  setTeams(sorted);
 		} else {
 		  setError(data.error || "Failed to load teams");
 		}
@@ -43,8 +48,9 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 	  <h2 className="text-xl font-bold mb-4">Select Your Favorite Team</h2>
 	  {loading && <p>Loading teams...</p>}
 	  {error && <p className="text-red-600">{error}</p>}
+
 	  {!loading && !error && (
-		<div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1 sm:gap-2 lg:gap-2">
+		<div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-8 gap-1 sm:gap-2 lg:gap-2">
 		  {teams.map((team) => (
 			<button
 			  key={team.teamID}
@@ -55,10 +61,10 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 				<img
 				  src={team.teamLogo[0].url}
 				  alt={team.teamName}
-				  className="w-12 h-12 object-cover rounded-full"
+				  className="w-12 h-12 object-cover"
 				/>
 			  ) : (
-				<div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center">
+				<div className="w-12 h-12 bg-gray-300 flex items-center justify-center">
 				  ?
 				</div>
 			  )}
@@ -66,6 +72,7 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 		  ))}
 		</div>
 	  )}
+
 	  <button
 		className="mt-6 px-4 py-2 bg-blue-600 text-white rounded"
 		onClick={onClose}

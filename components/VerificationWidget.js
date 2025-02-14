@@ -197,16 +197,18 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
 		  {() => (
 			<input
 			  type="tel"
+			  name="phone"
 			  autoComplete="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
+			  maxLength={14} // ensures consistent with mask
 			/>
 		  )}
 		</InputMask>
 		{/* Disable if no side chosen */}
 		<button
 		  onClick={handleSendCode}
-		  disabled={!selectedChoice} // <-- Key line
+		  disabled={!selectedChoice}
 		  className={[
 			"px-4 py-2 rounded-md focus:outline-none text-white",
 			!selectedChoice
@@ -267,6 +269,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
   }
 
   function handleResend() {
+	// Optional: You can call /api/sendCode again if you want
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
   }
 
@@ -284,9 +287,11 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		  {() => (
 			<input
 			  type="text"
+			  name="verificationCode"
 			  autoComplete="one-time-code"
 			  inputMode="numeric"
 			  pattern="[0-9]*"
+			  maxLength={6}
 			  placeholder="123456"
 			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			/>

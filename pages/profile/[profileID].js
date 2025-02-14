@@ -3,7 +3,7 @@
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
 
 // Modal variants
@@ -47,8 +47,18 @@ export default function ProfilePage() {
 	  try {
 		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
 		const data = await res.json();
+
 		if (data.success) {
 		  setProfile(data.profile);
+
+		  // If it's your own profile and there's NO team chosen yet => open TeamsModal
+		  const isOwnProfile =
+			session?.user && session.user.profileID === data.profile.profileID;
+
+		  // profileTeamData is null when no team is linked
+		  if (isOwnProfile && !data.profile.profileTeamData) {
+			setIsTeamsModalOpen(true);
+		  }
 
 		  // Sort userTakes by createdTime descending
 		  const sortedTakes = (data.userTakes || []).sort((a, b) => {
@@ -76,7 +86,7 @@ export default function ProfilePage() {
 	} else if (router.query.show === "teams") {
 	  setIsTeamsModalOpen(true);
 	}
-  }, [profileID, router.query]);
+  }, [profileID, router.query, session]);
 
   // Fetch top available prize (or single prize) from /api/prize
   async function fetchPrize() {
@@ -113,7 +123,7 @@ export default function ProfilePage() {
 	setUserStats({ points, wins, losses, pending });
   }
 
-  // Called from TeamsModal => user picks "suns", "pistons", or "lakers"
+  // Called from TeamsModal => user picks a new team
   async function handleTeamSelected(team) {
 	try {
 	  // POST to /api/updateTeam with credentials
@@ -124,11 +134,11 @@ export default function ProfilePage() {
 		body: JSON.stringify({ team }),
 	  });
 	  const data = await resp.json();
+
 	  if (data.success) {
 		console.log("[ProfilePage] Team updated =>", team);
-		// Optionally, refetch the profile to see updated 'profileTeam'
-		// or update local 'profile' state directly:
-		setProfile((prev) => (prev ? { ...prev, profileTeam: team } : prev));
+		// Refetch the profile so profileTeamData is no longer null
+		fetchProfileAgain();
 	  } else {
 		console.error("[ProfilePage] updateTeam error =>", data.error);
 	  }
@@ -136,6 +146,20 @@ export default function ProfilePage() {
 	  console.error("[ProfilePage] handleTeamSelected error =>", err);
 	} finally {
 	  setIsTeamsModalOpen(false);
+	}
+  }
+
+  // (Optional) function to re-fetch profile after updating team
+  async function fetchProfileAgain() {
+	if (!profileID) return;
+	try {
+	  const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
+	  const data = await res.json();
+	  if (data.success) {
+		setProfile(data.profile);
+	  }
+	} catch (err) {
+	  console.error("Could not refetch updated profile =>", err);
 	}
   }
 
@@ -175,18 +199,38 @@ export default function ProfilePage() {
 		onTeamSelected={handleTeamSelected}
 	  />
 
-	  <h2 className="text-2xl font-bold mb-4">
-		{isOwnProfile ? "Your Profile" : "User Profile"}
-	  </h2>
+	  {/* Profile Title Row */}
+	  <div className="flex items-center justify-between mb-4">
+		<h2 className="text-2xl font-bold">
+		  {isOwnProfile ? "Your Profile" : "User Profile"}
+		</h2>
+		{/* Small Log Out button if this is the user's own profile */}
+		{isOwnProfile && (
+		  <button
+			onClick={() => signOut()}
+			className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 rounded"
+		  >
+			Log Out
+		  </button>
+		)}
+	  </div>
 
-	  {/* Possibly display the user's selected team */}
-	  {profile.profileTeam && (
-		<p className="mb-2 text-sm text-gray-700">
-		  Favorite Team: <strong>{profile.profileTeam}</strong>
-		</p>
+	  {/* Display the chosen team's info if any: profileTeamData */}
+	  {profile.profileTeamData && (
+		<div className="mb-4 text-sm text-gray-700">
+		  <span className="font-semibold block mb-1">Favorite Team:</span>
+		  <p className="font-medium">{profile.profileTeamData.teamName}</p>
+		  {profile.profileTeamData.teamLogo && profile.profileTeamData.teamLogo.length > 0 && (
+			<img
+			  src={profile.profileTeamData.teamLogo[0].url}
+			  alt="Team Logo"
+			  className="w-16 h-16 object-cover mt-1"
+			/>
+		  )}
+		</div>
 	  )}
 
-	  {/* Profile Avatar */}
+	  {/* Profile Avatar (if any) */}
 	  {profile.profileAvatar && profile.profileAvatar[0]?.url && (
 		<div className="mb-4 text-center">
 		  <Image
