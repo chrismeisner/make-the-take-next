@@ -46,7 +46,6 @@ export default async function handler(req, res) {
 		  const packs = tf.Packs || []; // array of linked Pack IDs
 
 		  // Add linked packs to the userPacks array if the take is verified (not overwritten)
-		  // (or you can do it unconditionally if you like)
 		  userPacks.push(...packs);
 
 		  // 2) Parse contentImage (if it's a lookup attachment field)
@@ -96,13 +95,14 @@ export default async function handler(req, res) {
 	);
 	const validPacks = packDetails.filter((p) => p !== null);
 
-	// Build the profile data object
+	// Build the profile data object (FIX: include profileTeam)
 	const profileData = {
 	  airtableRecordId: profRec.id,
 	  profileID: pf.profileID,
 	  profileMobile: pf.profileMobile,
 	  profileUsername: pf.profileUsername || '',
 	  profileAvatar: pf.profileAvatar || [],
+	  profileTeam: pf.profileTeam || '', // <-- This line was added to return the user's favorite team.
 	  createdTime: profRec._rawJson.createdTime,
 	};
 
