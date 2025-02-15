@@ -1,4 +1,3 @@
-// File: /pages/api/packs/index.js
 import Airtable from "airtable";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -10,9 +9,12 @@ export default async function handler(req, res) {
   }
 
   try {
-	// Fetch all packs (adjust maxRecords as needed)
+	// Fetch all active packs
 	const packRecords = await base("Packs")
-	  .select({ maxRecords: 100 }) // or remove maxRecords if you like
+	  .select({
+		filterByFormula: `{packStatus} = "Active"`, // Filter for active packs only
+		maxRecords: 100,
+	  })
 	  .all();
 
 	const packsData = packRecords.map((record) => {
@@ -21,15 +23,17 @@ export default async function handler(req, res) {
 		packID: fields.packID || record.id,
 		packTitle: fields.packTitle || "Untitled Pack",
 		packURL: fields.packURL || "",
-		// any other fields you need
+		packCover: fields.packCover ? fields.packCover[0]?.url : null,
+		packPrize: fields.packPrize || "",
+		prizeSummary: fields.prizeSummary || "",
+		packSummary: fields.packSummary || "",
 	  };
 	});
 
-	return res.status(200).json({ success: true, packs: packsData });
+	// Return the response as JSON
+	res.status(200).json({ success: true, packs: packsData });
   } catch (error) {
 	console.error("[/api/packs/index] Error =>", error);
-	return res
-	  .status(500)
-	  .json({ success: false, error: "Failed to fetch packs." });
+	return res.status(500).json({ success: false, error: "Failed to fetch packs." });
   }
 }

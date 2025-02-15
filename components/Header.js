@@ -1,5 +1,3 @@
-// File: /components/Header.js
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -68,6 +66,18 @@ export default function Header() {
 	);
   }
 
+  // Link to packs => added for navigation
+  function PacksLink() {
+	return (
+	  <Link href="/packs" className="hover:text-gray-300 transition-colors">
+		<span className="inline-block sm:hidden" aria-label="Packs">
+		  📦
+		</span>
+		<span className="hidden sm:inline">Packs</span>
+	  </Link>
+	);
+  }
+
   // The login link
   function LoginButton() {
 	return (
@@ -114,6 +124,7 @@ export default function Header() {
 
 			<LeaderboardLink />
 			<PrizesLink />
+			<PacksLink /> {/* Added link to packs */}
 
 			{session?.user && session.user.profileID ? (
 			  <ProfileSkull profileID={session.user.profileID} />
