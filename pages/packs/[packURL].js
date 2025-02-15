@@ -1,5 +1,5 @@
 // File: /pages/packs/[packURL].js
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import StickyProgressHeader from "../../components/StickyProgressHeader";
 import PropCard from "../../components/PropCard";
@@ -26,6 +26,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   const { data: session } = useSession();
   const { verifiedProps } = usePackContext();
   const { openModal } = useModal();
+  const [activityLogged, setActivityLogged] = useState(false); // Track activity logging state
 
   if (!packData) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
@@ -47,7 +48,8 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   } = packData;
 
   // Determine the cover image URL (first attachment from packCover)
-  const coverImageUrl = packCover && packCover.length > 0 ? packCover[0].url : null;
+  const coverImageUrl =
+	packCover && packCover.length > 0 ? packCover[0].url : null;
 
   // NEW: Sort props by the new numeric field "propOrder" (lowest to highest)
   const sortedProps = [...props].sort(
@@ -94,32 +96,32 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   // Optionally trigger the "packCompleted" modal when all props are verified.
   useEffect(() => {
 	if (packData && packData.props.length > 0) {
-	  if (verifiedProps.size === packData.props.length) {
-		logActivityIfFirstTime(session?.user.profileID, packData.packID); // Log activity on first time completion
+	  if (verifiedProps.size === packData.props.length && !activityLogged) {
+		// Only log the activity if it's the first time the pack is completed
+		setActivityLogged(true); // Prevent re-triggering
 		openModal("packCompleted", { packTitle });
+		logActivity(); // Log the activity
 	  }
 	}
-  }, [verifiedProps, packData, packTitle, openModal, session]);
+  }, [verifiedProps, packData, packTitle, openModal, activityLogged]);
 
-  // Function to log activity to API
-  async function logActivityIfFirstTime(profileID, packID) {
-	try {
-	  const response = await fetch('/api/activity', {
-		method: 'POST',
-		headers: {
-		  'Content-Type': 'application/json',
-		},
-		body: JSON.stringify({ profileID, packID })
-	  });
-
-	  const data = await response.json();
-	  if (!response.ok || !data.success) {
-		console.error("Error logging activity:", data.error);
-	  }
-	} catch (error) {
-	  console.error("Failed to log activity:", error);
+  // Function to log the activity when the pack is completed
+  const logActivity = async () => {
+	const response = await fetch("/api/activity", {
+	  method: "POST",
+	  body: JSON.stringify({
+		profileID: session.user.profileID,
+		packID: packData.packID,
+	  }),
+	  headers: { "Content-Type": "application/json" },
+	});
+	const data = await response.json();
+	if (data.success) {
+	  console.log("Activity logged successfully");
+	} else {
+	  console.error("Error logging activity", data.error);
 	}
-  }
+  };
 
   return (
 	<>

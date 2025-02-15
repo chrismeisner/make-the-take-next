@@ -20,30 +20,13 @@ export default async function handler(req, res) {
   console.log("[Activity API] Received request:", { profileID, packID });
 
   try {
-	// 1) Check if an activity for this pack and profile already exists
-	const activityRecords = await base("Activity")
-	  .select({
-		filterByFormula: `AND({profileID} = '${profileID}', {packID} = '${packID}')`, // Corrected field name: profileID
-		maxRecords: 1,
-	  })
-	  .firstPage();
-
-	console.log("[Activity API] Existing activity records:", activityRecords);
-
-	if (activityRecords.length > 0) {
-	  return res.status(200).json({
-		success: false,
-		message: "Activity already logged",
-	  });
-	}
-
-	// 2) Log a new activity record
+	// 1) Log a new activity record without checking for existing ones
 	const newActivity = await base("Activity").create([
 	  {
 		fields: {
 		  activityTitle: `Pack Completed: ${packID}`,
 		  activityType: "Pack Completion",
-		  profileID: profileID, // Corrected field name: profileID
+		  profileID: profileID, // Store the profileID (as a text field)
 		  packID: packID, // Store the pack ID
 		},
 	  },
