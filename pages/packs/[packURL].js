@@ -1,15 +1,15 @@
 // File: /pages/packs/[packURL].js
-
+import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import StickyProgressHeader from "../../components/StickyProgressHeader";
 import PropCard from "../../components/PropCard";
 import { PackContextProvider, usePackContext } from "../../contexts/PackContext";
+import { useModal } from "../../contexts/ModalContext"; // Import our global modal hook
 
 /**
- * The top-level component just provides PackContext and fetches data server-side.
+ * The top-level component provides PackContext and fetches data server-side.
  */
 export default function PackPage({ packData, leaderboard, debugLogs }) {
-  // We wrap everything in <PackContextProvider> so child can access verifiedProps, etc.
   return (
 	<PackContextProvider packData={packData}>
 	  <PackInner packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} />
@@ -18,43 +18,103 @@ export default function PackPage({ packData, leaderboard, debugLogs }) {
 }
 
 /**
- * Child component: uses usePackContext() to know which props are verified,
- * sorts them so unverified appear at top, renders them, then shows the leaderboard.
+ * Child component: renders the pack detail.
+ * It now displays the packCover (if available) at the top,
+ * followed by the pack title, prize info, props list, and leaderboard.
  */
 function PackInner({ packData, leaderboard, debugLogs }) {
   const { data: session } = useSession();
   const { verifiedProps } = usePackContext();
+  const { openModal } = useModal();
 
   if (!packData) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
   }
 
-  // Log server-side logs in client console for debugging
+  // Debug logs (optional)
   if (debugLogs && typeof window !== "undefined") {
 	console.log("[PackInner] debugLogs =>", debugLogs);
   }
 
   const {
 	packTitle,
-	props,
+	packCover, // New: attachment field for the pack cover image
 	packPrize,
 	packPrizeImage,
 	prizeSummary,
 	packPrizeURL,
+	props,
   } = packData;
 
-  // Sort: unverified => top, verified => bottom
-  const sortedProps = [...props].sort((a, b) => {
-	const aVerified = verifiedProps.has(a.propID);
-	const bVerified = verifiedProps.has(b.propID);
-	if (aVerified === bVerified) return 0; // both same => no change
-	return aVerified ? 1 : -1; // unverified => -1 => top
-  });
+  // Determine the cover image URL (first attachment from packCover)
+  const coverImageUrl =
+	packCover && packCover.length > 0 ? packCover[0].url : null;
+
+  // NEW: Sort props by the new numeric field "propOrder" (lowest to highest)
+  const sortedProps = [...props].sort(
+	(a, b) => (a.propOrder || 0) - (b.propOrder || 0)
+  );
+
+  // Check if the logged-in user's profile lacks a favorite team.
+  useEffect(() => {
+	if (session?.user && session.user.profileID) {
+	  async function checkFavoriteTeam() {
+		try {
+		  const res = await fetch(`/api/profile/${session.user.profileID}`);
+		  const data = await res.json();
+		  if (data.success && !data.profile.profileTeamData) {
+			openModal("favoriteTeam", {
+			  onTeamSelected: async (team) => {
+				try {
+				  const resp = await fetch("/api/updateTeam", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					credentials: "same-origin",
+					body: JSON.stringify({ team }),
+				  });
+				  const result = await resp.json();
+				  if (result.success) {
+					console.log("Team updated successfully:", team);
+				  } else {
+					console.error("Error updating team:", result.error);
+				  }
+				} catch (error) {
+				  console.error("Error updating team:", error);
+				}
+			  },
+			});
+		  }
+		} catch (err) {
+		  console.error("Error checking favorite team", err);
+		}
+	  }
+	  checkFavoriteTeam();
+	}
+  }, [session, openModal]);
+
+  // Optionally trigger the "packCompleted" modal when all props are verified.
+  useEffect(() => {
+	if (packData && packData.props.length > 0) {
+	  if (verifiedProps.size === packData.props.length) {
+		openModal("packCompleted", { packTitle });
+	  }
+	}
+  }, [verifiedProps, packData, packTitle, openModal]);
 
   return (
 	<>
 	  <StickyProgressHeader />
 	  <div className="p-4 max-w-4xl mx-auto">
+		{/* Display the pack cover image at the top in a square container */}
+		{coverImageUrl && (
+		  <div className="mb-4 w-48 h-48 mx-auto overflow-hidden rounded-lg shadow-md">
+			<img
+			  src={coverImageUrl}
+			  alt={packTitle}
+			  className="w-full h-full object-cover"
+			/>
+		  </div>
+		)}
 		<h1 className="text-2xl font-bold mb-2">{packTitle}</h1>
 
 		{/* Prize Section */}
@@ -62,7 +122,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		  {packPrizeImage && packPrizeImage.length > 0 && (
 			<img
 			  src={packPrizeImage[0].url}
-			  alt="Pack Prize"
+			  alt={packTitle}
 			  className="w-16 h-16 object-cover rounded"
 			/>
 		  )}
@@ -164,7 +224,7 @@ function obscurePhone(e164Phone) {
 }
 
 /**
- * Standard SSR to fetch pack data + leaderboard
+ * Standard SSR to fetch pack data + leaderboard.
  */
 export async function getServerSideProps(context) {
   const { packURL } = context.params;

@@ -1,9 +1,13 @@
+// File: /pages/index.js
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+// Import the modal hook from our global modal context
+import { useModal } from "../contexts/ModalContext";
 
 export default function HomePage() {
   const { data: session } = useSession();
+  const { openModal } = useModal();
 
   // Store *all* props loaded so far
   const [propsList, setPropsList] = useState([]);
@@ -84,6 +88,17 @@ export default function HomePage() {
 	loadUserTakes();
   }, [user]);
 
+  // NEW: When user is logged in, trigger the "featuredPack" modal
+  useEffect(() => {
+	if (session?.user) {
+	  // Open the modal. You can pass additional props if needed.
+	  openModal("featuredPack", {
+		// Example: you could pass a featuredPackId or other props here
+		// For now, we'll leave it empty.
+	  });
+	}
+  }, [session, openModal]);
+
   // Show errors or loading states
   if (propsError) {
 	return <div className="p-4 text-red-600">Error: {propsError}</div>;
@@ -118,7 +133,12 @@ export default function HomePage() {
 					  <div key={index} className="w-10 aspect-square overflow-hidden rounded">
 						<img
 						  src={logoUrl}
-						  alt={prop.subjectTitles && prop.subjectTitles[index] ? prop.subjectTitles[index] : "Subject Logo"}
+						  alt={
+							prop.subjectTitles &&
+							prop.subjectTitles[index]
+							  ? prop.subjectTitles[index]
+							  : "Subject Logo"
+						  }
 						  className="w-full h-full object-cover"
 						/>
 					  </div>

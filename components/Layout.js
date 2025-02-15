@@ -1,4 +1,3 @@
-// components/Layout.js
 import Header from "./Header";
 
 export default function Layout({ children }) {

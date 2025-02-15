@@ -1,5 +1,4 @@
 // File: /pages/profile/[profileID].js
-
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -29,20 +28,15 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // PointsModal
+  // Modal states
   const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
-
-  // PrizeModal
   const [isPrizeModalOpen, setIsPrizeModalOpen] = useState(false);
   const [prizeData, setPrizeData] = useState(null);
-
-  // TeamsModal
   const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
 
   useEffect(() => {
 	if (!profileID) return;
 
-	// 1) Load the profile data
 	async function fetchProfile() {
 	  try {
 		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
@@ -51,16 +45,14 @@ export default function ProfilePage() {
 		if (data.success) {
 		  setProfile(data.profile);
 
-		  // If it's your own profile and there's NO team chosen yet => open TeamsModal
 		  const isOwnProfile =
 			session?.user && session.user.profileID === data.profile.profileID;
 
-		  // profileTeamData is null when no team is linked
+		  // If own profile and no team selected, open the TeamsModal
 		  if (isOwnProfile && !data.profile.profileTeamData) {
 			setIsTeamsModalOpen(true);
 		  }
 
-		  // Sort userTakes by createdTime descending
 		  const sortedTakes = (data.userTakes || []).sort((a, b) => {
 			return new Date(b.createdTime) - new Date(a.createdTime);
 		  });
@@ -78,7 +70,7 @@ export default function ProfilePage() {
 	}
 	fetchProfile();
 
-	// 2) Check the URL param => ?show=points | ?show=prize | ?show=teams
+	// URL parameter checks for modals
 	if (router.query.show === "points") {
 	  setIsPointsModalOpen(true);
 	} else if (router.query.show === "prize") {
@@ -88,13 +80,12 @@ export default function ProfilePage() {
 	}
   }, [profileID, router.query, session]);
 
-  // Fetch top available prize (or single prize) from /api/prize
   async function fetchPrize() {
 	try {
 	  const resp = await fetch("/api/prize");
 	  const data = await resp.json();
 	  if (data.success) {
-		setPrizeData(data.prize); // might be null if none
+		setPrizeData(data.prize);
 		setIsPrizeModalOpen(true);
 	  } else {
 		console.error("[ProfilePage] fetchPrize error =>", data.error);
@@ -104,7 +95,6 @@ export default function ProfilePage() {
 	}
   }
 
-  // Calculate user stats => total points, wins, losses, pending
   function calculateUserStats(takesArr) {
 	let points = 0,
 	  wins = 0,
@@ -118,26 +108,22 @@ export default function ProfilePage() {
 	  else if (take.takeResult === "Pending") pending++;
 	});
 
-	// Round points to 0 decimals
 	points = Math.round(points);
 	setUserStats({ points, wins, losses, pending });
   }
 
-  // Called from TeamsModal => user picks a new team
   async function handleTeamSelected(team) {
 	try {
-	  // POST to /api/updateTeam with credentials
 	  const resp = await fetch("/api/updateTeam", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		credentials: "same-origin", // ensures session cookie is included
+		credentials: "same-origin",
 		body: JSON.stringify({ team }),
 	  });
 	  const data = await resp.json();
 
 	  if (data.success) {
 		console.log("[ProfilePage] Team updated =>", team);
-		// Refetch the profile so profileTeamData is no longer null
 		fetchProfileAgain();
 	  } else {
 		console.error("[ProfilePage] updateTeam error =>", data.error);
@@ -149,7 +135,6 @@ export default function ProfilePage() {
 	}
   }
 
-  // (Optional) function to re-fetch profile after updating team
   async function fetchProfileAgain() {
 	if (!profileID) return;
 	try {
@@ -178,21 +163,17 @@ export default function ProfilePage() {
 
   return (
 	<div className="p-4 max-w-4xl mx-auto">
-	  {/* 1) PointsModal */}
+	  {/* Modal Components */}
 	  <PointsModal
 		isOpen={isPointsModalOpen}
 		onClose={() => setIsPointsModalOpen(false)}
 		points={userStats.points}
 	  />
-
-	  {/* 2) PrizeModal */}
 	  <PrizeModal
 		isOpen={isPrizeModalOpen}
 		onClose={() => setIsPrizeModalOpen(false)}
 		prize={prizeData}
 	  />
-
-	  {/* 3) TeamsModal */}
 	  <TeamsModal
 		isOpen={isTeamsModalOpen}
 		onClose={() => setIsTeamsModalOpen(false)}
@@ -204,14 +185,16 @@ export default function ProfilePage() {
 		<h2 className="text-2xl font-bold">
 		  {isOwnProfile ? "Your Profile" : "User Profile"}
 		</h2>
-		{/* Small Log Out button if this is the user's own profile */}
 		{isOwnProfile && (
-		  <button
-			onClick={() => signOut()}
-			className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 rounded"
-		  >
-			Log Out
-		  </button>
+		  <>
+			{/* Removed Edit Profile Link */}
+			<button
+			  onClick={() => signOut()}
+			  className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 rounded"
+			>
+			  Log Out
+			</button>
+		  </>
 		)}
 	  </div>
 
@@ -220,13 +203,14 @@ export default function ProfilePage() {
 		<div className="mb-4 text-sm text-gray-700">
 		  <span className="font-semibold block mb-1">Favorite Team:</span>
 		  <p className="font-medium">{profile.profileTeamData.teamName}</p>
-		  {profile.profileTeamData.teamLogo && profile.profileTeamData.teamLogo.length > 0 && (
-			<img
-			  src={profile.profileTeamData.teamLogo[0].url}
-			  alt="Team Logo"
-			  className="w-16 h-16 object-cover mt-1"
-			/>
-		  )}
+		  {profile.profileTeamData.teamLogo &&
+			profile.profileTeamData.teamLogo.length > 0 && (
+			  <img
+				src={profile.profileTeamData.teamLogo[0].url}
+				alt="Team Logo"
+				className="w-16 h-16 object-cover mt-1"
+			  />
+			)}
 		</div>
 	  )}
 
@@ -292,15 +276,12 @@ export default function ProfilePage() {
 			} else if (take.takeResult === "Lost") {
 			  resultStyles = "bg-red-100 text-red-800";
 			}
-
 			const takePoints = Math.round(take.takePTS || 0);
-
 			return (
 			  <div
 				key={take.airtableRecordId}
 				className="border p-4 rounded shadow-sm bg-white"
 			  >
-				{/* Possibly show an image if takeContentImageUrls exists */}
 				{take.takeContentImageUrls &&
 				  take.takeContentImageUrls.length > 0 && (
 					<div className="mb-2">
@@ -311,12 +292,9 @@ export default function ProfilePage() {
 					  />
 					</div>
 				  )}
-
 				<h4 className="text-lg font-semibold mb-1">
 				  {take.takeTitle || "No Title"}
 				</h4>
-
-				{/* Link to the prop detail page */}
 				{take.propID && take.propTitle && (
 				  <p className="text-sm text-gray-600">
 					Prop:{" "}
@@ -328,8 +306,6 @@ export default function ProfilePage() {
 					</Link>
 				  </p>
 				)}
-
-				{/* Pill for result */}
 				<p className="text-sm mt-1 flex items-center gap-1">
 				  Result:
 				  <span
@@ -338,21 +314,16 @@ export default function ProfilePage() {
 					{take.takeResult || "Pending"}
 				  </span>
 				</p>
-
-				{/* Round points */}
 				<p className="text-sm">Points: {takePoints}</p>
-
 				{take.subjectTitle && (
 				  <p className="text-sm">
 					Subject:{" "}
 					<span className="text-gray-700">{take.subjectTitle}</span>
 				  </p>
 				)}
-
 				<p className="text-xs text-gray-500 mt-1">
 				  Created: {take.createdTime}
 				</p>
-
 				<Link
 				  href={`/takes/${take.takeID}`}
 				  className="inline-block mt-2 text-blue-600 underline text-sm"

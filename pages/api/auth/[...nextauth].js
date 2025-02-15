@@ -1,3 +1,5 @@
+// File: /pages/api/auth/[...nextauth].js
+
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import twilio from "twilio";
@@ -94,7 +96,6 @@ export default NextAuth({
 		  throw new Error("Verification failed");
 		}
 
-		// Instead of returning a mock profileID, call ensureProfileRecord to get the real one.
 		try {
 		  const profile = await ensureProfileRecord(e164Phone);
 		  console.log(
@@ -104,7 +105,7 @@ export default NextAuth({
 		  );
 		  return {
 			phone: e164Phone,
-			profileID: profile.profileID, // This should be the actual value from Airtable (e.g. "c_monster")
+			profileID: profile.profileID,
 		  };
 		} catch (err) {
 		  console.error("[NextAuth] Profile error:", err);

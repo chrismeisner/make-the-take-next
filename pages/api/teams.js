@@ -1,4 +1,3 @@
-// File: /pages/api/teams.js
 import Airtable from "airtable";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -26,9 +25,9 @@ export default async function handler(req, res) {
 		}));
 	  }
 	  return {
-		// Use the team's teamID field (or fallback to the Airtable record id)
 		teamID: fields.teamID || record.id,
 		teamName: fields.teamName || "Unknown Team",
+		teamType: fields.teamType || "", // Include teamType so we can filter it later
 		teamLogo
 	  };
 	});

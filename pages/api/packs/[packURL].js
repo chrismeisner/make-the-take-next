@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-	// 1) Check environment
+	// 1) Log environment variables (for debugging)
 	console.log(
 	  "AIRTABLE_API_KEY starts with:",
 	  process.env.AIRTABLE_API_KEY?.slice?.(0, 4)
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
 
-	// 3) Build the Props data by retrieving linked record IDs
+	// 3) Build the Props data by retrieving linked record IDs from the "Props" field
 	const linkedPropIDs = packFields.Props || [];
 	console.log("[API /packs/[packURL]] => linkedPropIDs:", linkedPropIDs);
 
@@ -76,21 +76,22 @@ export default async function handler(req, res) {
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
 
-		// Parse the contentImage attachments into an array of URLs
+		// Parse the contentImage attachments into an array of URLs and filenames
 		let contentImageUrls = [];
 		if (Array.isArray(f.contentImage)) {
-		  contentImageUrls = f.contentImage.map((img) => img.url);
+		  contentImageUrls = f.contentImage.map((img) => ({
+			url: img.url,
+			filename: img.filename,
+		  }));
 		}
 
-		// Parse contentTitles & contentURLs
+		// Parse contentTitles & contentURLs to build an array of { title, url } pairs
 		const contentTitles = Array.isArray(f.contentTitles)
 		  ? f.contentTitles
 		  : [];
 		const contentURLs = Array.isArray(f.contentURLs)
 		  ? f.contentURLs
 		  : [];
-
-		// Build an array of { title, url } pairs
 		const contentLinks = contentTitles.map((title, i) => {
 		  const url = contentURLs[i] || "#";
 		  return { title, url };
@@ -103,7 +104,8 @@ export default async function handler(req, res) {
 		  propSummary: f.propSummary || "",
 		  propStatus: f.propStatus || "open",
 		  contentImageUrls,
-		  contentLinks, // NEW field
+		  contentLinks,
+		  propOrder: f.propOrder || 0, // include the numeric ordering field
 		};
 	  });
 	}
@@ -117,7 +119,16 @@ export default async function handler(req, res) {
 	  }));
 	}
 
-	// 5) Return the pack data
+	// 5) Parse the "packCover" attachment field (NEW)
+	let packCover = [];
+	if (Array.isArray(packFields.packCover)) {
+	  packCover = packFields.packCover.map((img) => ({
+		url: img.url,
+		filename: img.filename,
+	  }));
+	}
+
+	// 6) Return the pack data along with its props and other fields
 	console.log(
 	  "[API /packs/[packURL]] => returning success, propsData length:",
 	  propsData.length
@@ -130,11 +141,11 @@ export default async function handler(req, res) {
 		packTitle: packFields.packTitle || "Untitled Pack",
 		packURL: packFields.packURL,
 		props: propsData,
-		// Additional fields:
 		packPrize: packFields.packPrize || "",
 		packPrizeImage,
 		prizeSummary: packFields.prizeSummary || "",
 		packPrizeURL: packFields.packPrizeURL || "",
+		packCover, // NEW field for the cover image
 	  },
 	});
   } catch (error) {

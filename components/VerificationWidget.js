@@ -45,20 +45,16 @@ function Choice({
   onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
-
   // Only clickable if propStatus is open
   const clickable = propStatus === "open";
-
   // Decide bar fill
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
-
   const gradeSymbol =
 	propStatus === "gradedA" || propStatus === "gradedB"
 	  ? getGradeEmoji(propStatus, sideValue)
 	  : "";
-
   const containerClasses = [
 	"relative",
 	"mb-2",
@@ -158,7 +154,6 @@ function PropChoices({
 
 /**
  * 5) PhoneNumberForm => step "phone"
- *    We receive "selectedChoice" to know if a side is chosen; if not, disable the button.
  */
 function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
@@ -205,7 +200,6 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
 			/>
 		  )}
 		</InputMask>
-		{/* Disable if no side chosen */}
 		<button
 		  onClick={handleSendCode}
 		  disabled={!selectedChoice}
@@ -233,7 +227,7 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
   async function handleVerify() {
 	setError("");
-	// 1) Verify code
+	// 1) Verify code via NextAuth
 	const result = await signIn("credentials", {
 	  redirect: false,
 	  phone: phoneNumber,
@@ -269,7 +263,6 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
   }
 
   function handleResend() {
-	// Optional: You can call /api/sendCode again if you want
 	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
   }
 
@@ -317,7 +310,8 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 
 /**
  * 7) MakeTakeButton
- *   -> Single-click submission + "Sending..." state
+ *    -> Single-click submission + "Sending..." state
+ *    (Retained for non-logged-in users only)
  */
 function MakeTakeButton({
   selectedChoice,
@@ -433,7 +427,6 @@ function CompleteStep({
 		<p className="text-sm text-gray-600">
 		  Side A Count: {sideACount} | Side B Count: {sideBCount}
 		</p>
-
 		{chosenSideLabel && (
 		  <p className="mt-2 text-green-700 font-semibold">
 			You chose: {chosenSideLabel}
@@ -480,6 +473,8 @@ export default function VerificationWidget({
   const [sideBCount, setSideBCount] = useState(0);
   const [alreadyTookSide, setAlreadyTookSide] = useState(null);
   const [userTakeID, setUserTakeID] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const alreadyVerifiedCalled = useRef(false);
 
@@ -527,6 +522,43 @@ export default function VerificationWidget({
 	}
   }, [session, propData, onVerificationComplete]);
 
+  // For logged-in users: Immediately submit take on side selection.
+  async function submitTake(choice) {
+	setIsSubmitting(true);
+	try {
+	  const resp = await fetch("/api/take", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		credentials: "same-origin",
+		body: JSON.stringify({ propID: propData.propID, propSide: choice }),
+	  });
+	  const data = await resp.json();
+	  if (!data.success) {
+		setError("Error submitting take: " + (data.error || "Unknown error"));
+	  } else {
+		handleComplete(data.newTakeID, {
+		  success: true,
+		  sideACount: data.sideACount,
+		  sideBCount: data.sideBCount,
+		});
+	  }
+	} catch (err) {
+	  setError("An error occurred while submitting your vote.");
+	} finally {
+	  setIsSubmitting(false);
+	}
+  }
+
+  // Called when a side is selected
+  function handleSelectChoice(sideValue) {
+	setSelectedChoice(sideValue);
+	setResultsRevealed(true);
+	// For logged-in users, immediately submit the take.
+	if (session?.user) {
+	  submitTake(sideValue);
+	}
+  }
+
   // Called after a successful new take
   function handleComplete(newTakeID, freshData) {
 	if (freshData?.success) {
@@ -543,11 +575,6 @@ export default function VerificationWidget({
 	  setTakeID(newTakeID);
 	  setCurrentStep("complete");
 	}
-  }
-
-  function handleSelectChoice(sideValue) {
-	setSelectedChoice(sideValue);
-	setResultsRevealed(true);
   }
 
   if (loading) {
@@ -589,8 +616,7 @@ export default function VerificationWidget({
 	);
   }
 
-  // If the prop is not open, we won't let them pick a side,
-  // but we still show final bars
+  // If the prop is not open, show final results
   const propStatus = propData.propStatus || "open";
   const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
   const totalTakes = sideACount + sideBCount + 2;
@@ -640,19 +666,14 @@ export default function VerificationWidget({
 		  This proposition is no longer open for new takes.
 		</p>
 	  ) : session?.user ? (
-		<MakeTakeButton
-		  selectedChoice={selectedChoice}
-		  propID={propData.propID}
-		  onTakeComplete={handleComplete}
-		  sessionUser={session.user}
-		  alreadyTookSide={alreadyTookSide}
-		/>
+		// For logged-in users, submission is triggered immediately on choice selection.
+		null
 	  ) : (
 		<div className="mt-4">
 		  {currentStep === "phone" && (
 			<PhoneNumberForm
 			  phoneNumber={phoneNumber}
-			  selectedChoice={selectedChoice} // Pass down so we can disable
+			  selectedChoice={selectedChoice} // disables button if no side chosen
 			  onSubmittedPhone={(phone) => {
 				setPhoneNumber(phone);
 				setCurrentStep("code");
