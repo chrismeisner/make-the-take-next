@@ -10,10 +10,6 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
   const [featuredPack, setFeaturedPack] = useState(null);
   const [error, setError] = useState("");
 
-  // For progress
-  const [totalCount, setTotalCount] = useState(0);
-  const [completedCount, setCompletedCount] = useState(0);
-
   // 1) Fetch the featured pack data
   useEffect(() => {
 	if (!isOpen) return;
@@ -36,49 +32,26 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 	fetchFeaturedPack();
   }, [isOpen]);
 
-  // 2) Fetch the user’s pack progress if user is logged in
-  useEffect(() => {
-	if (session?.user && featuredPack?.packID) {
-	  async function loadProgress() {
-		try {
-		  const res = await fetch(`/api/userPackProgress?packID=${featuredPack.packID}`);
-		  const data = await res.json();
-		  if (data.success) {
-			setTotalCount(data.totalCount);
-			setCompletedCount(data.completedCount);
-		  }
-		} catch (err) {
-		  console.error("Error fetching user pack progress:", err);
-		}
-	  }
-	  loadProgress();
-	}
-  }, [session, featuredPack]);
-
-  // 3) Compute percentage
-  const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
   // Cover image, if any
   const coverImageUrl =
-	featuredPack?.packCover?.length > 0
-	  ? featuredPack.packCover[0].url
-	  : null;
+	featuredPack?.packCover?.length > 0 ? featuredPack.packCover[0].url : null;
 
   return (
 	<GlobalModal isOpen={isOpen} onClose={onClose}>
-	  <div className="p-4">
+	  <div className="p-6 flex flex-col items-center">
 		{loading ? (
 		  <div>Loading featured pack...</div>
 		) : error ? (
 		  <div className="text-red-600">{error}</div>
 		) : featuredPack ? (
 		  <>
-			<h2 className="text-2xl font-bold mb-2">Featured Pack</h2>
+			<h2 className="text-2xl font-bold mb-4 text-center">Featured Pack</h2>
 
 			<Link href={`/packs/${featuredPack.packURL}`}>
 			  <div
 				className="cursor-pointer"
 				onClick={onClose}
+				className="text-center"
 			  >
 				{coverImageUrl && (
 				  <div className="mb-4 w-48 h-48 mx-auto overflow-hidden rounded-lg shadow-md">
@@ -89,26 +62,13 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 					/>
 				  </div>
 				)}
-				<h3 className="text-xl font-semibold mb-2">
+				<h3 className="text-xl font-semibold mb-2 text-center">
 				  {featuredPack.packTitle}
 				</h3>
 			  </div>
 			</Link>
 
-			{/* If user is logged in, show the progress bar */}
-			{session?.user && (
-			  <div className="mb-4">
-				<div className="w-full bg-gray-300 rounded-full h-4">
-				  <div
-					className="bg-blue-600 h-4 rounded-full"
-					style={{ width: `${percentage}%` }}
-				  ></div>
-				</div>
-				<p className="text-sm text-gray-600 mt-1">
-				  {completedCount} of {totalCount} props completed ({percentage}%)
-				</p>
-			  </div>
-			)}
+			{/* Removed Progress Bar Section */}
 
 			{featuredPack.packPrizeImage?.length > 0 && (
 			  <img
@@ -118,22 +78,22 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 			  />
 			)}
 
-			<p className="text-sm text-gray-700">
+			<p className="text-sm text-gray-700 text-center">
 			  {featuredPack.prizeSummary}
 			</p>
 
-			<div className="mt-4 flex gap-2">
+			<div className="mt-6 flex gap-4 justify-center">
 			  <Link href={`/packs/${featuredPack.packURL}`}>
 				<button
 				  onClick={onClose}
-				  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+				  className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
 				>
-				  View Pack Details
+				  Make my takes
 				</button>
 			  </Link>
 			  <button
 				onClick={onClose}
-				className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+				className="px-6 py-3 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
 			  >
 				Close
 			  </button>

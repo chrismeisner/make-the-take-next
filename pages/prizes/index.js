@@ -1,5 +1,5 @@
 // File: /pages/prizes/index.js
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Airtable from "airtable";
 
@@ -12,15 +12,44 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
 export default function PrizesPage({ prizes }) {
+  const [sortedPrizes, setSortedPrizes] = useState(prizes);
+  const [sortOrder, setSortOrder] = useState("asc"); // Default sort order: ascending (Lowest to Highest)
+
+  useEffect(() => {
+	const sorted = [...prizes].sort((a, b) => {
+	  return sortOrder === "desc" 
+		? b.prizePTS - a.prizePTS 
+		: a.prizePTS - b.prizePTS;
+	});
+	setSortedPrizes(sorted);
+  }, [prizes, sortOrder]);
+
+  const handleSortChange = (event) => {
+	setSortOrder(event.target.value);
+  };
+
   return (
 	<div className="p-4 max-w-4xl mx-auto">
 	  <h1 className="text-2xl font-bold mb-4">Available Prizes</h1>
 
-	  {prizes.length === 0 ? (
+	  <div className="mb-4">
+		<label htmlFor="sortPrizes" className="mr-2">Sort by Points:</label>
+		<select 
+		  id="sortPrizes" 
+		  value={sortOrder} 
+		  onChange={handleSortChange}
+		  className="px-4 py-2 border rounded"
+		>
+		  <option value="asc">Lowest to Highest</option>
+		  <option value="desc">Highest to Lowest</option>
+		</select>
+	  </div>
+
+	  {sortedPrizes.length === 0 ? (
 		<p className="text-gray-600">No available prizes at this time.</p>
 	  ) : (
 		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-		  {prizes.map((prize) => (
+		  {sortedPrizes.map((prize) => (
 			<PrizeCard key={prize.prizeID} prize={prize} />
 		  ))}
 		</div>
