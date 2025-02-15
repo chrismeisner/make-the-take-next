@@ -47,8 +47,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   } = packData;
 
   // Determine the cover image URL (first attachment from packCover)
-  const coverImageUrl =
-	packCover && packCover.length > 0 ? packCover[0].url : null;
+  const coverImageUrl = packCover && packCover.length > 0 ? packCover[0].url : null;
 
   // NEW: Sort props by the new numeric field "propOrder" (lowest to highest)
   const sortedProps = [...props].sort(
@@ -96,10 +95,31 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   useEffect(() => {
 	if (packData && packData.props.length > 0) {
 	  if (verifiedProps.size === packData.props.length) {
+		logActivityIfFirstTime(session?.user.profileID, packData.packID); // Log activity on first time completion
 		openModal("packCompleted", { packTitle });
 	  }
 	}
-  }, [verifiedProps, packData, packTitle, openModal]);
+  }, [verifiedProps, packData, packTitle, openModal, session]);
+
+  // Function to log activity to API
+  async function logActivityIfFirstTime(profileID, packID) {
+	try {
+	  const response = await fetch('/api/activity', {
+		method: 'POST',
+		headers: {
+		  'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ profileID, packID })
+	  });
+
+	  const data = await response.json();
+	  if (!response.ok || !data.success) {
+		console.error("Error logging activity:", data.error);
+	  }
+	} catch (error) {
+	  console.error("Failed to log activity:", error);
+	}
+  }
 
   return (
 	<>
