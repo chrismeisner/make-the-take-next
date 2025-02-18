@@ -52,12 +52,6 @@ export default function PropCard({ prop }) {
 		<span className="font-semibold">Status:</span> {prop.propStatus}
 	  </div>
 
-	  {verified && (
-		<p className="mt-1 text-green-600 text-sm font-semibold">
-		  You have verified this proposition.
-		</p>
-	  )}
-
 	  {/* Display the contentLinks if present */}
 	  {contentLinks.length > 0 && (
 		<div className="mt-3">

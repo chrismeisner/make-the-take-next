@@ -1,60 +1,95 @@
 // File: /components/VerificationWidget.js
 
 import { useState, useEffect, useRef } from "react";
-import InputMask from "react-input-mask";
-import Link from "next/link";
-import { useRouter } from "next/router";
 import { useSession, signIn } from "next-auth/react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import InputMask from "react-input-mask";
 
 /**
- * 1) Helper: compute side percentages (+1 offset)
+ * 0) Widget Status Constants
+ *    - Replaces "READY" with "MAKE_THE_TAKE"
+ *    - Adds "TAKE_MADE"
  */
-function computeSidePercents(aCount, bCount) {
-  const aWithOffset = aCount + 1;
-  const bWithOffset = bCount + 1;
-  const total = aWithOffset + bWithOffset;
-  const aPct = Math.round((aWithOffset / total) * 100);
-  const bPct = Math.round((bWithOffset / total) * 100);
-  return { aPct, bPct };
-}
+const STATUS = {
+  LOADING: "loading",
+  MAKE_THE_TAKE: "make_the_take",
+  SUBMITTING: "submitting",
+  ERROR: "error",
+  TAKE_MADE: "take_made",
+};
 
 /**
- * 2) Helper: return a "✅" or "❌" if the prop is graded
+ * A simple status indicator that shows color-coded text depending on the current widget status.
+ * If status is TAKE_MADE and we have a userTakeID, "Take Made" is a clickable link to /takes/[userTakeID].
  */
-function getGradeEmoji(propStatus, sideValue) {
-  if (propStatus === "gradedA") {
-	return sideValue === "A" ? "✅" : "❌";
-  } else if (propStatus === "gradedB") {
-	return sideValue === "B" ? "✅" : "❌";
+function StatusIndicator({ status, userTakeID }) {
+  let label;
+  let colorClass;
+
+  switch (status) {
+	case STATUS.LOADING:
+	  label = "Loading...";
+	  colorClass = "text-blue-600";
+	  break;
+	case STATUS.MAKE_THE_TAKE:
+	  label = "Make The Take";
+	  colorClass = "text-green-600";
+	  break;
+	case STATUS.SUBMITTING:
+	  label = "Submitting...";
+	  colorClass = "text-orange-600";
+	  break;
+	case STATUS.ERROR:
+	  label = "Error";
+	  colorClass = "text-red-600";
+	  break;
+	case STATUS.TAKE_MADE:
+	  colorClass = "text-purple-600";
+	  // If we have a takeID, make the text a link
+	  if (userTakeID) {
+		label = (
+		  <Link href={`/takes/${userTakeID}`} className="underline text-inherit">
+			Take Made
+		  </Link>
+		);
+	  } else {
+		label = "Take Made";
+	  }
+	  break;
+	default:
+	  label = "Unknown";
+	  colorClass = "text-gray-600";
+	  break;
   }
-  return "";
+
+  return <span className={`font-medium ${colorClass}`}>{label}</span>;
 }
 
 /**
- * 3) Choice subcomponent
+ * 1) Choice subcomponent: Renders an individual choice option with a fill bar.
+ *    (Pirate flag is displayed to the right of the percentage if user has verified that side.)
  */
 function Choice({
   label,
   percentage,
   isSelected,
   isVerified,
-  anySideSelected,
   showResults,
   propStatus,
   sideValue,
   onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
-  // Only clickable if propStatus is open
+  // Only clickable if the proposition is "open"
   const clickable = propStatus === "open";
+
   // Decide bar fill
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
-  const gradeSymbol =
-	propStatus === "gradedA" || propStatus === "gradedB"
-	  ? getGradeEmoji(propStatus, sideValue)
-	  : "";
+
+  // Build container classes
   const containerClasses = [
 	"relative",
 	"mb-2",
@@ -75,7 +110,7 @@ function Choice({
 	  onMouseEnter={() => clickable && setIsHovered(true)}
 	  onMouseLeave={() => clickable && setIsHovered(false)}
 	>
-	  {/* Fill bar */}
+	  {/* Fill bar behind the label */}
 	  <div
 		style={{
 		  position: "absolute",
@@ -89,11 +124,14 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{isVerified ? "🏴‍☠️ " : ""}
-		{gradeSymbol ? `${gradeSymbol} ` : ""}
+		{/* Label */}
 		{label}
+		{/* If showing results, display (XX%) and pirate if verified */}
 		{showResults && (
-		  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
+		  <>
+			<span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
+			{isVerified && <span className="ml-2">🏴‍☠️</span>}
+		  </>
 		)}
 	  </div>
 	</div>
@@ -101,7 +139,7 @@ function Choice({
 }
 
 /**
- * 4) PropChoices
+ * 2) PropChoices: Renders both side A and side B, uses <Choice> above.
  */
 function PropChoices({
   propStatus,
@@ -114,7 +152,6 @@ function PropChoices({
   sideBLabel,
   alreadyTookSide,
 }) {
-  const anySideSelected = selectedChoice !== "";
   const choices = [
 	{
 	  value: "A",
@@ -136,14 +173,13 @@ function PropChoices({
 		return (
 		  <Choice
 			key={choice.value}
-			sideValue={choice.value}
 			label={choice.label}
 			percentage={choice.percentage}
 			isSelected={isSelected}
 			isVerified={isVerified}
-			anySideSelected={anySideSelected}
 			showResults={resultsRevealed}
 			propStatus={propStatus}
+			sideValue={choice.value}
 			onSelect={() => onSelectChoice(choice.value)}
 		  />
 		);
@@ -153,15 +189,25 @@ function PropChoices({
 }
 
 /**
- * 5) PhoneNumberForm => step "phone"
+ * 3) PhoneNumberForm: The step to collect user's phone number before sending a code.
  */
-function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
+function PhoneNumberForm({
+  phoneNumber,
+  onSubmittedPhone,
+  selectedChoice,
+  setWidgetStatus,
+}) {
   const [localPhone, setLocalPhone] = useState(phoneNumber);
   const [error, setError] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   async function handleSendCode() {
 	setError("");
+	setIsSending(true);
+
 	try {
+	  setWidgetStatus(STATUS.SUBMITTING);
+
 	  const resp = await fetch("/api/sendCode", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -170,11 +216,17 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
 	  if (!resp.ok) {
 		const errData = await resp.json();
 		setError("Failed to send code: " + (errData.error || resp.status));
+		setWidgetStatus(STATUS.ERROR);
 		return;
 	  }
+
 	  onSubmittedPhone(localPhone);
+	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
 	} catch (err) {
 	  setError("An error occurred while sending the code.");
+	  setWidgetStatus(STATUS.ERROR);
+	} finally {
+	  setIsSending(false);
 	}
   }
 
@@ -196,21 +248,21 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
 			  autoComplete="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
-			  maxLength={14} // ensures consistent with mask
+			  maxLength={14}
 			/>
 		  )}
 		</InputMask>
 		<button
 		  onClick={handleSendCode}
-		  disabled={!selectedChoice}
+		  disabled={!selectedChoice || isSending}
 		  className={[
 			"px-4 py-2 rounded-md focus:outline-none text-white",
-			!selectedChoice
+			!selectedChoice || isSending
 			  ? "bg-gray-400 cursor-not-allowed"
 			  : "bg-blue-600 hover:bg-blue-700",
 		  ].join(" ")}
 		>
-		  Send Code
+		  {isSending ? "Sending..." : "Send Code"}
 		</button>
 	  </div>
 	  {error && <div className="mt-1 text-red-600">{error}</div>}
@@ -219,26 +271,40 @@ function PhoneNumberForm({ phoneNumber, onSubmittedPhone, selectedChoice }) {
 }
 
 /**
- * 6) VerificationForm => step "code"
+ * 4) VerificationForm: Step to enter the 6-digit code and verify.
+ *    After verification, we create the take in /api/take.
  */
-function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
+function VerificationForm({
+  phoneNumber,
+  selectedChoice,
+  propID,
+  onComplete,
+  setWidgetStatus,
+}) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   async function handleVerify() {
 	setError("");
-	// 1) Verify code via NextAuth
-	const result = await signIn("credentials", {
-	  redirect: false,
-	  phone: phoneNumber,
-	  code,
-	});
-	if (!result.ok) {
-	  setError("Verification failed: " + (result.error || "Invalid code"));
-	  return;
-	}
-	// 2) Create the take
+	setIsVerifying(true);
+	setWidgetStatus(STATUS.SUBMITTING);
+
 	try {
+	  // 1) Verify code via NextAuth
+	  const result = await signIn("credentials", {
+		redirect: false,
+		phone: phoneNumber,
+		code,
+	  });
+	  if (!result.ok) {
+		setError("Verification failed: " + (result.error || "Invalid code"));
+		setWidgetStatus(STATUS.ERROR);
+		return;
+	  }
+
+	  // 2) Create the take
 	  const takeResp = await fetch("/api/take", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -248,22 +314,45 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 	  const takeData = await takeResp.json();
 	  if (!takeData.success) {
 		setError(
-		  "Error submitting your vote: " + (takeData.error || "Unknown error")
+		  "Error submitting your take: " + (takeData.error || "Unknown error")
 		);
+		setWidgetStatus(STATUS.ERROR);
 		return;
 	  }
-	  onComplete(takeData.newTakeID, {
-		success: true,
-		sideACount: takeData.sideACount,
-		sideBCount: takeData.sideBCount,
-	  });
+
+	  // 3) Tell parent we are done. We'll pass back the newTakeID
+	  onComplete(takeData.newTakeID, { success: true });
+	  // So the widget can link "Take Made" -> /takes/[newTakeID]
+	  setWidgetStatus(STATUS.TAKE_MADE);
 	} catch (err) {
 	  setError("An error occurred during verification.");
+	  setWidgetStatus(STATUS.ERROR);
+	} finally {
+	  setIsVerifying(false);
 	}
   }
 
-  function handleResend() {
-	console.log("[VerificationForm] Resending code for phone:", phoneNumber);
+  async function handleResend() {
+	setError("");
+	setIsResending(true);
+
+	try {
+	  const resp = await fetch("/api/sendCode", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ phone: phoneNumber }),
+	  });
+	  if (!resp.ok) {
+		const errData = await resp.json();
+		setError("Failed to resend code: " + (errData.error || resp.status));
+		setWidgetStatus(STATUS.ERROR);
+	  }
+	} catch (err) {
+	  setError("An error occurred while resending the code.");
+	  setWidgetStatus(STATUS.ERROR);
+	} finally {
+	  setIsResending(false);
+	}
   }
 
   return (
@@ -292,15 +381,17 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 		</InputMask>
 		<button
 		  onClick={handleVerify}
-		  className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none"
+		  disabled={isVerifying || code.length < 6}
+		  className="px-4 py-2 text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none disabled:bg-gray-400"
 		>
-		  Verify
+		  {isVerifying ? "Verifying..." : "Verify"}
 		</button>
 		<button
 		  onClick={handleResend}
+		  disabled={isResending}
 		  className="px-3 py-2 text-sm text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none"
 		>
-		  Resend
+		  {isResending ? "Resending..." : "Resend"}
 		</button>
 	  </div>
 	  {error && <div className="mt-1 text-red-600">{error}</div>}
@@ -309,222 +400,118 @@ function VerificationForm({ phoneNumber, selectedChoice, propID, onComplete }) {
 }
 
 /**
- * 7) MakeTakeButton
- *    -> Single-click submission + "Sending..." state
- *    (Retained for non-logged-in users only)
- */
-function MakeTakeButton({
-  selectedChoice,
-  propID,
-  onTakeComplete,
-  sessionUser,
-  alreadyTookSide,
-}) {
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const userHasExistingTake = !!alreadyTookSide;
-  const isSameAsVerified =
-	userHasExistingTake && selectedChoice === alreadyTookSide;
-  const disabled = !selectedChoice || isSameAsVerified || isSubmitting;
-  const buttonLabel = userHasExistingTake ? "Update Take" : "Make The Take";
-
-  async function handleClick() {
-	setError("");
-	setIsSubmitting(true);
-	try {
-	  const resp = await fetch("/api/take", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		credentials: "same-origin",
-		body: JSON.stringify({ propID, propSide: selectedChoice }),
-	  });
-	  const data = await resp.json();
-	  if (!data.success) {
-		setError("Error submitting vote: " + (data.error || "Unknown error"));
-	  } else {
-		onTakeComplete(data.newTakeID, {
-		  success: true,
-		  sideACount: data.sideACount,
-		  sideBCount: data.sideBCount,
-		});
-	  }
-	} catch (err) {
-	  setError("An error occurred while submitting your vote.");
-	} finally {
-	  setIsSubmitting(false);
-	}
-  }
-
-  return (
-	<div className="mt-4">
-	  <button
-		onClick={handleClick}
-		disabled={disabled}
-		className={[
-		  "px-4 py-2 rounded-md focus:outline-none text-white",
-		  disabled
-			? "bg-gray-400 cursor-not-allowed"
-			: "bg-blue-600 hover:bg-blue-700",
-		].join(" ")}
-	  >
-		{isSubmitting ? "Sending..." : buttonLabel}
-	  </button>
-	  {error && <div className="mt-2 text-red-600">{error}</div>}
-	</div>
-  );
-}
-
-/**
- * 8) CompleteStep
- */
-function CompleteStep({
-  takeID,
-  sideACount,
-  sideBCount,
-  selectedChoice,
-  alreadyTookSide,
-  propTitle,
-  sideALabel,
-  sideBLabel,
-}) {
-  if (!takeID) return null;
-  const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
-
-  let chosenSideLabel = "";
-  if (selectedChoice === "A") {
-	chosenSideLabel = `🏴‍☠️ ${sideALabel}`;
-  } else if (selectedChoice === "B") {
-	chosenSideLabel = `🏴‍☠️ ${sideBLabel}`;
-  }
-
-  const takeUrl = `/takes/${takeID}`;
-  const tweetText =
-	typeof window !== "undefined"
-	  ? `I just made my take! Check it out:\n\n${window.location.origin + takeUrl} #MakeTheTake`
-	  : "I just made my take! #MakeTheTake";
-  const tweetHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-	tweetText
-  )}`;
-
-  return (
-	<div className="mt-4">
-	  <h3 className="text-lg font-semibold">Thanks!</h3>
-	  <p>Your take was logged successfully.</p>
-	  <div className="mt-4 border border-gray-300 p-4 rounded-md">
-		<h4 className="font-semibold mb-2">Final Results for {propTitle}</h4>
-		<PropChoices
-		  propStatus="closed"
-		  alreadyTookSide={alreadyTookSide}
-		  selectedChoice={selectedChoice}
-		  resultsRevealed={true}
-		  onSelectChoice={() => {}}
-		  sideAPct={aPct}
-		  sideBPct={bPct}
-		  sideALabel={sideALabel}
-		  sideBLabel={sideBLabel}
-		/>
-		<p className="text-sm text-gray-600">
-		  Side A Count: {sideACount} | Side B Count: {sideBCount}
-		</p>
-		{chosenSideLabel && (
-		  <p className="mt-2 text-green-700 font-semibold">
-			You chose: {chosenSideLabel}
-		  </p>
-		)}
-	  </div>
-	  <p className="mt-2 text-sm">
-		<Link href={takeUrl} className="text-blue-600 underline">
-		  View your new take here
-		</Link>
-	  </p>
-	  <p className="mt-2 text-sm">
-		<a
-		  href={tweetHref}
-		  target="_blank"
-		  rel="noreferrer"
-		  className="text-blue-600 underline"
-		>
-		  Tweet this take
-		</a>
-	  </p>
-	</div>
-  );
-}
-
-/**
- * 9) Main VerificationWidget
+ * 5) Main VerificationWidget:
+ *    - Loads prop data
+ *    - Checks if user already has a take
+ *    - Shows bars with initial percentages
+ *    - If the user is not logged in, phone + code steps
+ *    - If the user is logged in, automatically create / update the take on side select
+ *    - Does not recalc percentages after a new take
+ *    - Includes a status line (color-coded).
+ *    - "MAKE_THE_TAKE" or "TAKE_MADE" states are used in place of "READY".
+ *    - When TAKE_MADE, the status text becomes a link ( /takes/[takeID] ) if userTakeID is present.
  */
 export default function VerificationWidget({
   embeddedPropID,
-  redirectOnSuccess = false,
   onVerificationComplete,
 }) {
   const { data: session } = useSession();
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState("phone");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [selectedChoice, setSelectedChoice] = useState("");
-  const [resultsRevealed, setResultsRevealed] = useState(false);
+
   const [propData, setPropData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [takeID, setTakeID] = useState(null);
-  const [sideACount, setSideACount] = useState(0);
-  const [sideBCount, setSideBCount] = useState(0);
+
+  // Keep track of the user's side selection
+  const [selectedChoice, setSelectedChoice] = useState("");
   const [alreadyTookSide, setAlreadyTookSide] = useState(null);
+
+  // Reintroducing userTakeID so we can link to /takes/[userTakeID]
   const [userTakeID, setUserTakeID] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   const alreadyVerifiedCalled = useRef(false);
 
-  // Load prop data
+  // Steps for phone verification if user is not logged in
+  const [currentStep, setCurrentStep] = useState("phone");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [resultsRevealed, setResultsRevealed] = useState(false);
+
+  const [error, setError] = useState("");
+
+  // Track widget status with our new statuses
+  const [widgetStatus, setWidgetStatus] = useState(STATUS.LOADING);
+
+  // 1) Load prop data from server
   useEffect(() => {
 	if (!embeddedPropID) return;
-	fetch(`/api/prop?propID=${encodeURIComponent(embeddedPropID)}`)
-	  .then((res) => res.json())
-	  .then((data) => {
-		setLoading(false);
+
+	async function loadProp() {
+	  try {
+		const resp = await fetch(
+		  `/api/prop?propID=${encodeURIComponent(embeddedPropID)}`
+		);
+		const data = await resp.json();
+
 		if (data.success) {
 		  setPropData(data);
-		  setSideACount(data.sideACount || 0);
-		  setSideBCount(data.sideBCount || 0);
+		  // We'll decide in a moment if it's MAKE_THE_TAKE or TAKE_MADE
 		} else {
 		  console.error("[VerificationWidget] /api/prop error =>", data.error);
+		  setWidgetStatus(STATUS.ERROR);
 		}
-	  })
-	  .catch((err) => {
+	  } catch (err) {
 		console.error("[VerificationWidget] error =>", err);
-		setLoading(false);
-	  });
+		setWidgetStatus(STATUS.ERROR);
+	  }
+	}
+	loadProp();
   }, [embeddedPropID]);
 
-  // If user is logged in, check existing take
+  // 2) If the user is logged in, check if they already made a take
   useEffect(() => {
-	if (session && propData?.propID && !alreadyVerifiedCalled.current) {
-	  fetch(`/api/userTakes?propID=${propData.propID}`)
-		.then((res) => res.json())
-		.then((data) => {
-		  if (data.success && data.side && data.takeID) {
-			setSelectedChoice(data.side);
-			setAlreadyTookSide(data.side);
-			setUserTakeID(data.takeID);
-			setResultsRevealed(true);
-			if (onVerificationComplete) {
-			  onVerificationComplete();
-			  alreadyVerifiedCalled.current = true;
-			}
+	if (!session || !propData?.propID || alreadyVerifiedCalled.current) return;
+
+	async function loadUserTake() {
+	  try {
+		const res = await fetch(`/api/userTakes?propID=${propData.propID}`);
+		const data = await res.json();
+		if (data.success && data.side && data.takeID) {
+		  // We have an existing take
+		  setSelectedChoice(data.side);
+		  setAlreadyTookSide(data.side);
+		  setUserTakeID(data.takeID); // store the existing ID
+		  setResultsRevealed(true);
+
+		  // If the user has a verified take, set TAKE_MADE
+		  setWidgetStatus(STATUS.TAKE_MADE);
+
+		  // Fire callback once
+		  if (onVerificationComplete) {
+			onVerificationComplete();
+			alreadyVerifiedCalled.current = true;
 		  }
-		})
-		.catch((err) => {
-		  console.error("[VerificationWidget] error loading userTakes =>", err);
-		});
+		} else {
+		  // If they are logged in but have no take yet
+		  setWidgetStatus(STATUS.MAKE_THE_TAKE);
+		}
+	  } catch (err) {
+		console.error("[VerificationWidget] error =>", err);
+		setWidgetStatus(STATUS.ERROR);
+	  }
 	}
+	loadUserTake();
   }, [session, propData, onVerificationComplete]);
 
-  // For logged-in users: Immediately submit take on side selection.
+  // If not logged in but we have propData, set "MAKE_THE_TAKE" after load
+  useEffect(() => {
+	if (propData && !session?.user && widgetStatus === STATUS.LOADING) {
+	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
+	}
+  }, [propData, session, widgetStatus]);
+
+  // 3) For logged in users: we immediately submit the take on side selection
   async function submitTake(choice) {
-	setIsSubmitting(true);
+	setError("");
+	setWidgetStatus(STATUS.SUBMITTING);
+
 	try {
 	  const resp = await fetch("/api/take", {
 		method: "POST",
@@ -535,149 +522,147 @@ export default function VerificationWidget({
 	  const data = await resp.json();
 	  if (!data.success) {
 		setError("Error submitting take: " + (data.error || "Unknown error"));
+		setWidgetStatus(STATUS.ERROR);
 	  } else {
-		handleComplete(data.newTakeID, {
-		  success: true,
-		  sideACount: data.sideACount,
-		  sideBCount: data.sideBCount,
-		});
+		// They have now made a take
+		setSelectedChoice(choice);
+		setAlreadyTookSide(choice);
+
+		// NEW: store the newTakeID for the link
+		setUserTakeID(data.newTakeID);
+
+		setResultsRevealed(true);
+		setWidgetStatus(STATUS.TAKE_MADE);
+
+		if (onVerificationComplete && !alreadyVerifiedCalled.current) {
+		  onVerificationComplete();
+		  alreadyVerifiedCalled.current = true;
+		}
 	  }
 	} catch (err) {
 	  setError("An error occurred while submitting your vote.");
-	} finally {
-	  setIsSubmitting(false);
+	  setWidgetStatus(STATUS.ERROR);
 	}
   }
 
-  // Called when a side is selected
+  // 4) Called when user picks side
   function handleSelectChoice(sideValue) {
 	setSelectedChoice(sideValue);
 	setResultsRevealed(true);
-	// For logged-in users, immediately submit the take.
+
 	if (session?.user) {
+	  // If logged in, auto-submit
 	  submitTake(sideValue);
 	}
   }
 
-  // Called after a successful new take
-  function handleComplete(newTakeID, freshData) {
-	if (freshData?.success) {
-	  setSideACount(freshData.sideACount || 0);
-	  setSideBCount(freshData.sideBCount || 0);
-	  if (onVerificationComplete && !alreadyVerifiedCalled.current) {
-		onVerificationComplete();
-		alreadyVerifiedCalled.current = true;
-	  }
-	}
-	if (redirectOnSuccess) {
-	  router.push(`/takes/${newTakeID}`);
-	} else {
-	  setTakeID(newTakeID);
-	  setCurrentStep("complete");
+  // 5) Called after verifying code for non-logged in user.
+  //    We get the newTakeID from the VerificationForm's onComplete callback.
+  function handleVerifyComplete(newTakeID) {
+	setAlreadyTookSide(selectedChoice);
+	setResultsRevealed(true);
+
+	// store for the link
+	setUserTakeID(newTakeID);
+
+	setWidgetStatus(STATUS.TAKE_MADE);
+
+	if (onVerificationComplete && !alreadyVerifiedCalled.current) {
+	  onVerificationComplete();
+	  alreadyVerifiedCalled.current = true;
 	}
   }
 
-  if (loading) {
-	return <div className="text-gray-600">Loading proposition...</div>;
+  // If we haven't loaded the prop or encountered an error, let's show the status
+  if (!propData) {
+	return (
+	  <div className="border border-gray-300 p-4 rounded-md">
+		<p className="text-sm mb-2">
+		  Status: <StatusIndicator status={widgetStatus} userTakeID={userTakeID} />
+		</p>
+		{widgetStatus === STATUS.ERROR && (
+		  <p className="text-red-600">Error loading proposition.</p>
+		)}
+	  </div>
+	);
   }
+
   if (!propData?.success) {
 	return (
-	  <div className="text-red-600">
+	  <div className="border border-gray-300 p-4 rounded-md text-red-600">
 		Prop not found or error loading prop.
 	  </div>
 	);
   }
 
-  // If user just completed the flow
-  if (currentStep === "complete") {
-	return (
-	  <div className="border border-gray-300 p-4 mt-4 rounded-md">
-		<div className="mb-2 text-sm text-gray-600">
-		  <Link href={`/props/${embeddedPropID}`}>
-			View full details for this proposition
-		  </Link>
-		</div>
-		{session?.user && userTakeID && (
-		  <div className="mb-4 text-sm text-gray-600">
-			<Link href={`/takes/${userTakeID}`}>See your take here</Link>
-		  </div>
-		)}
-		<CompleteStep
-		  takeID={takeID}
-		  sideACount={sideACount}
-		  sideBCount={sideBCount}
-		  selectedChoice={selectedChoice}
-		  alreadyTookSide={alreadyTookSide}
-		  propTitle={propData.propShort || propData.propTitle}
-		  sideALabel={propData.PropSideAShort || "Side A"}
-		  sideBLabel={propData.PropSideBShort || "Side B"}
-		/>
-	  </div>
-	);
-  }
-
-  // If the prop is not open, show final results
+  // If the prop is not open, user can't change their side
   const propStatus = propData.propStatus || "open";
-  const { aPct, bPct } = computeSidePercents(sideACount, sideBCount);
-  const totalTakes = sideACount + sideBCount + 2;
   const readOnly = propStatus !== "open";
+
+  // We'll show results if the prop is closed, or if user has picked a side
   const showResults = readOnly || resultsRevealed;
 
+  // Compute bars from original counts. Do not update these later.
+  const sideACount = propData.sideACount || 0;
+  const sideBCount = propData.sideBCount || 0;
+  const aWithOffset = sideACount + 1;
+  const bWithOffset = sideBCount + 1;
+  const total = aWithOffset + bWithOffset;
+  const sideAPct = Math.round((aWithOffset / total) * 100);
+  const sideBPct = Math.round((bWithOffset / total) * 100);
+
   return (
-	<div className="border border-gray-300 p-4 mt-4 rounded-md">
-	  <div className="mb-2 text-sm text-gray-600">
-		<Link href={`/props/${embeddedPropID}`}>
-		  View full details for this proposition
-		</Link>
-	  </div>
+	<div className="border border-gray-300 p-4 rounded-md">
 	  <h4 className="text-lg font-semibold">
 		{propData.propShort || propData.propTitle}
 	  </h4>
 
+	  {/* Show status line here, passing userTakeID so TAKE_MADE can be clickable */}
+	  <p className="text-sm my-2">
+		Status: <StatusIndicator status={widgetStatus} userTakeID={userTakeID} />
+	  </p>
+
+	  {/* If logged in, display user phone */}
 	  {session?.user ? (
-		<div className="mb-4 text-sm text-blue-600">
+		<div className="mb-2 text-sm text-blue-600">
 		  Logged in as: {session.user.phone}
-		  {userTakeID && (
-			<div>
-			  <Link href={`/takes/${userTakeID}`}>See your take here</Link>
-			</div>
-		  )}
 		</div>
 	  ) : (
-		<div className="mb-4 text-sm text-gray-700">Not logged in</div>
+		<div className="mb-2 text-sm text-gray-700">Not logged in</div>
 	  )}
 
+	  {/* Show the bar choices, using the initial percentages */}
 	  <PropChoices
 		propStatus={propStatus}
 		selectedChoice={selectedChoice}
 		resultsRevealed={showResults}
 		onSelectChoice={readOnly ? () => {} : handleSelectChoice}
-		sideAPct={aPct}
-		sideBPct={bPct}
+		sideAPct={sideAPct}
+		sideBPct={sideBPct}
 		sideALabel={propData.PropSideAShort || "Side A"}
 		sideBLabel={propData.PropSideBShort || "Side B"}
 		alreadyTookSide={alreadyTookSide}
 	  />
 
-	  <p className="text-sm text-gray-600">Total Takes: {totalTakes}</p>
-
-	  {readOnly ? (
+	  {/* If prop is closed, show a notice */}
+	  {readOnly && (
 		<p className="mt-2 text-gray-500 italic">
 		  This proposition is no longer open for new takes.
 		</p>
-	  ) : session?.user ? (
-		// For logged-in users, submission is triggered immediately on choice selection.
-		null
-	  ) : (
+	  )}
+
+	  {/* For logged-out users, phone verify flow */}
+	  {!readOnly && !session?.user && (
 		<div className="mt-4">
 		  {currentStep === "phone" && (
 			<PhoneNumberForm
 			  phoneNumber={phoneNumber}
-			  selectedChoice={selectedChoice} // disables button if no side chosen
+			  selectedChoice={selectedChoice}
 			  onSubmittedPhone={(phone) => {
 				setPhoneNumber(phone);
 				setCurrentStep("code");
 			  }}
+			  setWidgetStatus={setWidgetStatus}
 			/>
 		  )}
 		  {currentStep === "code" && (
@@ -685,11 +670,18 @@ export default function VerificationWidget({
 			  phoneNumber={phoneNumber}
 			  selectedChoice={selectedChoice}
 			  propID={propData.propID}
-			  onComplete={handleComplete}
+			  onComplete={(newTakeID, { success }) => {
+				if (success) {
+				  handleVerifyComplete(newTakeID);
+				}
+			  }}
+			  setWidgetStatus={setWidgetStatus}
 			/>
 		  )}
 		</div>
 	  )}
+
+	  {error && <p className="mt-2 text-red-600">{error}</p>}
 	</div>
   );
 }

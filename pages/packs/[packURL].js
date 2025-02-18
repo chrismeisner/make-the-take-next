@@ -1,4 +1,5 @@
 // File: /pages/packs/[packURL].js
+
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import StickyProgressHeader from "../../components/StickyProgressHeader";
@@ -12,7 +13,11 @@ import { useModal } from "../../contexts/ModalContext"; // Import our global mod
 export default function PackPage({ packData, leaderboard, debugLogs }) {
   return (
 	<PackContextProvider packData={packData}>
-	  <PackInner packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} />
+	  <PackInner
+		packData={packData}
+		leaderboard={leaderboard}
+		debugLogs={debugLogs}
+	  />
 	</PackContextProvider>
   );
 }
@@ -103,23 +108,34 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		logActivity(); // Log the activity
 	  }
 	}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verifiedProps, packData, packTitle, openModal, activityLogged]);
 
   // Function to log the activity when the pack is completed
   const logActivity = async () => {
-	const response = await fetch("/api/activity", {
-	  method: "POST",
-	  body: JSON.stringify({
-		profileID: session.user.profileID,
-		packID: packData.packID,
-	  }),
-	  headers: { "Content-Type": "application/json" },
-	});
-	const data = await response.json();
-	if (data.success) {
-	  console.log("Activity logged successfully");
-	} else {
-	  console.error("Error logging activity", data.error);
+	if (!session?.user?.airtableId) {
+	  console.error("No airtableId in session; cannot log activity.");
+	  return;
+	}
+
+	try {
+	  const response = await fetch("/api/activity", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+		  profileID: session.user.profileID,      // textual profile ID
+		  packID: packData.packID,                // textual pack ID
+		  airtableId: session.user.airtableId,    // native Airtable record ID
+		}),
+	  });
+	  const data = await response.json();
+	  if (data.success) {
+		console.log("Activity logged successfully");
+	  } else {
+		console.error("Error logging activity:", data.error);
+	  }
+	} catch (err) {
+	  console.error("Error logging activity:", err);
 	}
   };
 

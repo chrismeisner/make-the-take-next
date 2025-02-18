@@ -1,3 +1,5 @@
+//pages/api/packs/[packURL].js
+
 import Airtable from "airtable";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
@@ -17,14 +19,14 @@ export default async function handler(req, res) {
   }
 
   try {
-	// 1) Log environment variables (for debugging)
+	// Log environment variables (for debugging)
 	console.log(
 	  "AIRTABLE_API_KEY starts with:",
 	  process.env.AIRTABLE_API_KEY?.slice?.(0, 4)
 	);
 	console.log("AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
 
-	// 2) Find the pack record matching the given packURL
+	// Find the pack record matching the given packURL
 	const packRecords = await base("Packs")
 	  .select({
 		filterByFormula: `{packURL} = "${packURL}"`,
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
 
-	// 3) Build the Props data by retrieving linked record IDs from the "Props" field
+	// Build the Props data by retrieving linked record IDs from the "Props" field
 	const linkedPropIDs = packFields.Props || [];
 	console.log("[API /packs/[packURL]] => linkedPropIDs:", linkedPropIDs);
 
@@ -109,7 +111,7 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// 4) Parse the "packPrizeImage" attachment field
+	// Parse the "packPrizeImage" attachment field
 	let packPrizeImage = [];
 	if (Array.isArray(packFields.packPrizeImage)) {
 	  packPrizeImage = packFields.packPrizeImage.map((img) => ({
@@ -118,7 +120,7 @@ export default async function handler(req, res) {
 	  }));
 	}
 
-	// 5) Parse the "packCover" attachment field (NEW)
+	// Parse the "packCover" attachment field (NEW)
 	let packCover = [];
 	if (Array.isArray(packFields.packCover)) {
 	  packCover = packFields.packCover.map((img) => ({
@@ -127,7 +129,7 @@ export default async function handler(req, res) {
 	  }));
 	}
 
-	// 6) Return the pack data along with its props and other fields
+	// Return the pack data along with its props and other fields
 	console.log(
 	  "[API /packs/[packURL]] => returning success, propsData length:",
 	  propsData.length

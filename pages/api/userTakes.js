@@ -1,4 +1,5 @@
-// pages/api/userTakes.js
+// File: /pages/api/userTakes.js
+
 import { getSession } from "next-auth/react";
 import Airtable from "airtable";
 
@@ -17,13 +18,17 @@ export default async function handler(req, res) {
   }
 
   try {
-	const filterFormula = `AND({propID} = "${propID}", {takeMobile} = "${session.user.phone}")`;
+	// Updated filter to ensure we only get the "latest" take:
+	const filterFormula = `AND({propID} = "${propID}", {takeMobile} = "${session.user.phone}", {takeStatus} = "latest")`;
+
 	const records = await base("Takes")
 	  .select({ filterByFormula: filterFormula, maxRecords: 1 })
 	  .firstPage();
 
 	if (records.length === 0) {
-	  return res.status(200).json({ success: true, side: null, message: "No existing take" });
+	  return res
+		.status(200)
+		.json({ success: true, side: null, message: "No existing take" });
 	}
 
 	const takeRecord = records[0];
@@ -34,6 +39,8 @@ export default async function handler(req, res) {
 	});
   } catch (error) {
 	console.error("[userTakes] Error fetching user take:", error);
-	return res.status(500).json({ success: false, error: "Error fetching user takes" });
+	return res
+	  .status(500)
+	  .json({ success: false, error: "Error fetching user takes" });
   }
 }
