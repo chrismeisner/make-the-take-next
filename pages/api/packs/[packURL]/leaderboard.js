@@ -1,4 +1,4 @@
-//pages/api/packs/[packURL]/leaderboard.js
+//pages/api/packs/[packURL]/leaderboard.js 
 
 import Airtable from 'airtable';
 
