@@ -2,14 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSession, signIn } from "next-auth/react";
-import { useRouter } from "next/router";
 import Link from "next/link";
 import InputMask from "react-input-mask";
 
 /**
  * 0) Widget Status Constants
- *    - Replaces "READY" with "MAKE_THE_TAKE"
- *    - Adds "TAKE_MADE"
  */
 const STATUS = {
   LOADING: "loading",
@@ -67,8 +64,8 @@ function StatusIndicator({ status, userTakeID }) {
 }
 
 /**
- * 1) Choice subcomponent: Renders an individual choice option with a fill bar.
- *    (Pirate flag is displayed to the right of the percentage if user has verified that side.)
+ * Single Choice component (side A or B).
+ * Uses the "percentage" prop for dynamic fill bars (no forced 100%).
  */
 function Choice({
   label,
@@ -81,15 +78,15 @@ function Choice({
   onSelect,
 }) {
   const [isHovered, setIsHovered] = useState(false);
-  // Only clickable if the proposition is "open"
+
+  // Only clickable if prop is open
   const clickable = propStatus === "open";
 
-  // Decide bar fill
+  // Calculate fill if showing results
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
 
-  // Build container classes
   const containerClasses = [
 	"relative",
 	"mb-2",
@@ -97,9 +94,7 @@ function Choice({
 	"rounded-md",
 	"transition-colors",
 	clickable ? "cursor-pointer" : "cursor-default",
-	isSelected
-	  ? "border-2 border-blue-500 bg-white"
-	  : "border border-gray-300 bg-gray-50",
+	isSelected ? "border-2 border-blue-500 bg-white" : "border border-gray-300 bg-gray-50",
 	isHovered && clickable && !isSelected ? "border-gray-400" : "",
   ].join(" ");
 
@@ -124,9 +119,8 @@ function Choice({
 		}}
 	  />
 	  <div className="relative z-10">
-		{/* Label */}
 		{label}
-		{/* If showing results, display (XX%) and pirate if verified */}
+		{/* Display (xx%) if showResults, plus a pirate if isVerified */}
 		{showResults && (
 		  <>
 			<span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
@@ -139,7 +133,7 @@ function Choice({
 }
 
 /**
- * 2) PropChoices: Renders both side A and side B, uses <Choice> above.
+ * Renders both sides (A and B) with dynamic percentages from sideACount / sideBCount.
  */
 function PropChoices({
   propStatus,
@@ -153,16 +147,8 @@ function PropChoices({
   alreadyTookSide,
 }) {
   const choices = [
-	{
-	  value: "A",
-	  label: sideALabel,
-	  percentage: sideAPct,
-	},
-	{
-	  value: "B",
-	  label: sideBLabel,
-	  percentage: sideBPct,
-	},
+	{ value: "A", label: sideALabel, percentage: sideAPct },
+	{ value: "B", label: sideBLabel, percentage: sideBPct },
   ];
 
   return (
@@ -170,6 +156,7 @@ function PropChoices({
 	  {choices.map((choice) => {
 		const isSelected = selectedChoice === choice.value;
 		const isVerified = alreadyTookSide === choice.value;
+
 		return (
 		  <Choice
 			key={choice.value}
@@ -189,7 +176,7 @@ function PropChoices({
 }
 
 /**
- * 3) PhoneNumberForm: The step to collect user's phone number before sending a code.
+ * PhoneNumberForm => collects phone # for logged-out user to request code via /api/sendCode
  */
 function PhoneNumberForm({
   phoneNumber,
@@ -220,6 +207,7 @@ function PhoneNumberForm({
 		return;
 	  }
 
+	  // Go to the VerificationForm
 	  onSubmittedPhone(localPhone);
 	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
 	} catch (err) {
@@ -271,8 +259,7 @@ function PhoneNumberForm({
 }
 
 /**
- * 4) VerificationForm: Step to enter the 6-digit code and verify.
- *    After verification, we create the take in /api/take.
+ * VerificationForm => user enters 6-digit code to verify phone. On success => create a new take via /api/take
  */
 function VerificationForm({
   phoneNumber,
@@ -304,7 +291,7 @@ function VerificationForm({
 		return;
 	  }
 
-	  // 2) Create the take
+	  // 2) Create user's take
 	  const takeResp = await fetch("/api/take", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -313,19 +300,16 @@ function VerificationForm({
 	  });
 	  const takeData = await takeResp.json();
 	  if (!takeData.success) {
-		setError(
-		  "Error submitting your take: " + (takeData.error || "Unknown error")
-		);
+		setError("Error submitting your take: " + (takeData.error || "Unknown error"));
 		setWidgetStatus(STATUS.ERROR);
 		return;
 	  }
 
-	  // 3) Tell parent we are done. We'll pass back the newTakeID
+	  // 3) Let parent widget know => userTakeID is assigned
 	  onComplete(takeData.newTakeID, { success: true });
-	  // So the widget can link "Take Made" -> /takes/[newTakeID]
 	  setWidgetStatus(STATUS.TAKE_MADE);
 	} catch (err) {
-	  setError("An error occurred during verification.");
+	  setError("An error occurred while verifying your code.");
 	  setWidgetStatus(STATUS.ERROR);
 	} finally {
 	  setIsVerifying(false);
@@ -400,46 +384,34 @@ function VerificationForm({
 }
 
 /**
- * 5) Main VerificationWidget:
- *    - Loads prop data
- *    - Checks if user already has a take
- *    - Shows bars with initial percentages
- *    - If the user is not logged in, phone + code steps
- *    - If the user is logged in, automatically create / update the take on side select
- *    - Does not recalc percentages after a new take
- *    - Includes a status line (color-coded).
- *    - "MAKE_THE_TAKE" or "TAKE_MADE" states are used in place of "READY".
- *    - When TAKE_MADE, the status text becomes a link ( /takes/[takeID] ) if userTakeID is present.
+ * The main VerificationWidget:
+ * - Loads prop data from `/api/prop?propID=...`
+ * - If user is logged in and prop is open, shows a single button (Make or Update).
+ * - If user already had a verified take, it says "Update Take" and only enables if they pick a new side.
+ * - If user is logged out, shows phone verification steps first, then creates the take.
+ * - We always compute percentages from `sideACount` / `sideBCount` (never force 100%).
  */
 export default function VerificationWidget({
   embeddedPropID,
   onVerificationComplete,
 }) {
   const { data: session } = useSession();
-  const router = useRouter();
 
   const [propData, setPropData] = useState(null);
-
-  // Keep track of the user's side selection
   const [selectedChoice, setSelectedChoice] = useState("");
   const [alreadyTookSide, setAlreadyTookSide] = useState(null);
-
-  // Reintroducing userTakeID so we can link to /takes/[userTakeID]
   const [userTakeID, setUserTakeID] = useState(null);
 
-  const alreadyVerifiedCalled = useRef(false);
+  const [error, setError] = useState("");
+  const [widgetStatus, setWidgetStatus] = useState(STATUS.LOADING);
 
-  // Steps for phone verification if user is not logged in
-  const [currentStep, setCurrentStep] = useState("phone");
+  const [currentStep, setCurrentStep] = useState("phone"); // for phone verification
   const [phoneNumber, setPhoneNumber] = useState("");
   const [resultsRevealed, setResultsRevealed] = useState(false);
 
-  const [error, setError] = useState("");
+  const alreadyVerifiedCalled = useRef(false);
 
-  // Track widget status with our new statuses
-  const [widgetStatus, setWidgetStatus] = useState(STATUS.LOADING);
-
-  // 1) Load prop data from server
+  // 1) Load the single prop from /api/prop
   useEffect(() => {
 	if (!embeddedPropID) return;
 
@@ -449,23 +421,21 @@ export default function VerificationWidget({
 		  `/api/prop?propID=${encodeURIComponent(embeddedPropID)}`
 		);
 		const data = await resp.json();
-
 		if (data.success) {
 		  setPropData(data);
-		  // We'll decide in a moment if it's MAKE_THE_TAKE or TAKE_MADE
 		} else {
 		  console.error("[VerificationWidget] /api/prop error =>", data.error);
 		  setWidgetStatus(STATUS.ERROR);
 		}
 	  } catch (err) {
-		console.error("[VerificationWidget] error =>", err);
+		console.error("[VerificationWidget] loadProp error =>", err);
 		setWidgetStatus(STATUS.ERROR);
 	  }
 	}
 	loadProp();
   }, [embeddedPropID]);
 
-  // 2) If the user is logged in, check if they already made a take
+  // 2) If user is logged in => check if they have a prior verified take
   useEffect(() => {
 	if (!session || !propData?.propID || alreadyVerifiedCalled.current) return;
 
@@ -474,41 +444,39 @@ export default function VerificationWidget({
 		const res = await fetch(`/api/userTakes?propID=${propData.propID}`);
 		const data = await res.json();
 		if (data.success && data.side && data.takeID) {
-		  // We have an existing take
+		  // The user has a verified take
 		  setSelectedChoice(data.side);
 		  setAlreadyTookSide(data.side);
-		  setUserTakeID(data.takeID); // store the existing ID
+		  setUserTakeID(data.takeID);
 		  setResultsRevealed(true);
-
-		  // If the user has a verified take, set TAKE_MADE
 		  setWidgetStatus(STATUS.TAKE_MADE);
 
-		  // Fire callback once
 		  if (onVerificationComplete) {
 			onVerificationComplete();
 			alreadyVerifiedCalled.current = true;
 		  }
 		} else {
-		  // If they are logged in but have no take yet
 		  setWidgetStatus(STATUS.MAKE_THE_TAKE);
 		}
 	  } catch (err) {
-		console.error("[VerificationWidget] error =>", err);
+		console.error("[VerificationWidget] loadUserTake error =>", err);
 		setWidgetStatus(STATUS.ERROR);
 	  }
 	}
 	loadUserTake();
   }, [session, propData, onVerificationComplete]);
 
-  // If not logged in but we have propData, set "MAKE_THE_TAKE" after load
+  // If user is logged out and we've loaded propData => "MAKE_THE_TAKE"
   useEffect(() => {
 	if (propData && !session?.user && widgetStatus === STATUS.LOADING) {
 	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
 	}
   }, [propData, session, widgetStatus]);
 
-  // 3) For logged in users: we immediately submit the take on side selection
-  async function submitTake(choice) {
+  /**
+   * createLatestTake => either Make or Update the user's take
+   */
+  async function createLatestTake() {
 	setError("");
 	setWidgetStatus(STATUS.SUBMITTING);
 
@@ -517,22 +485,27 @@ export default function VerificationWidget({
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		credentials: "same-origin",
-		body: JSON.stringify({ propID: propData.propID, propSide: choice }),
+		body: JSON.stringify({ propID: propData.propID, propSide: selectedChoice }),
 	  });
 	  const data = await resp.json();
 	  if (!data.success) {
 		setError("Error submitting take: " + (data.error || "Unknown error"));
 		setWidgetStatus(STATUS.ERROR);
 	  } else {
-		// They have now made a take
-		setSelectedChoice(choice);
-		setAlreadyTookSide(choice);
-
-		// NEW: store the newTakeID for the link
+		setAlreadyTookSide(selectedChoice);
 		setUserTakeID(data.newTakeID);
-
 		setResultsRevealed(true);
 		setWidgetStatus(STATUS.TAKE_MADE);
+
+		// Patch local data with updated sideACount / sideBCount
+		setPropData((prev) => {
+		  if (!prev) return prev;
+		  return {
+			...prev,
+			sideACount: data.sideACount,
+			sideBCount: data.sideBCount,
+		  };
+		});
 
 		if (onVerificationComplete && !alreadyVerifiedCalled.current) {
 		  onVerificationComplete();
@@ -540,31 +513,27 @@ export default function VerificationWidget({
 		}
 	  }
 	} catch (err) {
-	  setError("An error occurred while submitting your vote.");
+	  console.error("[VerificationWidget] createLatestTake error =>", err);
+	  setError("An error occurred while submitting your take.");
 	  setWidgetStatus(STATUS.ERROR);
 	}
   }
 
-  // 4) Called when user picks side
+  /**
+   * Called when user picks a side locally
+   */
   function handleSelectChoice(sideValue) {
 	setSelectedChoice(sideValue);
 	setResultsRevealed(true);
-
-	if (session?.user) {
-	  // If logged in, auto-submit
-	  submitTake(sideValue);
-	}
   }
 
-  // 5) Called after verifying code for non-logged in user.
-  //    We get the newTakeID from the VerificationForm's onComplete callback.
+  /**
+   * Called when a logged-out user completes verification
+   */
   function handleVerifyComplete(newTakeID) {
 	setAlreadyTookSide(selectedChoice);
-	setResultsRevealed(true);
-
-	// store for the link
 	setUserTakeID(newTakeID);
-
+	setResultsRevealed(true);
 	setWidgetStatus(STATUS.TAKE_MADE);
 
 	if (onVerificationComplete && !alreadyVerifiedCalled.current) {
@@ -573,7 +542,7 @@ export default function VerificationWidget({
 	}
   }
 
-  // If we haven't loaded the prop or encountered an error, let's show the status
+  // If the prop data is not loaded or there's an error
   if (!propData) {
 	return (
 	  <div className="border border-gray-300 p-4 rounded-md">
@@ -595,21 +564,38 @@ export default function VerificationWidget({
 	);
   }
 
-  // If the prop is not open, user can't change their side
+  // If prop is "closed," user can't submit
   const propStatus = propData.propStatus || "open";
   const readOnly = propStatus !== "open";
 
-  // We'll show results if the prop is closed, or if user has picked a side
+  // We'll show results if it's readOnly or the user has toggled a side
   const showResults = readOnly || resultsRevealed;
 
-  // Compute bars from original counts. Do not update these later.
+  // Compute real ratio from Airtable fields
   const sideACount = propData.sideACount || 0;
   const sideBCount = propData.sideBCount || 0;
-  const aWithOffset = sideACount + 1;
-  const bWithOffset = sideBCount + 1;
-  const total = aWithOffset + bWithOffset;
-  const sideAPct = Math.round((aWithOffset / total) * 100);
-  const sideBPct = Math.round((bWithOffset / total) * 100);
+  const total = sideACount + sideBCount;
+
+  let sideAPct, sideBPct;
+  if (total === 0) {
+	sideAPct = 50;
+	sideBPct = 50;
+  } else {
+	sideAPct = Math.round((sideACount / total) * 100);
+	sideBPct = 100 - sideAPct;
+  }
+
+  // Button label depends on whether user has a verified side already
+  const hasVerifiedTake = !!alreadyTookSide;
+  const buttonLabel = hasVerifiedTake ? "Update Take" : "Make This Take";
+
+  // If user has a verified side, disable the button if they pick the same side
+  let buttonDisabled = !selectedChoice;
+  if (hasVerifiedTake) {
+	if (selectedChoice === alreadyTookSide) {
+	  buttonDisabled = true;
+	}
+  }
 
   return (
 	<div className="border border-gray-300 p-4 rounded-md">
@@ -617,12 +603,11 @@ export default function VerificationWidget({
 		{propData.propShort || propData.propTitle}
 	  </h4>
 
-	  {/* Show status line here, passing userTakeID so TAKE_MADE can be clickable */}
 	  <p className="text-sm my-2">
 		Status: <StatusIndicator status={widgetStatus} userTakeID={userTakeID} />
 	  </p>
 
-	  {/* If logged in, display user phone */}
+	  {/* If logged in, show phone, otherwise "Not logged in" */}
 	  {session?.user ? (
 		<div className="mb-2 text-sm text-blue-600">
 		  Logged in as: {session.user.phone}
@@ -631,7 +616,6 @@ export default function VerificationWidget({
 		<div className="mb-2 text-sm text-gray-700">Not logged in</div>
 	  )}
 
-	  {/* Show the bar choices, using the initial percentages */}
 	  <PropChoices
 		propStatus={propStatus}
 		selectedChoice={selectedChoice}
@@ -644,14 +628,32 @@ export default function VerificationWidget({
 		alreadyTookSide={alreadyTookSide}
 	  />
 
-	  {/* If prop is closed, show a notice */}
+	  {/* If prop closed => readOnly */}
 	  {readOnly && (
 		<p className="mt-2 text-gray-500 italic">
 		  This proposition is no longer open for new takes.
 		</p>
 	  )}
 
-	  {/* For logged-out users, phone verify flow */}
+	  {/* 
+		If user is logged in & prop open => show the "Make / Update" button.
+	  */}
+	  {session?.user && !readOnly && (
+		<button
+		  onClick={createLatestTake}
+		  disabled={buttonDisabled}
+		  className={[
+			"mt-2 px-4 py-2 text-white rounded",
+			!buttonDisabled
+			  ? "bg-blue-600 hover:bg-blue-700"
+			  : "bg-gray-400 cursor-not-allowed",
+		  ].join(" ")}
+		>
+		  {buttonLabel}
+		</button>
+	  )}
+
+	  {/* If user is not logged in => show phone verification */}
 	  {!readOnly && !session?.user && (
 		<div className="mt-4">
 		  {currentStep === "phone" && (

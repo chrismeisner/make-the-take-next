@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 	return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
-  // 2) Extract propID and propSide
+  // 2) Extract propID and propSide from request body
   const { propID, propSide } = req.body;
   if (!propID || !propSide) {
 	return res.status(400).json({
@@ -29,16 +29,18 @@ export default async function handler(req, res) {
   }
 
   try {
-	// 3) Find the matching Prop record
-	const propsFound = await base("Props").select({
-	  filterByFormula: `{propID} = "${propID}"`,
-	  maxRecords: 1,
-	}).firstPage();
+	// 3) Find the matching Prop record by propID
+	const propsFound = await base("Props")
+	  .select({
+		filterByFormula: `{propID} = "${propID}"`,
+		maxRecords: 1,
+	  })
+	  .firstPage();
 
 	if (!propsFound.length) {
 	  return res.status(404).json({
 		success: false,
-		error: "Prop not found",
+		error: `Prop not found for propID="${propID}"`,
 	  });
 	}
 
@@ -51,87 +53,89 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// 4) (Optional) Lookup Profile record by phone
-	const profilesFound = await base("Profiles").select({
-	  filterByFormula: `{profileMobile} = "${token.phone}"`,
-	  maxRecords: 1,
-	}).firstPage();
+	// 4) Read the current side counts (default to 0)
+	let sideACount = propRec.fields.propSideACount || 0;
+	let sideBCount = propRec.fields.propSideBCount || 0;
 
-	let profileRecordId = null;
-	if (profilesFound.length > 0) {
-	  profileRecordId = profilesFound[0].id;
+	// 4a) If both are zero => initialize them to (1,1) => 50/50 baseline
+	if (sideACount + sideBCount === 0) {
+	  sideACount = 1;
+	  sideBCount = 1;
+	  console.log("[/api/take] Baseline init => sideACount=1, sideBCount=1");
 	}
 
-	// 5) Overwrite older takes for this prop + phone
-	const oldTakes = await base("Takes").select({
-	  filterByFormula: `AND({propID}="${propID}", {takeMobile}="${token.phone}")`,
-	  maxRecords: 5000,
-	}).all();
+	// 5) Overwrite any old "latest" take for this phone + prop
+	const oldTakes = await base("Takes")
+	  .select({
+		filterByFormula: `AND({propID}="${propID}", {takeMobile}="${token.phone}", {takeStatus}="latest")`,
+		maxRecords: 1,
+	  })
+	  .all();
 
 	if (oldTakes.length > 0) {
-	  const updates = oldTakes.map((rec) => ({
-		id: rec.id,
-		fields: { takeStatus: "overwritten" },
-	  }));
-	  await base("Takes").update(updates);
+	  const oldTake = oldTakes[0];
+	  const oldSide = oldTake.fields.propSide;
+
+	  // Mark old take as overwritten
+	  await base("Takes").update([
+		{
+		  id: oldTake.id,
+		  fields: { takeStatus: "overwritten" },
+		},
+	  ]);
+
+	  // Decrement the old side, but never drop below 1
+	  if (oldSide === "A") {
+		sideACount = Math.max(1, sideACount - 1);
+	  } else if (oldSide === "B") {
+		sideBCount = Math.max(1, sideBCount - 1);
+	  }
 	}
 
-	// 6) Create new "latest" take
-	const fieldsToCreate = {
-	  propID,
-	  propSide,
-	  takeMobile: token.phone,
-	  takeStatus: "latest",
-	  Prop: [propRec.id], // link to Prop record
-	};
-	if (profileRecordId) {
-	  fieldsToCreate.Profile = [profileRecordId];
+	// 6) Create the new "latest" take
+	//    We'll link the "Profile" field to the user's profile record in Airtable
+	const profileRecId = token.airtableId; // "rec..." from NextAuth session token
+
+	const takeResp = await base("Takes").create([
+	  {
+		fields: {
+		  propID,
+		  propSide,
+		  takeMobile: token.phone,
+		  takeStatus: "latest",
+		  Prop: [propRec.id], // link to the Prop record
+		  Profile: [profileRecId], // link to the user's Profile record
+		},
+	  },
+	]);
+	const newTake = takeResp[0];
+	const newTakeID = newTake.fields.takeID || newTake.id;
+
+	// 7) Increment the chosen side by 1
+	if (propSide === "A") {
+	  sideACount += 1;
+	} else if (propSide === "B") {
+	  sideBCount += 1;
 	}
 
-	const createResp = await base("Takes").create([{ fields: fieldsToCreate }]);
-	const newTake = createResp[0];
-
-	// 7) Grab your custom "takeID" field (be sure it is populated in Airtable)
-	const customTakeID = newTake.fields.takeID;
-
-	// 8) Recount side A / B
-	const activeTakes = await base("Takes").select({
-	  filterByFormula: `AND({propID}="${propID}", {takeStatus} != "overwritten")`,
-	  maxRecords: 5000,
-	}).all();
-
-	let sideACount = 0;
-	let sideBCount = 0;
-	for (const t of activeTakes) {
-	  if (t.fields.propSide === "A") sideACount++;
-	  if (t.fields.propSide === "B") sideBCount++;
-	}
-
-	// 9) Compute percentages and update the Prop record
-	const aWithOffset = sideACount + 1;
-	const bWithOffset = sideBCount + 1;
-	const total = aWithOffset + bWithOffset;
-	const propSideAPER = Math.round((aWithOffset / total) * 100);
-	const propSideBPER = Math.round((bWithOffset / total) * 100);
-
+	// 8) Update the Prop record with new side counts
 	await base("Props").update([
 	  {
 		id: propRec.id,
 		fields: {
-		  PropSideAPER: propSideAPER,
-		  PropSideBPER: propSideBPER,
+		  propSideACount: sideACount,
+		  propSideBCount: sideBCount,
 		},
 	  },
 	]);
 
-	// 10) Return only the custom takeID
+	// 9) Return success
 	return res.status(200).json({
 	  success: true,
-	  newTakeID: customTakeID,
+	  newTakeID,
 	  sideACount,
 	  sideBCount,
 	});
-
   } catch (err) {
 	console.error("[/api/take] Exception:", err);
 	return res.status(500).json({
