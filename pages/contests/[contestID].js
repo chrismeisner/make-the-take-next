@@ -6,12 +6,13 @@ import Link from "next/link";
 
 /**
  * Renders a single Contest detail page.
- * - Fetches the Contest data from /api/contests/[contestID].
- * - Displays linked Packs as clickable cards (with cover images).
- * - Also fetches & displays a leaderboard from /api/contests/[contestID]/leaderboard.
+ * Fetches the Contest data from /api/contests/[contestID].
+ * Displays linked Packs as clickable cards (with cover images).
+ * Also fetches & displays a leaderboard from /api/contests/[contestID]/leaderboard.
  * 
- * NOTE: We hide the raw "Props" and "Takes" lists, 
- *       and we round the "points" to 0 decimals on the leaderboard.
+ * Leaderboard:
+ * - Uses `profileID` instead of phone
+ * - Links to /profile/[profileID]
  */
 export default function ContestDetailPage({ contestData, error }) {
   // State for loading the leaderboard
@@ -51,9 +52,7 @@ export default function ContestDetailPage({ contestData, error }) {
 	contestID,
 	contestTitle,
 	packs = [],
-	// We are intentionally hiding the raw linkedPropIDs and linkedTakeIDs
-	// linkedPropIDs,
-	// linkedTakeIDs,
+	// We are intentionally not displaying raw linkedPropIDs / linkedTakeIDs
   } = contestData;
 
   return (
@@ -77,7 +76,6 @@ export default function ContestDetailPage({ contestData, error }) {
 		) : (
 		  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 			{packs.map((pack) => {
-			  // Show a clickable card with packCover and packTitle
 			  const coverUrl =
 				pack.packCover && pack.packCover.length > 0
 				  ? pack.packCover[0].url
@@ -121,26 +119,40 @@ export default function ContestDetailPage({ contestData, error }) {
 		  <table style={{ borderCollapse: "collapse", width: "100%" }}>
 			<thead>
 			  <tr style={{ borderBottom: "1px solid #ccc" }}>
-				<th style={{ textAlign: "left", padding: "0.5rem" }}>User</th>
+				<th style={{ textAlign: "left", padding: "0.5rem" }}>
+				  Profile
+				</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Takes</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Points</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Record</th>
 			  </tr>
 			</thead>
 			<tbody>
-			  {leaderboard.map((item, idx) => (
-				<tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
-				  <td style={{ padding: "0.5rem" }}>{item.phone}</td>
-				  <td style={{ padding: "0.5rem" }}>{item.count}</td>
-				  {/* Round the points to 0 decimals */}
-				  <td style={{ padding: "0.5rem" }}>
-					{Math.round(item.points)}
-				  </td>
-				  <td style={{ padding: "0.5rem" }}>
-					{item.won}-{item.lost}
-				  </td>
-				</tr>
-			  ))}
+			  {leaderboard.map((item, idx) => {
+				const { profileID, count, points, won, lost } = item;
+				return (
+				  <tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
+					<td style={{ padding: "0.5rem" }}>
+					  {profileID ? (
+						<Link
+						  href={`/profile/${profileID}`}
+						  className="text-blue-600 underline"
+						>
+						  {profileID}
+						</Link>
+					  ) : (
+						"Unknown"
+					  )}
+					</td>
+					<td style={{ padding: "0.5rem" }}>{count}</td>
+					{/* Round points to 0 decimals */}
+					<td style={{ padding: "0.5rem" }}>{Math.round(points)}</td>
+					<td style={{ padding: "0.5rem" }}>
+					  {won}-{lost}
+					</td>
+				  </tr>
+				);
+			  })}
 			</tbody>
 		  </table>
 		)}

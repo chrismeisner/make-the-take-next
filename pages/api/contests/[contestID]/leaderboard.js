@@ -80,8 +80,7 @@ export default async function handler(req, res) {
 	  return res.status(200).json({ success: true, leaderboard: [] });
 	}
 
-	// 3) Gather all Takes that match these propIDs
-	//    Excluding overwritten
+	// 3) Gather all Takes that match these propIDs (excluding overwritten)
 	const allTakes = await base("Takes")
 	  .select({
 		maxRecords: 5000,
@@ -95,7 +94,7 @@ export default async function handler(req, res) {
 	  return uniquePropIDs.includes(tPropID);
 	});
 
-	// 4) Build phoneStats as in your existing /api/leaderboard
+	// 4) Build phone-based stats as in your existing /api/leaderboard
 	const phoneStats = new Map();
 
 	for (const take of relevantTakes) {
@@ -117,15 +116,26 @@ export default async function handler(req, res) {
 	  phoneStats.set(phone, currentStats);
 	}
 
-	// 5) Build the final leaderboard array
+	// 5) Build a phone -> profileID map by fetching all "Profiles" rows
+	const allProfiles = await base("Profiles").select({ maxRecords: 5000 }).all();
+	const phoneToProfileID = new Map();
+	allProfiles.forEach((profile) => {
+	  const { profileMobile, profileID } = profile.fields;
+	  if (profileMobile && profileID) {
+		phoneToProfileID.set(profileMobile, profileID);
+	  }
+	});
+
+	// 6) Build the final leaderboard array
 	const leaderboard = Array.from(phoneStats.entries())
 	  .map(([phone, stats]) => ({
+		// We'll store phone internally if needed, but the front end only uses profileID
 		phone,
+		profileID: phoneToProfileID.get(phone) || null,
 		count: stats.takes,
 		points: stats.points,
 		won: stats.won,
 		lost: stats.lost,
-		// If you have a phone->profileID map, you can attach that too
 	  }))
 	  .sort((a, b) => b.points - a.points);
 
