@@ -1,59 +1,45 @@
 // File: /pages/packs/index.js
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
-/**
- * PacksIndexPage
- *
- * - Fetches packs from /api/packs (which includes "Coming Up", "Active", "Completed", etc.)
- * - Sorting by newest/oldest/soonest
- * - Filtering by packType ("event" / "content")
- * - Color-codes the packStatus
- * - Removed the big clickable Link around each pack
- * - For packs with "Active" status, displays a "Play This Pack" button
- * - For packs with "Completed" status, displays a "See Results" button
- * - For packs with "Coming Up" status, displays a "Notify Me" button (dummy link)
- * - Displays "You have X of Y takes in this pack" if user is logged in
- * - Shows 1st place prize in smaller text on one line
- * - Surfaces the eventTime value on the pack covers
- */
-export default function PacksIndexPage() {
-  const [packs, setPacks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  // Sort defaults to "newest"
+export default function PacksIndexPage({ packsData }) {
+  // Client state for sorting and filtering
   const [sortType, setSortType] = useState("newest");
-
-  // Checkboxes for filtering: "event" and "content"
   const [showEvent, setShowEvent] = useState(true);
   const [showContent, setShowContent] = useState(true);
 
-  useEffect(() => {
-	async function fetchPacks() {
-	  try {
-		console.log("[packs index] Requesting /api/packs...");
-		const res = await fetch("/api/packs");
-		const data = await res.json();
-
-		console.log("[packs index] Response data =>", data);
-
-		if (!res.ok || !data.success) {
-		  throw new Error(data.error || "Failed to load packs");
-		}
-		setPacks(data.packs || []);
-	  } catch (err) {
-		setError(err.message || "Error fetching packs");
-	  } finally {
-		setLoading(false);
-	  }
+  // Sorting function: sorts by newest, oldest, or soonest event
+  function sortPacks(list, type) {
+	const sorted = [...list];
+	if (type === "oldest") {
+	  sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+	} else if (type === "newest") {
+	  sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+	} else if (type === "soonest") {
+	  // For events: earliest eventTime first
+	  sorted.sort((a, b) => {
+		const aIsEvent = a.packType === "event" && a.eventTime;
+		const bIsEvent = b.packType === "event" && b.eventTime;
+		if (!aIsEvent && !bIsEvent) return 0;
+		if (!aIsEvent) return 1;
+		if (!bIsEvent) return -1;
+		return new Date(a.eventTime) - new Date(b.eventTime);
+	  });
 	}
+	return sorted;
+  }
 
-	fetchPacks();
-  }, []);
+  // Filtering function: only show packs of a certain type if checkbox is checked
+  function filterPacks(list) {
+	return list.filter((pack) => {
+	  if (pack.packType === "event" && showEvent) return true;
+	  if (pack.packType === "content" && showContent) return true;
+	  return false;
+	});
+  }
 
-  // Color-code different statuses
+  // Color-code the status badge
   function getStatusClasses(status) {
 	switch (status) {
 	  case "Coming Up":
@@ -67,55 +53,15 @@ export default function PacksIndexPage() {
 	}
   }
 
-  // Sorting function
-  function sortPacks(list, type) {
-	const sorted = [...list];
-	if (type === "oldest") {
-	  sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-	} else if (type === "newest") {
-	  sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-	} else if (type === "soonest") {
-	  // Sort events so earliest eventTime is first
-	  sorted.sort((a, b) => {
-		const aIsEvent = a.packType === "event" && a.eventTime;
-		const bIsEvent = b.packType === "event" && b.eventTime;
-		if (!aIsEvent && !bIsEvent) return 0;
-		if (!aIsEvent) return 1;
-		if (!bIsEvent) return -1;
-		return new Date(a.eventTime) - new Date(b.eventTime);
-	  });
-	}
-	return sorted;
-  }
-
-  // Filter function
-  function filterPacks(list) {
-	return list.filter((pack) => {
-	  if (pack.packType === "event" && showEvent) return true;
-	  if (pack.packType === "content" && showContent) return true;
-	  return false;
-	});
-  }
-
-  if (loading) {
-	return <div>Loading packs...</div>;
-  }
-
-  if (error) {
-	return <div style={{ color: "red" }}>{error}</div>;
-  }
-
-  // 1) Sort the array
-  const sortedPacks = sortPacks(packs, sortType);
-
-  // 2) Filter based on the checkboxes
+  // Apply sorting and filtering on the packsData from server-side
+  const sortedPacks = sortPacks(packsData, sortType);
   const visiblePacks = filterPacks(sortedPacks);
 
   return (
 	<div style={{ padding: "1rem" }}>
 	  <h1>All Packs</h1>
 
-	  {/* Sort dropdown */}
+	  {/* Sort Dropdown */}
 	  <div style={{ marginBottom: "1rem" }}>
 		<label style={{ marginRight: "0.5rem" }}>Sort by:</label>
 		<select
@@ -128,7 +74,7 @@ export default function PacksIndexPage() {
 		</select>
 	  </div>
 
-	  {/* Filter checkboxes */}
+	  {/* Filter Checkboxes */}
 	  <div style={{ marginBottom: "1rem" }}>
 		<label style={{ marginRight: "1rem" }}>
 		  <input
@@ -152,18 +98,13 @@ export default function PacksIndexPage() {
 		<p>No packs available.</p>
 	  ) : (
 		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-		  {visiblePacks.map((pack, idx) => {
-			console.log(`[packs index] Rendering pack #${idx}:`, pack);
-
+		  {visiblePacks.map((pack) => {
 			const statusClasses = getStatusClasses(pack.packStatus);
-
-			// Combine userTakeCount + propsCount => "You have X of Y takes..."
-			const hasCounts =
+			const combinedLine =
 			  typeof pack.userTakeCount === "number" &&
-			  typeof pack.propsCount === "number";
-			const combinedLine = hasCounts
-			  ? `You have ${pack.userTakeCount} of ${pack.propsCount} takes in this pack`
-			  : null;
+			  typeof pack.propsCount === "number"
+				? `You have ${pack.userTakeCount} of ${pack.propsCount} takes in this pack`
+				: null;
 
 			return (
 			  <div
@@ -193,8 +134,12 @@ export default function PacksIndexPage() {
 				</div>
 
 				<div className="p-4">
-				  <h2 className="text-lg font-semibold">{pack.packTitle}</h2>
-				  {/* Color-coded status */}
+				  <h2 className="text-lg font-semibold">
+					{pack.packTitle}
+				  </h2>
+				  <p className="text-xs text-gray-500">
+					{pack.propsCount} propositions
+				  </p>
 				  <span
 					className={`inline-block px-2 py-1 rounded text-xs font-semibold mt-1 ${statusClasses}`}
 				  >
@@ -207,7 +152,6 @@ export default function PacksIndexPage() {
 					</p>
 				  )}
 
-				  {/* Smaller 1st place prize text */}
 				  {pack.packPrize && (
 					<p className="text-sm text-green-600 mt-1">
 					  🎖️ 1st Place: {pack.packPrize}
@@ -224,7 +168,7 @@ export default function PacksIndexPage() {
 					</p>
 				  )}
 
-				  {/* Action button */}
+				  {/* Action Buttons Based on Pack Status */}
 				  {pack.packStatus === "Active" && (
 					<Link href={`/packs/${pack.packURL}`}>
 					  <button className="mt-4 w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -258,4 +202,24 @@ export default function PacksIndexPage() {
 	  )}
 	</div>
   );
+}
+
+// getServerSideProps: fetch packs from the consolidated API endpoint
+export async function getServerSideProps(context) {
+  const proto = context.req.headers["x-forwarded-proto"] || "http";
+  const host =
+	context.req.headers["x-forwarded-host"] || context.req.headers.host;
+  const origin = process.env.SITE_URL || `${proto}://${host}`;
+
+  try {
+	const res = await fetch(`${origin}/api/packs`);
+	const data = await res.json();
+	if (!res.ok || !data.success) {
+	  throw new Error(data.error || "Failed to load packs");
+	}
+	return { props: { packsData: data.packs || [] } };
+  } catch (error) {
+	console.error("[PacksIndexPage] Error fetching packs:", error);
+	return { props: { packsData: [] } };
+  }
 }

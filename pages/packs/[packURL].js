@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import StickyProgressHeader from "../../components/StickyProgressHeader";
 import PropCard from "../../components/PropCard";
 import { PackContextProvider, usePackContext } from "../../contexts/PackContext";
-import { useModal } from "../../contexts/ModalContext"; // Import our global modal hook
+import { useModal } from "../../contexts/ModalContext";
 
 /**
  * The top-level component provides PackContext and fetches data server-side.
@@ -24,14 +25,14 @@ export default function PackPage({ packData, leaderboard, debugLogs }) {
 
 /**
  * Child component: renders the pack detail.
- * It now displays the packCover (if available) at the top,
+ * It displays the packCover (if available) at the top,
  * followed by the pack title, prize info, props list, and leaderboard.
  */
 function PackInner({ packData, leaderboard, debugLogs }) {
   const { data: session } = useSession();
   const { verifiedProps } = usePackContext();
   const { openModal } = useModal();
-  const [activityLogged, setActivityLogged] = useState(false); // Track activity logging state
+  const [activityLogged, setActivityLogged] = useState(false);
 
   if (!packData) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
@@ -44,7 +45,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 
   const {
 	packTitle,
-	packCover, // New: attachment field for the pack cover image
+	packCover, // Array of cover images
 	packPrize,
 	packPrizeImage,
 	prizeSummary,
@@ -56,8 +57,8 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   const coverImageUrl =
 	packCover && packCover.length > 0 ? packCover[0].url : null;
 
-  // NEW: Sort props by the new numeric field "propOrder" (lowest to highest)
-  const sortedProps = [...props].sort(
+  // Sort props by numeric field "propOrder"
+  const sortedProps = [...(props || [])].sort(
 	(a, b) => (a.propOrder || 0) - (b.propOrder || 0)
   );
 
@@ -102,10 +103,9 @@ function PackInner({ packData, leaderboard, debugLogs }) {
   useEffect(() => {
 	if (packData && packData.props.length > 0) {
 	  if (verifiedProps.size === packData.props.length && !activityLogged) {
-		// Only log the activity if it's the first time the pack is completed
-		setActivityLogged(true); // Prevent re-triggering
+		setActivityLogged(true);
 		openModal("packCompleted", { packTitle });
-		logActivity(); // Log the activity
+		logActivity();
 	  }
 	}
 	// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,9 +123,9 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
-		  profileID: session.user.profileID,      // textual profile ID
-		  packID: packData.packID,                // textual pack ID
-		  airtableId: session.user.airtableId,    // native Airtable record ID
+		  profileID: session.user.profileID,
+		  packID: packData.packID,
+		  airtableId: session.user.airtableId,
 		}),
 	  });
 	  const data = await response.json();
@@ -193,8 +193,11 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		)}
 
 		{/* Render the pack-specific leaderboard at the bottom */}
-		<PackLeaderboard leaderboard={leaderboard} />
+		<PackLeaderboard leaderboard={leaderboard} packData={packData} />
 	  </div>
+
+	  {/* Extra bottom padding to prevent the sticky bar from overlapping the leaderboard */}
+	  <div className="pb-32" />
 	</>
   );
 }
@@ -202,7 +205,21 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 /**
  * Subcomponent to display the pack leaderboard at the bottom.
  */
-function PackLeaderboard({ leaderboard }) {
+function PackLeaderboard({ leaderboard, packData }) {
+  function obscurePhone(e164Phone) {
+	const stripped = e164Phone.replace(/\D/g, "");
+	let digits = stripped;
+	if (digits.startsWith("1") && digits.length === 11) {
+	  digits = digits.slice(1);
+	}
+	if (digits.length !== 10) {
+	  return e164Phone; // fallback
+	}
+	const area = digits.slice(0, 3);
+	const middle = digits.slice(3, 6);
+	return `(${area}) ${middle} ****`;
+  }
+
   return (
 	<div className="mt-8 pt-4 border-t border-gray-300">
 	  <h2 className="text-xl font-bold mb-2">Leaderboard for This Pack</h2>
@@ -223,46 +240,40 @@ function PackLeaderboard({ leaderboard }) {
 			  <tr key={item.phone} className="border-b">
 				<td className="py-2 px-3">
 				  {item.profileID ? (
-					<a
-					  href={`/profile/${item.profileID}`}
-					  className="text-blue-600 underline"
-					>
-					  {obscurePhone(item.phone)}
-					</a>
+					<Link href={`/profile/${item.profileID}`}>
+					  <span className="text-blue-600 underline">
+						{obscurePhone(item.phone)}
+					  </span>
+					</Link>
 				  ) : (
 					obscurePhone(item.phone)
 				  )}
 				</td>
-				<td className="py-2 px-3">{item.count}</td>
+				<td className="py-2 px-3">{item.takes}</td>
 				<td className="py-2 px-3">{Math.round(item.points)}</td>
 				<td className="py-2 px-3">
 				  {item.won}-{item.lost}
+				  {item.pending ? ` (Pending: ${item.pending})` : ""}
 				</td>
 			  </tr>
 			))}
 		  </tbody>
 		</table>
 	  )}
+	  <p className="mt-4">
+		<Link
+		  href={`/packs/${packData ? packData.packURL : "#"}`}
+		  className="text-blue-600 underline"
+		>
+		  Back to Pack
+		</Link>
+	  </p>
 	</div>
   );
 }
 
-function obscurePhone(e164Phone) {
-  const stripped = e164Phone.replace(/\D/g, "");
-  let digits = stripped;
-  if (digits.startsWith("1") && digits.length === 11) {
-	digits = digits.slice(1);
-  }
-  if (digits.length !== 10) {
-	return e164Phone; // fallback
-  }
-  const area = digits.slice(0, 3);
-  const middle = digits.slice(3, 6);
-  return `(${area}) ${middle} ****`;
-}
-
 /**
- * Standard SSR to fetch pack data + leaderboard.
+ * getServerSideProps: Fetch consolidated pack data and leaderboard.
  */
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -271,80 +282,36 @@ export async function getServerSideProps(context) {
 	return { notFound: true };
   }
 
-  // 1) Build the origin string
   const proto = context.req.headers["x-forwarded-proto"] || "http";
-  const host = context.req.headers["x-forwarded-host"] || context.req.headers.host;
+  const host =
+	context.req.headers["x-forwarded-host"] || context.req.headers.host;
   const fallbackOrigin = `${proto}://${host}`;
   const origin = process.env.SITE_URL || fallbackOrigin;
 
   console.log("[PackPage] getServerSideProps => packURL:", packURL);
-  console.log("[PackPage] getServerSideProps => proto:", proto);
-  console.log("[PackPage] getServerSideProps => host:", host);
   console.log("[PackPage] getServerSideProps => final origin:", origin);
 
-  // 2) Fetch the pack data from your API route
-  const packData = await fetchPackByURL(packURL, origin);
-
-  // If we got nothing, return 404
-  if (!packData) {
-	console.log("[PackPage] => packData is null => 404");
-	return { notFound: true };
-  }
-
-  // 3) Fetch the pack-specific leaderboard from /api/leaderboard?packURL=...
-  let leaderboard = [];
   try {
-	const lbUrl = `${origin}/api/leaderboard?packURL=${encodeURIComponent(packURL)}`;
-	console.log("[PackPage] fetching pack leaderboard =>", lbUrl);
-	const lbResp = await fetch(lbUrl);
-	const lbData = await lbResp.json();
-	if (lbData.success) {
-	  leaderboard = lbData.leaderboard || [];
-	} else {
-	  console.log("[PackPage] could not load leaderboard =>", lbData.error);
+	const res = await fetch(`${origin}/api/packs/${encodeURIComponent(packURL)}`);
+	const data = await res.json();
+	if (!res.ok || !data.success) {
+	  throw new Error(data.error || "Failed to load pack");
 	}
-  } catch (err) {
-	console.error("[PackPage] error fetching leaderboard =>", err);
-  }
-
-  // 4) Return the pack data, leaderboard, plus any debug logs you want the client to see
-  const debugLogs = {
-	packURL,
-	origin,
-	packDataReceived: !!packData,
-	leaderboardCount: leaderboard.length,
-  };
-
-  return {
-	props: {
-	  packData,
-	  leaderboard,
-	  debugLogs,
-	},
-  };
-}
-
-/**
- * Helper to fetch a pack (and new fields) by URL, using a dynamic origin.
- */
-async function fetchPackByURL(packURL, origin) {
-  try {
-	const apiUrl = `${origin}/api/packs/${packURL}`;
-	console.log("[fetchPackByURL] Calling =>", apiUrl);
-
-	const response = await fetch(apiUrl);
-	if (!response.ok) {
-	  console.log("[fetchPackByURL] response not OK =>", response.status);
-	  return null;
-	}
-	const data = await response.json();
-	if (!data.success) {
-	  console.log("[fetchPackByURL] data.success = false =>", data.error);
-	  return null;
-	}
-	return data.pack;
+	const debugLogs = {
+	  packURL,
+	  origin,
+	  packDataReceived: !!data.pack,
+	  leaderboardCount: data.leaderboard ? data.leaderboard.length : 0,
+	};
+	return {
+	  props: {
+		packData: data.pack,
+		leaderboard: data.leaderboard || [],
+		debugLogs,
+	  },
+	};
   } catch (error) {
-	console.error("[fetchPackByURL] Error =>", error);
-	return null;
+	console.error("[PackPage] Error:", error);
+	return { notFound: true };
   }
 }

@@ -7,26 +7,21 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
 );
 
 export default async function handler(req, res) {
-  const { packURL } = req.query;
-  console.log("[API /packs/[packURL]] handler => packURL:", packURL);
+  if (req.method !== "GET") {
+	return res
+	  .status(405)
+	  .json({ success: false, error: "Method not allowed" });
+  }
 
+  const { packURL } = req.query;
   if (!packURL) {
-	console.log("[API /packs/[packURL]] => missing packURL param => 400");
-	return res.status(400).json({
-	  success: false,
-	  error: "Missing packURL parameter",
-	});
+	return res
+	  .status(400)
+	  .json({ success: false, error: "Missing packURL parameter" });
   }
 
   try {
-	// Log environment variables (for debugging)
-	console.log(
-	  "AIRTABLE_API_KEY starts with:",
-	  process.env.AIRTABLE_API_KEY?.slice?.(0, 4)
-	);
-	console.log("AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
-
-	// Find the pack record matching the given packURL
+	// 1. Fetch the pack record by packURL.
 	const packRecords = await base("Packs")
 	  .select({
 		filterByFormula: `{packURL} = "${packURL}"`,
@@ -34,50 +29,28 @@ export default async function handler(req, res) {
 	  })
 	  .firstPage();
 
-	console.log(
-	  "[API /packs/[packURL]] => packRecords length:",
-	  packRecords?.length
-	);
-
 	if (!packRecords || packRecords.length === 0) {
-	  console.log("[API /packs/[packURL]] => No matching pack => 404");
-	  return res.status(404).json({
-		success: false,
-		error: "Pack not found",
-	  });
+	  return res
+		.status(404)
+		.json({ success: false, error: "Pack not found" });
 	}
 
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
 
-	// Build the Props data by retrieving linked record IDs from the "Props" field
+	// 2. Fetch linked Props.
 	const linkedPropIDs = packFields.Props || [];
-	console.log("[API /packs/[packURL]] => linkedPropIDs:", linkedPropIDs);
-
 	let propsData = [];
-
 	if (linkedPropIDs.length > 0) {
-	  // Build a formula like: OR(RECORD_ID()='rec123', RECORD_ID()='rec456', ...)
 	  const formula = `OR(${linkedPropIDs
 		.map((id) => `RECORD_ID()='${id}'`)
 		.join(",")})`;
-
 	  const propsRecords = await base("Props")
-		.select({
-		  filterByFormula: formula,
-		  maxRecords: 100,
-		})
+		.select({ filterByFormula: formula, maxRecords: 100 })
 		.all();
-
-	  console.log(
-		"[API /packs/[packURL]] => propsRecords length:",
-		propsRecords?.length
-	  );
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
-
-		// Parse the contentImage attachments into an array of URLs and filenames
 		let contentImageUrls = [];
 		if (Array.isArray(f.contentImage)) {
 		  contentImageUrls = f.contentImage.map((img) => ({
@@ -85,8 +58,6 @@ export default async function handler(req, res) {
 			filename: img.filename,
 		  }));
 		}
-
-		// Parse contentTitles & contentURLs to build an array of { title, url } pairs
 		const contentTitles = Array.isArray(f.contentTitles)
 		  ? f.contentTitles
 		  : [];
@@ -97,7 +68,6 @@ export default async function handler(req, res) {
 		  const url = contentURLs[i] || "#";
 		  return { title, url };
 		});
-
 		return {
 		  airtableId: record.id,
 		  propID: f.propID || null,
@@ -106,12 +76,12 @@ export default async function handler(req, res) {
 		  propStatus: f.propStatus || "open",
 		  contentImageUrls,
 		  contentLinks,
-		  propOrder: f.propOrder || 0, // include the numeric ordering field
+		  propOrder: f.propOrder || 0,
 		};
 	  });
 	}
 
-	// Parse the "packPrizeImage" attachment field
+	// 3. Parse packPrizeImage and packCover fields.
 	let packPrizeImage = [];
 	if (Array.isArray(packFields.packPrizeImage)) {
 	  packPrizeImage = packFields.packPrizeImage.map((img) => ({
@@ -119,8 +89,6 @@ export default async function handler(req, res) {
 		filename: img.filename,
 	  }));
 	}
-
-	// Parse the "packCover" attachment field (NEW)
 	let packCover = [];
 	if (Array.isArray(packFields.packCover)) {
 	  packCover = packFields.packCover.map((img) => ({
@@ -129,31 +97,79 @@ export default async function handler(req, res) {
 	  }));
 	}
 
-	// Return the pack data along with its props and other fields
-	console.log(
-	  "[API /packs/[packURL]] => returning success, propsData length:",
-	  propsData.length
-	);
+	// 4. Consolidate pack data.
+	const packData = {
+	  packID: packFields.packID,
+	  packTitle: packFields.packTitle || "Untitled Pack",
+	  packURL: packFields.packURL,
+	  props: propsData,
+	  packPrize: packFields.packPrize || "",
+	  packPrizeImage,
+	  prizeSummary: packFields.prizeSummary || "",
+	  packPrizeURL: packFields.packPrizeURL || "",
+	  packCover,
+	};
+
+	// 5. Fetch leaderboard data for this pack.
+	const linkedTakesIds = packFields.Takes || [];
+	let leaderboard = [];
+	if (linkedTakesIds.length > 0) {
+	  const orFormula = `OR(${linkedTakesIds
+		.map((id) => `RECORD_ID()="${id}"`)
+		.join(",")})`;
+	  const takesRecords = await base("Takes")
+		.select({ filterByFormula: orFormula, maxRecords: 10000 })
+		.all();
+
+	  const phoneStats = new Map();
+	  takesRecords.forEach((take) => {
+		const tf = take.fields;
+		if (tf.takeStatus === "overwritten") return;
+		const phone = tf.takeMobile || "Unknown";
+		const points = tf.takePTS || 0;
+		const result = tf.takeResult || "";
+		let profileID = null;
+		if (tf.Profile && tf.Profile.length > 0) {
+		  profileID = tf.profileID || null;
+		}
+		if (!phoneStats.has(phone)) {
+		  phoneStats.set(phone, {
+			phone,
+			profileID,
+			takes: 0,
+			points: 0,
+			won: 0,
+			lost: 0,
+			pending: 0,
+		  });
+		}
+		const stats = phoneStats.get(phone);
+		stats.takes += 1;
+		stats.points += points;
+		if (result === "Won") {
+		  stats.won += 1;
+		} else if (result === "Lost") {
+		  stats.lost += 1;
+		} else if (result === "Pending") {
+		  stats.pending += 1;
+		}
+		phoneStats.set(phone, stats);
+	  });
+
+	  leaderboard = Array.from(phoneStats.values()).sort(
+		(a, b) => b.points - a.points
+	  );
+	}
 
 	return res.status(200).json({
 	  success: true,
-	  pack: {
-		packID: packFields.packID,
-		packTitle: packFields.packTitle || "Untitled Pack",
-		packURL: packFields.packURL,
-		props: propsData,
-		packPrize: packFields.packPrize || "",
-		packPrizeImage,
-		prizeSummary: packFields.prizeSummary || "",
-		packPrizeURL: packFields.packPrizeURL || "",
-		packCover, // NEW field for the cover image
-	  },
+	  pack: packData,
+	  leaderboard,
 	});
   } catch (error) {
 	console.error("[API /packs/[packURL]] => Error:", error);
-	return res.status(500).json({
-	  success: false,
-	  error: "Internal server error",
-	});
+	return res
+	  .status(500)
+	  .json({ success: false, error: "Internal server error" });
   }
 }
