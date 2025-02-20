@@ -4,23 +4,11 @@ import React, { useEffect, useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
 
-/**
- * Renders a single Contest detail page.
- * Fetches the Contest data from /api/contests/[contestID].
- * Displays linked Packs as clickable cards (with cover images).
- * Also fetches & displays a leaderboard from /api/contests/[contestID]/leaderboard.
- * 
- * Leaderboard:
- * - Uses `profileID` instead of phone
- * - Links to /profile/[profileID]
- */
 export default function ContestDetailPage({ contestData, error }) {
-  // State for loading the leaderboard
   const [leaderboard, setLeaderboard] = useState([]);
   const [loadingLB, setLoadingLB] = useState(true);
   const [lbError, setLbError] = useState("");
 
-  // When we have a valid contestData, fetch the leaderboard from /api/contests/[contestID]/leaderboard
   useEffect(() => {
 	if (!contestData?.contestID) return;
 	const fetchLB = async () => {
@@ -40,7 +28,6 @@ export default function ContestDetailPage({ contestData, error }) {
 	fetchLB();
   }, [contestData]);
 
-  // If there's an error loading the main contest data, show that
   if (error) {
 	return <div style={{ color: "red" }}>Error: {error}</div>;
   }
@@ -51,8 +38,9 @@ export default function ContestDetailPage({ contestData, error }) {
   const {
 	contestID,
 	contestTitle,
+	contestDetails,
+	contestEndTime, // NEW
 	packs = [],
-	// We are intentionally not displaying raw linkedPropIDs / linkedTakeIDs
   } = contestData;
 
   return (
@@ -68,7 +56,24 @@ export default function ContestDetailPage({ contestData, error }) {
 		Contest ID: <strong>{contestID}</strong>
 	  </p>
 
-	  {/* Section for linked Packs */}
+	  {/* Optional details text */}
+	  {contestDetails && (
+		<section style={{ marginBottom: "1rem" }}>
+		  <h2>Contest Details</h2>
+		  <p style={{ whiteSpace: "pre-wrap" }}>{contestDetails}</p>
+		</section>
+	  )}
+
+	  {/* Display the end time if present */}
+	  {contestEndTime && (
+		<p style={{ marginBottom: "1rem", color: "#555" }}>
+		  Contest End Time:{" "}
+		  <strong>
+			{new Date(contestEndTime).toLocaleString()}
+		  </strong>
+		</p>
+	  )}
+
 	  <section style={{ marginBottom: "2rem" }}>
 		<h2>Packs in this Contest</h2>
 		{packs.length === 0 ? (
@@ -119,9 +124,7 @@ export default function ContestDetailPage({ contestData, error }) {
 		  <table style={{ borderCollapse: "collapse", width: "100%" }}>
 			<thead>
 			  <tr style={{ borderBottom: "1px solid #ccc" }}>
-				<th style={{ textAlign: "left", padding: "0.5rem" }}>
-				  Profile
-				</th>
+				<th style={{ textAlign: "left", padding: "0.5rem" }}>Profile</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Takes</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Points</th>
 				<th style={{ textAlign: "left", padding: "0.5rem" }}>Record</th>
@@ -145,7 +148,6 @@ export default function ContestDetailPage({ contestData, error }) {
 					  )}
 					</td>
 					<td style={{ padding: "0.5rem" }}>{count}</td>
-					{/* Round points to 0 decimals */}
 					<td style={{ padding: "0.5rem" }}>{Math.round(points)}</td>
 					<td style={{ padding: "0.5rem" }}>
 					  {won}-{lost}

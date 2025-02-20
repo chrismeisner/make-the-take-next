@@ -31,24 +31,26 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// Extract the one contest record
+	// Extract the single contest record
 	const contestRec = contestRecords[0];
 	const f = contestRec.fields;
 
 	// Basic info
 	const contestData = {
-	  airtableId: contestRec.id,         // "recXYZ"
+	  airtableId: contestRec.id,
 	  contestID: f.contestID || contestID,
 	  contestTitle: f.contestTitle || "Untitled Contest",
+	  contestDetails: f.contestDetails || "",
+	  // NEW: Retrieve the date/time field from Airtable
+	  contestEndTime: f.contestEndTime || null,
 	};
 
 	// Linked field: "Packs" => array of record IDs
 	const linkedPackIDs = f.Packs || [];
 
-	// 2) If there are linked packs, fetch them to get details like packTitle, packURL, packCover, etc.
+	// 2) Fetch pack details if any
 	let packsData = [];
 	if (linkedPackIDs.length > 0) {
-	  // Build a filter formula: OR(RECORD_ID()='rec1', RECORD_ID()='rec2', ...)
 	  const formula = `OR(${linkedPackIDs
 		.map((id) => `RECORD_ID()="${id}"`)
 		.join(",")})`;
@@ -73,23 +75,21 @@ export default async function handler(req, res) {
 		}
 
 		return {
-		  airtableId: packRec.id,             // "recPACKxyz"
+		  airtableId: packRec.id,
 		  packID: pf.packID || packRec.id,
 		  packTitle: pf.packTitle || "Untitled Pack",
 		  packURL: pf.packURL || "",
-		  packCover,                          // array of cover attachments
+		  packCover,
 		};
 	  });
 	}
 
-	// Attach to our contestData
 	contestData.packs = packsData;
 
-	// Optional: If you want "Props" or "Takes" from the Contest record (via Lookup fields), you can still store them:
+	// If you want "Props" or "Takes" from the Contest record, keep them:
 	contestData.linkedPropIDs = f.Props || [];
 	contestData.linkedTakeIDs = f.Takes || [];
 
-	// 3) Return success with the expanded data
 	return res.status(200).json({
 	  success: true,
 	  contest: contestData,
