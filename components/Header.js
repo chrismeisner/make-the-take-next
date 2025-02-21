@@ -8,6 +8,13 @@ import { signOut, useSession } from "next-auth/react";
 export default function Header() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  // 1) HIDE HEADER ON HOME PAGE:
+  if (router.pathname === "/") {
+	// Return nothing => no header displayed on "/"
+	return null;
+  }
+
   const [userPoints, setUserPoints] = useState(null);
 
   useEffect(() => {

@@ -1,3 +1,5 @@
+//components/modals/GlobalModal.js
+
 import React from "react";
 
 export default function GlobalModal({ isOpen, onClose, children }) {

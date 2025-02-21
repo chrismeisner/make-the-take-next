@@ -1,3 +1,5 @@
+// File: /pages/_app.js
+
 import "../styles/globals.css";
 import { SessionProvider } from "next-auth/react";
 import Layout from "../components/Layout";

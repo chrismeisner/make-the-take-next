@@ -1,11 +1,13 @@
 // File: /components/GlobalModalRenderer.js
+
 import React from "react";
 import { useModal } from "../contexts/ModalContext";
 import TeamsModal from "./modals/TeamsModal";
 import PointsModal from "./modals/PointsModal";
 import PrizeModal from "./modals/PrizeModal";
 import FeaturedPackModal from "./modals/FeaturedPackModal";
-import PackCompletedModal from "./modals/PackCompletedModal"; // <-- Import the new modal
+import PackCompletedModal from "./modals/PackCompletedModal";
+import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -47,7 +49,7 @@ export default function GlobalModalRenderer() {
 		  prize={modalConfig.modalProps.prize}
 		/>
 	  );
-	case "packCompleted": // <-- New case
+	case "packCompleted":
 	  return (
 		<PackCompletedModal
 		  isOpen={true}
@@ -55,6 +57,15 @@ export default function GlobalModalRenderer() {
 		  packTitle={modalConfig.modalProps.packTitle}
 		/>
 	  );
+	case "membersAccess": // <-- NEW case
+	  return (
+		<MembersAccessModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  {...modalConfig.modalProps}
+		/>
+	  );
+
 	default:
 	  return null;
   }
