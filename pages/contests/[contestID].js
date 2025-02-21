@@ -1,10 +1,15 @@
 // File: /pages/contests/[contestID].js
 
 import React, { useEffect, useState } from "react";
+import { useSession } from "next-auth/react"; // <-- Import useSession
 import Head from "next/head";
 import Link from "next/link";
 
 export default function ContestDetailPage({ contestData, error }) {
+  // 1) NextAuth session
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
+
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState([]);
   const [loadingLB, setLoadingLB] = useState(true);
@@ -15,10 +20,15 @@ export default function ContestDetailPage({ contestData, error }) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [signupMessage, setSignupMessage] = useState("");
 
-  // Fetch the leaderboard once we have a valid contestID
+  // Countdown state
+  const [timeLeft, setTimeLeft] = useState("");
+
+  /*******************************
+   * Fetch the leaderboard data  *
+   *******************************/
   useEffect(() => {
 	if (!contestData?.contestID) return;
-	const fetchLB = async () => {
+	async function fetchLB() {
 	  try {
 		const res = await fetch(`/api/contests/${contestData.contestID}/leaderboard`);
 		const data = await res.json();
@@ -31,11 +41,47 @@ export default function ContestDetailPage({ contestData, error }) {
 	  } finally {
 		setLoadingLB(false);
 	  }
-	};
+	}
 	fetchLB();
   }, [contestData]);
 
-  // Basic error checks
+  /*******************************
+   * Dynamic second-by-second countdown
+   *******************************/
+  useEffect(() => {
+	if (!contestData?.contestEndTime) return;
+
+	const endTime = new Date(contestData.contestEndTime).getTime();
+
+	function updateCountdown() {
+	  const now = Date.now();
+	  const diff = endTime - now;
+
+	  if (diff <= 0) {
+		setTimeLeft("Contest Ended!");
+		return;
+	  }
+
+	  // Convert diff (ms) to days/hours/min/sec
+	  const seconds = Math.floor(diff / 1000) % 60;
+	  const minutes = Math.floor(diff / (1000 * 60)) % 60;
+	  const hours = Math.floor(diff / (1000 * 60 * 60)) % 24;
+	  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+	  let result = "";
+	  if (days > 0) result += `${days}d `;
+	  if (hours > 0 || days > 0) result += `${hours}h `;
+	  if (minutes > 0 || hours > 0 || days > 0) result += `${minutes}m `;
+	  result += `${seconds}s`;
+
+	  setTimeLeft(result.trim());
+	}
+
+	updateCountdown();
+	const intervalId = setInterval(updateCountdown, 1000);
+	return () => clearInterval(intervalId);
+  }, [contestData?.contestEndTime]);
+
   if (error) {
 	return <div className="p-4 text-red-600">Error: {error}</div>;
   }
@@ -51,20 +97,16 @@ export default function ContestDetailPage({ contestData, error }) {
 	packs = [],
   } = contestData;
 
-  // Handler for the "Sign Up" CTA
+  // Sign-up handler
   const handleSignUp = async () => {
-	// Simple local validation
 	if (!phoneNumber) {
 	  setSignupMessage("Please enter a valid phone number.");
 	  return;
 	}
-	// Clear old message
 	setSignupMessage("");
-
 	try {
-	  // Example: POST to /api/subscribeSMS, omitted here
+	  // In real usage, you'd POST to an API
 	  console.log("Signing up user phone =>", phoneNumber);
-	  // simulate success
 	  setSignupMessage("Success! You are signed up for SMS alerts.");
 	} catch (err) {
 	  console.error("Sign-up error =>", err);
@@ -80,24 +122,28 @@ export default function ContestDetailPage({ contestData, error }) {
 
 	  {/* Hero Section */}
 	  <div className="bg-gray-100 py-10 px-4 text-center">
-		<h1 className="text-3xl md:text-4xl font-bold mb-2">
-		  {contestTitle}
-		</h1>
-		<p className="text-gray-600 mb-6">
+		<h1 className="text-3xl md:text-4xl font-bold mb-2">{contestTitle}</h1>
+		<p className="text-gray-600 mb-4">
 		  Contest ID: <strong>{contestID}</strong>
 		</p>
 
-		{/* If there's an end time, display it in the hero */}
+		{/* Countdown */}
 		{contestEndTime && (
-		  <p className="text-gray-700 mb-4">
-			Contest Ends:{" "}
-			<strong>
-			  {new Date(contestEndTime).toLocaleString()}
-			</strong>
-		  </p>
+		  <div className="mb-4">
+			{timeLeft === "Contest Ended!" ? (
+			  <p className="text-red-600 text-lg font-semibold">
+				Contest Ended!
+			  </p>
+			) : (
+			  <>
+				<p className="text-gray-700 mb-1">Time Left:</p>
+				<p className="text-xl font-semibold text-blue-600">{timeLeft}</p>
+			  </>
+			)}
+		  </div>
 		)}
 
-		{/* If there's contest details, show them below the heading */}
+		{/* Contest Details */}
 		{contestDetails && (
 		  <div className="max-w-2xl mx-auto mb-4">
 			<p className="text-sm md:text-base whitespace-pre-wrap text-gray-700">
@@ -106,62 +152,64 @@ export default function ContestDetailPage({ contestData, error }) {
 		  </div>
 		)}
 
-		{/* CTA to sign up for SMS alerts */}
-		<div className="flex flex-col items-center mt-4 space-y-2">
-		  <h3 className="text-lg font-semibold">Stay Updated!</h3>
-		  <p className="text-sm text-gray-600">
-			Get an SMS alert whenever new packs are released for this contest.
-		  </p>
-		  <div className="text-xs text-gray-500">
-			By subscribing, you consent to receive text messages (SMS).
-			Standard message and data rates may apply. Reply STOP at any time to unsubscribe.
-		  </div>
-
-		  {/* Phone input + Sign up button */}
-		  <div className="flex flex-col md:flex-row items-start md:items-center gap-2 mt-2">
-			<label className="block md:mr-2">
-			  <span className="text-sm text-gray-700">Mobile Number:</span>
-			  <input
-				type="tel"
-				value={phoneNumber}
-				onChange={(e) => setPhoneNumber(e.target.value)}
-				placeholder="+1 (555) 555-5555"
-				className="mt-1 px-3 py-2 border border-gray-300 rounded w-48 md:w-56"
-			  />
-			</label>
-			<button
-			  onClick={handleSignUp}
-			  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-			>
-			  Sign Up
-			</button>
-		  </div>
-
-		  {/* "I agree" checkbox below the phone and button */}
-		  <div className="mt-2">
-			<label className="inline-flex items-center gap-2">
-			  <input
-				type="checkbox"
-				checked={subscribeSMS}
-				onChange={(e) => setSubscribeSMS(e.target.checked)}
-				className="h-4 w-4"
-			  />
-			  <span className="text-sm">
-				I agree to receive text messages about new packs.
-			  </span>
-			</label>
-		  </div>
-
-		  {signupMessage && (
-			<p
-			  className={`mt-2 ${
-				signupMessage.startsWith("Error") ? "text-red-600" : "text-green-600"
-			  }`}
-			>
-			  {signupMessage}
+		{/* Conditionally Render "Stay Updated!" if user is NOT logged in */}
+		{!isLoggedIn && (
+		  <div className="flex flex-col items-center mt-4 space-y-2">
+			<h3 className="text-lg font-semibold">Stay Updated!</h3>
+			<p className="text-sm text-gray-600">
+			  Get an SMS alert whenever new packs are released for this contest.
 			</p>
-		  )}
-		</div>
+			<div className="text-xs text-gray-500">
+			  By subscribing, you consent to receive text messages (SMS).
+			  Standard rates may apply. Reply STOP to unsubscribe.
+			</div>
+
+			{/* Phone input + Sign up button */}
+			<div className="flex flex-col md:flex-row items-start md:items-center gap-2 mt-2">
+			  <label className="block md:mr-2">
+				<span className="text-sm text-gray-700">Mobile Number:</span>
+				<input
+				  type="tel"
+				  value={phoneNumber}
+				  onChange={(e) => setPhoneNumber(e.target.value)}
+				  placeholder="+1 (555) 555-5555"
+				  className="mt-1 px-3 py-2 border border-gray-300 rounded w-48 md:w-56"
+				/>
+			  </label>
+			  <button
+				onClick={handleSignUp}
+				className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+			  >
+				Sign Up
+			  </button>
+			</div>
+
+			{/* "I agree" checkbox below phone */}
+			<div className="mt-2">
+			  <label className="inline-flex items-center gap-2">
+				<input
+				  type="checkbox"
+				  checked={subscribeSMS}
+				  onChange={(e) => setSubscribeSMS(e.target.checked)}
+				  className="h-4 w-4"
+				/>
+				<span className="text-sm">
+				  I agree to receive text messages about new packs.
+				</span>
+			  </label>
+			</div>
+
+			{signupMessage && (
+			  <p
+				className={`mt-2 ${
+				  signupMessage.startsWith("Error") ? "text-red-600" : "text-green-600"
+				}`}
+			  >
+				{signupMessage}
+			  </p>
+			)}
+		  </div>
+		)}
 	  </div>
 
 	  {/* Packs Section */}
@@ -215,6 +263,8 @@ export default function ContestDetailPage({ contestData, error }) {
 			<table className="table-auto w-full border-collapse">
 			  <thead>
 				<tr className="border-b bg-gray-50">
+				  {/* Rank Column */}
+				  <th className="text-left py-2 px-3">Rank</th>
 				  <th className="text-left py-2 px-3">Profile</th>
 				  <th className="text-left py-2 px-3">Takes</th>
 				  <th className="text-left py-2 px-3">Points</th>
@@ -223,9 +273,13 @@ export default function ContestDetailPage({ contestData, error }) {
 			  </thead>
 			  <tbody>
 				{leaderboard.map((item, idx) => {
+				  // idx => rank
+				  const rank = idx + 1;
 				  const { profileID, count, points, won, lost } = item;
+
 				  return (
 					<tr key={idx} className="border-b hover:bg-gray-50">
+					  <td className="py-2 px-3 font-semibold">{rank}</td>
 					  <td className="py-2 px-3">
 						{profileID ? (
 						  <Link
@@ -255,7 +309,9 @@ export default function ContestDetailPage({ contestData, error }) {
   );
 }
 
-// Standard SSR
+/**
+ * Standard SSR to load the contest data from /api/contests/[contestID].
+ */
 export async function getServerSideProps(context) {
   const { contestID } = context.params;
   if (!contestID) {
