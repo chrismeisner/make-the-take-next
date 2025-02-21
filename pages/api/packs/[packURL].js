@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   console.log("[packURL] Received request =>", packURL);
 
   try {
-	// 1. Fetch the pack record by packURL.
+	// 1. Fetch the pack record by packURL
 	console.log("[packURL] Querying Packs table => packURL:", packURL);
 	const packRecords = await base("Packs")
 	  .select({
@@ -44,7 +44,9 @@ export default async function handler(req, res) {
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
 
-	// 2. Fetch linked Props.
+	// ---------------------------------------------
+	// 2. Fetch linked Props (existing logic)
+	// ---------------------------------------------
 	const linkedPropIDs = packFields.Props || [];
 	console.log("[packURL] linkedPropIDs =>", linkedPropIDs);
 
@@ -66,6 +68,7 @@ export default async function handler(req, res) {
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
+
 		let contentImageUrls = [];
 		if (Array.isArray(f.contentImage)) {
 		  contentImageUrls = f.contentImage.map((img) => ({
@@ -98,7 +101,9 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// 3. Parse packPrizeImage and packCover fields.
+	// ---------------------------------------------
+	// 3. Parse packPrizeImage and packCover fields
+	// ---------------------------------------------
 	let packPrizeImage = [];
 	if (Array.isArray(packFields.packPrizeImage)) {
 	  packPrizeImage = packFields.packPrizeImage.map((img) => ({
@@ -115,7 +120,9 @@ export default async function handler(req, res) {
 	  }));
 	}
 
-	// 4a. Fetch a linked Event record (if any), grabbing eventTime
+	// ---------------------------------------------
+	// 4a. (Optional) Fetch linked Event record
+	// ---------------------------------------------
 	const linkedEventIDs = packFields.Event || [];
 	let packEventTime = null;
 	if (linkedEventIDs.length > 0) {
@@ -135,8 +142,9 @@ export default async function handler(req, res) {
 	  }
 	}
 
-	// 4b. Fetch linked Content records (if any)
-	//     We'll assume there's a field in "Packs" called "Content" linking to a "Content" table
+	// ---------------------------------------------
+	// 4b. Fetch linked Content records (optional)
+	// ---------------------------------------------
 	const linkedContentIDs = packFields.Content || [];
 	let contentData = [];
 	if (linkedContentIDs.length > 0) {
@@ -167,12 +175,44 @@ export default async function handler(req, res) {
 		  contentSource: cf.contentSource || "",
 		  contentURL: cf.contentURL || "#",
 		  contentImage,
-		  // if there's no contentBody, we omit it
 		};
 	  });
 	}
 
-	// 5. Consolidate pack data (logging).
+	// ---------------------------------------------
+	// 4c. Fetch linked Contests (the new part)
+	// ---------------------------------------------
+	const linkedContestIDs = packFields.Contests || [];
+	let contestsData = [];
+	if (linkedContestIDs.length > 0) {
+	  console.log("[packURL] fetching Contests =>", linkedContestIDs);
+	  const contestFormula = `OR(${linkedContestIDs
+		.map((id) => `RECORD_ID()="${id}"`)
+		.join(",")})`;
+
+	  const contestRecords = await base("Contests")
+		.select({
+		  filterByFormula: contestFormula,
+		  maxRecords: 50,
+		})
+		.all();
+
+	  console.log("[packURL] contestRecords length =>", contestRecords.length);
+
+	  contestsData = contestRecords.map((rec) => {
+		const cf = rec.fields;
+		return {
+		  airtableId: rec.id,
+		  contestID: cf.contestID || "",
+		  contestTitle: cf.contestTitle || "Untitled Contest",
+		  // add any other relevant fields from your "Contests" table
+		};
+	  });
+	}
+
+	// ---------------------------------------------
+	// 5. Consolidate pack data
+	// ---------------------------------------------
 	const packData = {
 	  packID: packFields.packID,
 	  packTitle: packFields.packTitle || "Untitled Pack",
@@ -183,13 +223,16 @@ export default async function handler(req, res) {
 	  prizeSummary: packFields.prizeSummary || "",
 	  packPrizeURL: packFields.packPrizeURL || "",
 	  packCover,
-	  eventTime: packEventTime, // from linked "Event" table
-	  contentData, // from linked "Content" table
+	  eventTime: packEventTime,
+	  contentData, // from "Content"
+	  contests: contestsData, // new array of linked Contests
 	};
 
 	console.log("[packURL] packData =>", packData);
 
-	// 6. Fetch leaderboard data for this pack.
+	// ---------------------------------------------
+	// 6. Build leaderboard as before
+	// ---------------------------------------------
 	const linkedTakesIds = packFields.Takes || [];
 	console.log("[packURL] linkedTakesIds =>", linkedTakesIds);
 
@@ -257,6 +300,7 @@ export default async function handler(req, res) {
 
 	console.log("[packURL] final leaderboard =>", leaderboard);
 
+	// 7. Return success
 	return res.status(200).json({
 	  success: true,
 	  pack: packData,

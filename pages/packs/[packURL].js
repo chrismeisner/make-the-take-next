@@ -8,41 +8,39 @@ import PropCard from "../../components/PropCard";
 import { PackContextProvider, usePackContext } from "../../contexts/PackContext";
 import { useModal } from "../../contexts/ModalContext";
 
+/**
+ * SSR wrapper: fetch packData + leaderboard from /api/packs/[packURL]
+ */
 export default function PackPage({ packData, leaderboard, debugLogs }) {
-  // Optionally keep these logs or remove them entirely:
+  // (Optional) log for debugging
   console.log("[PackPage] SSR => packData:", packData);
   console.log("[PackPage] SSR => leaderboard:", leaderboard);
   console.log("[PackPage] SSR => debugLogs:", debugLogs);
 
   return (
 	<PackContextProvider packData={packData}>
-	  <PackInner
-		packData={packData}
-		leaderboard={leaderboard}
-		debugLogs={debugLogs}
-	  />
+	  <PackInner packData={packData} leaderboard={leaderboard} />
 	</PackContextProvider>
   );
 }
 
 /**
- * PackInner: Renders the pack detail, props, optional countdown, leaderboard.
+ * Renders the pack detail: cover, eventTime countdown, props, a "Contests" section,
+ * and the leaderboard at the bottom.
  */
-function PackInner({ packData, leaderboard, debugLogs }) {
+function PackInner({ packData, leaderboard }) {
   const { data: session } = useSession();
   const { verifiedProps } = usePackContext();
   const { openModal } = useModal();
   const [activityLogged, setActivityLogged] = useState(false);
 
-  // For eventTime countdown
   const [timeLeft, setTimeLeft] = useState("");
 
-  // 1) If no packData => 404 message
   if (!packData) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
   }
 
-  // 2) Destructure the main data
+  // Destructure the important data
   const {
 	packTitle,
 	packCover,
@@ -51,11 +49,12 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 	prizeSummary,
 	packPrizeURL,
 	props,
-	eventTime,    // from linked "Event" record
-	contentData,  // from linked "Content" table
+	eventTime,
+	contentData,
+	contests = [], // new array of linked contests
   } = packData;
 
-  // 3) Dynamic countdown if eventTime is present
+  // Optional countdown if there's eventTime
   useEffect(() => {
 	if (!eventTime) return;
 
@@ -89,7 +88,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 	return () => clearInterval(intervalId);
   }, [eventTime]);
 
-  // 4) Possibly open "favoriteTeam" modal if user has none
+  // Check if the user has a favorite team
   useEffect(() => {
 	if (session?.user && session.user.profileID) {
 	  async function checkFavoriteTeam() {
@@ -124,18 +123,18 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 	}
   }, [session, openModal]);
 
-  // 5) Show "packCompleted" modal if all props verified
+  // If all props are verified => show packCompleted modal
   useEffect(() => {
-	if (packData && packData.props?.length > 0) {
-	  if (verifiedProps.size === packData.props.length && !activityLogged) {
+	if (props?.length > 0) {
+	  if (verifiedProps.size === props.length && !activityLogged) {
 		setActivityLogged(true);
 		openModal("packCompleted", { packTitle });
 		logActivity();
 	  }
 	}
-  }, [verifiedProps, packData, packTitle, openModal, activityLogged]);
+  }, [verifiedProps, props, packTitle, openModal, activityLogged]);
 
-  // 6) logActivity for analytics
+  // logActivity => optional
   const logActivity = async () => {
 	if (!session?.user?.airtableId) {
 	  console.error("No airtableId in session; cannot log activity.");
@@ -160,17 +159,16 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 	}
   };
 
-  // 7) Sort props
+  // Sort props by propOrder
   const sortedProps = [...(props || [])].sort(
 	(a, b) => (a.propOrder || 0) - (b.propOrder || 0)
   );
 
-  // 8) If eventTime => show countdown at the top
   return (
 	<>
 	  <StickyProgressHeader />
 	  <div className="p-4 max-w-4xl mx-auto">
-		{/* EventTime Countdown (if any) */}
+		{/* If there's an eventTime => show countdown */}
 		{eventTime && (
 		  <div className="text-center mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
 			<h2 className="text-lg font-semibold mb-1">Event Countdown</h2>
@@ -185,16 +183,13 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		  </div>
 		)}
 
-		{/* If there's contentData, show it */}
-		{packData.contentData && packData.contentData.length > 0 && (
+		{/* If there's contentData => show it */}
+		{contentData && contentData.length > 0 && (
 		  <section className="mb-6">
 			<h2 className="text-xl font-bold">Additional Content</h2>
 			<div className="mt-2">
-			  {packData.contentData.map((item) => (
-				<div
-				  key={item.airtableId}
-				  className="mb-3 border p-2 rounded"
-				>
+			  {contentData.map((item) => (
+				<div key={item.airtableId} className="mb-3 border p-2 rounded">
 				  <h3 className="text-lg font-semibold">
 					<a
 					  href={item.contentURL}
@@ -214,7 +209,11 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 					<img
 					  src={item.contentImage}
 					  alt={item.contentSource || "No source"}
-					  style={{ width: "80px", float: "left", marginRight: "1rem" }}
+					  style={{
+						width: "80px",
+						float: "left",
+						marginRight: "1rem",
+					  }}
 					/>
 				  )}
 				</div>
@@ -223,7 +222,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		  </section>
 		)}
 
-		{/* Cover image */}
+		{/* If there's a cover image => show it */}
 		{packCover && packCover.length > 0 && (
 		  <div className="mb-4 w-48 h-48 mx-auto overflow-hidden rounded-lg shadow-md">
 			<img
@@ -236,7 +235,7 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 
 		<h1 className="text-2xl font-bold mb-2">{packTitle}</h1>
 
-		{/* Prize section */}
+		{/* Prize Section */}
 		<div className="flex items-center space-x-4 mb-4">
 		  {packPrizeImage && packPrizeImage.length > 0 && (
 			<img
@@ -263,6 +262,24 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		  Pack detail route: <span className="italic">/packs/[packURL]</span>
 		</p>
 
+		{/* Render a "Contests" section above the leaderboard, if any */}
+		{packData.contests && packData.contests.length > 0 && (
+		  <section className="mb-6">
+			<h2 className="text-xl font-bold mb-2">Contests for This Pack</h2>
+			<ul className="list-disc list-inside">
+			  {packData.contests.map((contest) => (
+				<li key={contest.airtableId}>
+				  <Link href={`/contests/${contest.contestID}`}>
+					<span className="text-blue-600 underline cursor-pointer">
+					  {contest.contestTitle}
+					</span>
+				  </Link>
+				</li>
+			  ))}
+			</ul>
+		  </section>
+		)}
+
 		{sortedProps.length === 0 ? (
 		  <p className="text-gray-600">No propositions found for this pack.</p>
 		) : (
@@ -273,17 +290,18 @@ function PackInner({ packData, leaderboard, debugLogs }) {
 		  </div>
 		)}
 
+		{/* Pack Leaderboard at the bottom */}
 		<PackLeaderboard leaderboard={leaderboard} packData={packData} />
 	  </div>
 
-	  {/* Extra bottom padding to prevent StickyProgressHeader overlap */}
+	  {/* Extra bottom padding to prevent the StickyProgressHeader from overlapping the bottom */}
 	  <div className="pb-32" />
 	</>
   );
 }
 
 /**
- * Subcomponent to display the pack leaderboard at the bottom.
+ * Renders the pack-specific leaderboard at the bottom.
  */
 function PackLeaderboard({ leaderboard, packData }) {
   function obscurePhone(e164Phone) {
@@ -353,7 +371,7 @@ function PackLeaderboard({ leaderboard, packData }) {
 }
 
 /**
- * getServerSideProps: fetch pack data from /api/packs/[packURL] and display it.
+ * getServerSideProps => fetch pack data + leaderboard from /api/packs/[packURL].
  */
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -363,8 +381,7 @@ export async function getServerSideProps(context) {
   }
 
   const proto = context.req.headers["x-forwarded-proto"] || "http";
-  const host =
-	context.req.headers["x-forwarded-host"] || context.req.headers.host;
+  const host = context.req.headers["x-forwarded-host"] || context.req.headers.host;
   const fallbackOrigin = `${proto}://${host}`;
   const origin = process.env.SITE_URL || fallbackOrigin;
 
