@@ -6,7 +6,7 @@ import Link from "next/link";
 import InputMask from "react-input-mask";
 
 /**
- * Status constants for the widget
+ * Widget status constants
  */
 const STATUS = {
   LOADING: "loading",
@@ -17,9 +17,8 @@ const STATUS = {
 };
 
 /**
- * Displays a text label for the widget status, color-coded.
- * If status is TAKE_MADE and we have a userTakeID, "Take Made"
- * links to /takes/[userTakeID].
+ * Renders a status label with color-coded text.
+ * If status === TAKE_MADE and userTakeID is set, "Take Made" is a link to /takes/[userTakeID].
  */
 function StatusIndicator({ status, userTakeID }) {
   let label;
@@ -64,7 +63,7 @@ function StatusIndicator({ status, userTakeID }) {
 }
 
 /**
- * Single Choice (side A or B). We show a fill bar behind the label if showResults is true.
+ * Single Choice (side A or B) with a fill bar if showResults is true.
  */
 function Choice({
   label,
@@ -81,7 +80,7 @@ function Choice({
   // Only clickable if the prop is open
   const clickable = propStatus === "open";
 
-  // If we show results, fill part of the container with a highlight
+  // If showResults => fill part of the container behind the label
   const fillOpacity = showResults ? (isSelected ? 1 : 0.4) : 0;
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
@@ -174,7 +173,7 @@ function PropChoices({
 
 /**
  * PhoneNumberForm => collects phone # for a logged-out user to request a code
- * using a +1 (XXX) XXX-XXXX mask for clarity.
+ * using "(999) 999-9999" mask (no +1 prefix).
  */
 function PhoneNumberForm({
   phoneNumber,
@@ -192,8 +191,7 @@ function PhoneNumberForm({
 	try {
 	  setWidgetStatus(STATUS.SUBMITTING);
 
-	  // In production, you might want to strip out non-digit characters here
-	  // for consistent formatting. But we’ll send the masked string as-is.
+	  // If your backend expects E164, you might parse localPhone -> +1XXXXXXXXXX
 	  const resp = await fetch("/api/sendCode", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -206,11 +204,11 @@ function PhoneNumberForm({
 		return;
 	  }
 
-	  // Move on to the verification form step
+	  // Next step
 	  onSubmittedPhone(localPhone);
 	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
 	} catch (err) {
-	  console.error("[PhoneNumberForm] handleSendCode error =>", err);
+	  console.error("[PhoneNumberForm] handleSendCode =>", err);
 	  setError("An error occurred while sending the code.");
 	  setWidgetStatus(STATUS.ERROR);
 	} finally {
@@ -225,7 +223,7 @@ function PhoneNumberForm({
 	  </label>
 	  <div className="flex gap-2">
 		<InputMask
-		  mask="+1 (999) 999-9999"
+		  mask="(999) 999-9999"
 		  alwaysShowMask
 		  value={localPhone}
 		  onChange={(e) => setLocalPhone(e.target.value)}
@@ -233,10 +231,11 @@ function PhoneNumberForm({
 		  {() => (
 			<input
 			  type="tel"
-			  name="phone"
+			  inputMode="numeric"   // numeric keypad on mobile
+			  pattern="[0-9]*"
 			  autoComplete="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-			  placeholder="+1 (555) 555-1234"
+			  placeholder="(555) 555-1234"
 			/>
 		  )}
 		</InputMask>
@@ -260,7 +259,7 @@ function PhoneNumberForm({
 }
 
 /**
- * VerificationForm => user enters 6-digit code to verify phone. On success => create a new take
+ * VerificationForm => user enters a 6-digit code with "999999" mask and maskChar="" to avoid blocked keystrokes.
  */
 function VerificationForm({
   phoneNumber,
@@ -279,7 +278,7 @@ function VerificationForm({
 	setIsVerifying(true);
 	setWidgetStatus(STATUS.SUBMITTING);
 	try {
-	  // 1) signIn
+	  // signIn with phone + code
 	  const result = await signIn("credentials", {
 		redirect: false,
 		phone: phoneNumber,
@@ -291,7 +290,7 @@ function VerificationForm({
 		return;
 	  }
 
-	  // 2) Create the new take
+	  // Create the new take
 	  const takeResp = await fetch("/api/take", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -308,7 +307,7 @@ function VerificationForm({
 	  onComplete(takeData.newTakeID, { success: true });
 	  setWidgetStatus(STATUS.TAKE_MADE);
 	} catch (err) {
-	  console.error("[VerificationForm] handleVerify error =>", err);
+	  console.error("[VerificationForm] handleVerify =>", err);
 	  setError("An error occurred while verifying your code.");
 	  setWidgetStatus(STATUS.ERROR);
 	} finally {
@@ -331,7 +330,7 @@ function VerificationForm({
 		setWidgetStatus(STATUS.ERROR);
 	  }
 	} catch (err) {
-	  console.error("[VerificationForm] handleResend error =>", err);
+	  console.error("[VerificationForm] handleResend =>", err);
 	  setError("An error occurred while resending the code.");
 	  setWidgetStatus(STATUS.ERROR);
 	} finally {
@@ -347,19 +346,20 @@ function VerificationForm({
 	  <div className="flex items-center gap-2">
 		<InputMask
 		  mask="999999"
+		  maskChar=""           // <--- Important to allow keystrokes on desktop
 		  value={code}
 		  onChange={(e) => setCode(e.target.value)}
 		>
 		  {() => (
 			<input
 			  type="text"
-			  name="verificationCode"
-			  autoComplete="one-time-code"
 			  inputMode="numeric"
 			  pattern="[0-9]*"
-			  maxLength={6}
-			  placeholder="123456"
+			  autoComplete="one-time-code"
+			  name="verificationCode"
 			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+			  placeholder="123456"
+			  maxLength={6}
 			/>
 		  )}
 		</InputMask>
@@ -385,11 +385,6 @@ function VerificationForm({
 
 /**
  * The main VerificationWidget
- * - Loads prop data from `/api/prop?propID=...`
- * - If user is logged in and prop is open, it shows a button to Make/Update the take.
- * - If user had a prior verified take, it sets "Update Take" and only re-enables if picking a new side.
- * - If user is not logged in, it shows phone verification steps first, then creates the take.
- * - We do dynamic side percentages from sideACount / sideBCount.
  */
 export default function VerificationWidget({
   embeddedPropID,
@@ -408,7 +403,7 @@ export default function VerificationWidget({
   const [phoneNumber, setPhoneNumber] = useState("");
   const [resultsRevealed, setResultsRevealed] = useState(false);
 
-  // Track if we already fetched the userTake to avoid repeated calls
+  // Track if we already fetched userTake to avoid repeated calls
   const [fetchedUserTake, setFetchedUserTake] = useState(false);
 
   // Ensures we only call onVerificationComplete once
@@ -439,7 +434,7 @@ export default function VerificationWidget({
   // 2) If user is logged in & we haven't fetched userTake => do it once
   useEffect(() => {
 	if (!session || !propData?.propID) return;
-	if (fetchedUserTake) return; // Skip repeated calls
+	if (fetchedUserTake) return; // skip repeated calls
 
 	async function loadUserTake() {
 	  try {
@@ -470,7 +465,7 @@ export default function VerificationWidget({
 	loadUserTake();
   }, [session, propData, fetchedUserTake, onVerificationComplete]);
 
-  // If prop data is loaded & user is not logged in => "MAKE_THE_TAKE" if status was LOADING
+  // If prop data is loaded & user not logged in => "MAKE_THE_TAKE" if we were LOADING
   useEffect(() => {
 	if (propData && !session?.user && widgetStatus === STATUS.LOADING) {
 	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
@@ -531,7 +526,7 @@ export default function VerificationWidget({
 		}
 	  }
 	} catch (err) {
-	  console.error("[VerificationWidget] createLatestTake error =>", err);
+	  console.error("[VerificationWidget] createLatestTake =>", err);
 	  setError("An error occurred while submitting your take.");
 	  setWidgetStatus(STATUS.ERROR);
 	}

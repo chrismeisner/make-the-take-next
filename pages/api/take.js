@@ -94,7 +94,7 @@ export default async function handler(req, res) {
 
 	// 6) Create the new "latest" take
 	//    We'll link the "Profile" field to the user's profile record in Airtable
-	const profileRecId = token.airtableId; // "rec..." from NextAuth session token
+	const profileRecId = token.airtableId; // e.g., "rec123..."
 
 	const takeResp = await base("Takes").create([
 	  {
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
 		  propSide,
 		  takeMobile: token.phone,
 		  takeStatus: "latest",
-		  Prop: [propRec.id], // link to the Prop record
+		  Prop: [propRec.id],    // link to the Prop record
 		  Profile: [profileRecId], // link to the user's Profile record
 		},
 	  },
