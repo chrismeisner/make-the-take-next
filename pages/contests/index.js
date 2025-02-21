@@ -1,10 +1,20 @@
 // File: /pages/contests/index.js
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 export default function ContestsIndexPage({ contests }) {
-  const [timeLefts, setTimeLefts] = useState(() => contests.map(() => ""));
+  // 1) Memoize filtered "visibleContests" so it won't cause a new array every render:
+  const visibleContests = useMemo(
+	() => contests.filter((c) => c.contestStatus?.toLowerCase() !== "draft"),
+	[contests]
+  );
+
+  // 2) We'll keep our local timeLeft state array for countdowns:
+  //    Initialize size = visibleContests.length.
+  const [timeLefts, setTimeLefts] = useState(() =>
+	visibleContests.map(() => "")
+  );
 
   // Helper to compute "time left" or "Ended!"
   function computeTimeLeft(endTime) {
@@ -27,10 +37,10 @@ export default function ContestsIndexPage({ contests }) {
 	return result.trim();
   }
 
-  // Update the countdowns each second
+  // 3) Update the countdowns each second. We only re-run if visibleContests changes.
   useEffect(() => {
 	function updateCountdowns() {
-	  const newTimeLefts = contests.map((c) =>
+	  const newTimeLefts = visibleContests.map((c) =>
 		c.contestEndTime ? computeTimeLeft(c.contestEndTime) : ""
 	  );
 	  setTimeLefts(newTimeLefts);
@@ -38,102 +48,108 @@ export default function ContestsIndexPage({ contests }) {
 	updateCountdowns();
 	const intervalId = setInterval(updateCountdowns, 1000);
 	return () => clearInterval(intervalId);
-  }, [contests]);
+  }, [visibleContests]);
 
-  // Determine color-coded class based on the final status
-  function getStatusClasses(status) {
+  // Convert Airtable status to a display label
+  function getStatusLabel(status) {
+	if (!status) return "";
 	switch (status.toLowerCase()) {
-	  case "ended":
-		return "bg-gray-200 text-gray-800";
+	  case "coming up":
+		return "Coming up";
+	  case "open":
+		return "Open";
+	  case "closed":
+		return "Closed";
+	  default:
+		return status;
+	}
+  }
+
+  // Determine if a contest is clickable based on status
+  function isContestClickable(status) {
+	if (!status) return false;
+	switch (status.toLowerCase()) {
+	  case "coming up":
+		return false;
+	  case "open":
+		return true;
+	  case "closed":
+		return true;
+	  default:
+		return false;
+	}
+  }
+
+  // Pick color-coded classes for status (optional)
+  function getStatusClasses(status) {
+	if (!status) return "bg-gray-100 text-gray-600";
+	switch (status.toLowerCase()) {
+	  case "coming up":
+		return "bg-yellow-200 text-yellow-800";
 	  case "open":
 		return "bg-green-200 text-green-800";
 	  case "closed":
 		return "bg-red-200 text-red-800";
-	  // Add more statuses if needed
 	  default:
 		return "bg-gray-100 text-gray-600";
 	}
-  }
-
-  // For each contest, if timeLeft === "Ended!" => override status => "Ended"
-  function deriveStatus(contest, timeLeft) {
-	if (timeLeft === "Ended!") {
-	  return "Ended";
-	}
-	return contest.contestStatus || "";
   }
 
   return (
 	<div className="max-w-4xl mx-auto p-4">
 	  <h1 className="text-2xl font-bold mb-4">All Contests</h1>
 
-	  {contests.length === 0 ? (
+	  {visibleContests.length === 0 ? (
 		<p>No contests available.</p>
 	  ) : (
 		<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-		  {contests.map((contest, index) => {
+		  {visibleContests.map((contest, index) => {
 			const {
 			  contestID,
 			  contestTitle,
 			  contestSummary,
 			  contestPrize,
 			  contestEndTime,
+			  contestStatus,
 			} = contest;
 
-			// Each contest's timeLeft
 			const timeLeft = timeLefts[index];
+			const label = getStatusLabel(contestStatus);
+			const statusClasses = getStatusClasses(contestStatus);
+			const clickable = isContestClickable(contestStatus);
 
-			// Derive final status
-			const finalStatus = deriveStatus(contest, timeLeft);
-			// Color-coded classes
-			const statusClasses = getStatusClasses(finalStatus);
-
-			// "closed" or "Ended" => not clickable
-			const isClickable =
-			  finalStatus.toLowerCase() !== "closed" &&
-			  finalStatus.toLowerCase() !== "ended";
-
-			// Build the card content
 			const cardContent = (
 			  <div className="p-4 h-full flex flex-col">
 				<h2 className="text-lg font-semibold mb-1">
 				  {contestTitle || "Untitled Contest"}
 				</h2>
-
-				{finalStatus && (
+				{label && (
 				  <span
 					className={`inline-block px-2 py-1 rounded text-xs font-semibold mb-2 ${statusClasses}`}
 				  >
-					{finalStatus}
+					{label}
 				  </span>
 				)}
-
 				{contestSummary && (
 				  <p className="text-sm text-gray-700 mb-2">{contestSummary}</p>
 				)}
-
 				{contestPrize && (
 				  <p className="text-sm text-green-700 font-medium mb-2">
 					Prize: {contestPrize}
 				  </p>
 				)}
-
 				{contestEndTime && (
 				  <p className="text-sm text-red-600 font-bold mb-2">
 					{timeLeft}
 				  </p>
 				)}
-
-				{/* "View Contest" or "No longer available" based on clickable */}
 				<p className="mt-auto text-sm text-blue-600 underline">
-				  {isClickable ? "View Contest" : "Not Available"}
+				  {clickable ? "View Contest" : "Not Available"}
 				</p>
 			  </div>
 			);
 
-			// If clickable => wrap in a Link
-			// If not => show a static <div> with a more "muted" style
-			if (isClickable) {
+			if (clickable) {
 			  return (
 				<Link
 				  key={contestID}
@@ -147,8 +163,7 @@ export default function ContestsIndexPage({ contests }) {
 			  return (
 				<div
 				  key={contestID}
-				  className="block border border-gray-200 rounded-md bg-gray-100 opacity-60"
-				  title="This contest is no longer available"
+				  className="border border-gray-200 rounded-md bg-gray-50 opacity-90"
 				>
 				  {cardContent}
 				</div>
@@ -161,9 +176,6 @@ export default function ContestsIndexPage({ contests }) {
   );
 }
 
-/**
- * SSR: fetch from /api/contests
- */
 export async function getServerSideProps(context) {
   const proto = context.req.headers["x-forwarded-proto"] || "http";
   const host =

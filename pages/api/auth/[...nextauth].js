@@ -27,10 +27,9 @@ async function ensureProfileRecord(phoneE164) {
   // Log the phone number to ensure it's in the correct format
   console.log("[NextAuth] ensureProfileRecord => phone:", phoneE164);
 
-  // Correct the formula to ensure it works properly
+  // Correct the formula
   const filterByFormula = `{profileMobile} = "${phoneE164}"`;
 
-  // Fetch profiles based on the corrected formula
   const found = await base("Profiles")
 	.select({ filterByFormula, maxRecords: 1 })
 	.all();
@@ -59,13 +58,13 @@ async function ensureProfileRecord(phoneE164) {
   const newRec = created[0];
   console.log("[NextAuth] Profile created =>", newRec);
   return {
-	airtableId: newRec.id, // Airtable Record ID
+	airtableId: newRec.id,
 	profileID: newRec.fields.profileID,
 	mobile: newRec.fields.profileMobile,
   };
 }
 
-// To handle debounce and avoid repeated logs or actions:
+// Debounce logs:
 let lastLoggedSession = {};
 
 export default NextAuth({
@@ -110,7 +109,7 @@ export default NextAuth({
 		  return {
 			phone: e164Phone,
 			profileID: profile.profileID,
-			airtableId: profile.airtableId, // Include Airtable Record ID in the returned user object
+			airtableId: profile.airtableId,
 		  };
 		} catch (err) {
 		  console.error("[NextAuth] Profile error:", err);
@@ -119,42 +118,54 @@ export default NextAuth({
 	  },
 	}),
   ],
+
   callbacks: {
+	// 1) Embed phone/profileID into the JWT
 	async jwt({ token, user }) {
 	  if (user) {
 		token.phone = user.phone;
 		token.profileID = user.profileID;
-		token.airtableId = user.airtableId; // Include Airtable Record ID in the JWT token
+		token.airtableId = user.airtableId;
 
-		// Debounce to prevent logging too often
+		// Debounce logs
 		const now = Date.now();
 		const key = `${user.profileID}`;
-		if (!lastLoggedSession[key] || now - lastLoggedSession[key] > 10000) { // 10-second debounce
+		if (!lastLoggedSession[key] || now - lastLoggedSession[key] > 10000) {
 		  console.log("[NextAuth][jwt callback] user =>", user);
-		  lastLoggedSession[key] = now; // Update last logged time for the session
+		  lastLoggedSession[key] = now;
 		}
 	  }
 	  return token;
 	},
+
+	// 2) Add them to session.user
 	async session({ session, token }) {
 	  if (token) {
 		session.user = {
 		  phone: token.phone,
 		  profileID: token.profileID,
-		  airtableId: token.airtableId, // Include Airtable Record ID in the session user object
+		  airtableId: token.airtableId,
 		};
 	  }
 
-	  // Log session info, but with debounce
 	  const now = Date.now();
 	  const key = `${session.user.profileID}`;
-	  if (!lastLoggedSession[key] || now - lastLoggedSession[key] > 10000) { // 10-second debounce
+	  if (!lastLoggedSession[key] || now - lastLoggedSession[key] > 10000) {
 		console.log("[NextAuth][session callback] session =>", session);
-		lastLoggedSession[key] = now; // Update last logged time for the session
+		lastLoggedSession[key] = now;
 	  }
-
 	  return session;
 	},
+
+	// 3) Automatic redirect => /profile/<profileID>
+	async redirect({ url, baseUrl, token }) {
+	  // If user has a profileID => route them to /profile/<profileID>
+	  if (token?.profileID) {
+		return `${baseUrl}/profile/${token.profileID}`;
+	  }
+	  return baseUrl;
+	},
   },
+
   secret: process.env.NEXTAUTH_SECRET,
 });

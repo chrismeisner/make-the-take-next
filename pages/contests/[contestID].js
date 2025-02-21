@@ -202,7 +202,9 @@ export default function ContestDetailPage({ contestData, error }) {
 			{signupMessage && (
 			  <p
 				className={`mt-2 ${
-				  signupMessage.startsWith("Error") ? "text-red-600" : "text-green-600"
+				  signupMessage.startsWith("Error")
+					? "text-red-600"
+					: "text-green-600"
 				}`}
 			  >
 				{signupMessage}
@@ -212,42 +214,7 @@ export default function ContestDetailPage({ contestData, error }) {
 		)}
 	  </div>
 
-	  {/* Packs Section */}
-	  <div className="p-4">
-		<h2 className="text-xl font-bold mb-2">Packs in this Contest</h2>
-		{packs.length === 0 ? (
-		  <p className="text-gray-600">No Packs linked yet.</p>
-		) : (
-		  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-			{packs.map((pack) => {
-			  const coverUrl =
-				pack.packCover && pack.packCover.length > 0
-				  ? pack.packCover[0].url
-				  : null;
-
-			  return (
-				<Link key={pack.airtableId} href={`/packs/${pack.packURL}`}>
-				  <div className="border rounded bg-white p-4 shadow-sm hover:shadow-md transition cursor-pointer">
-					{coverUrl && (
-					  <img
-						src={coverUrl}
-						alt={pack.packTitle}
-						className="w-full h-40 object-cover mb-2 rounded"
-					  />
-					)}
-					<h3 className="text-lg font-semibold">{pack.packTitle}</h3>
-					<p className="text-sm text-gray-600">
-					  URL: {pack.packURL}
-					</p>
-				  </div>
-				</Link>
-			  );
-			})}
-		  </div>
-		)}
-	  </div>
-
-	  {/* Leaderboard Section */}
+	  {/* ========== Leaderboard Section (MOVED ABOVE PACKS) ========== */}
 	  <div className="p-4">
 		<h2 className="text-xl font-bold mb-3">Contest Leaderboard</h2>
 		{loadingLB ? (
@@ -302,6 +269,39 @@ export default function ContestDetailPage({ contestData, error }) {
 				})}
 			  </tbody>
 			</table>
+		  </div>
+		)}
+	  </div>
+
+	  {/* ========== Packs Section (MOVED BELOW LEADERBOARD) ========== */}
+	  <div className="p-4">
+		<h2 className="text-xl font-bold mb-2">Packs in this Contest</h2>
+		{packs.length === 0 ? (
+		  <p className="text-gray-600">No Packs linked yet.</p>
+		) : (
+		  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+			{packs.map((pack) => {
+			  const coverUrl =
+				pack.packCover && pack.packCover.length > 0
+				  ? pack.packCover[0].url
+				  : null;
+
+			  return (
+				<Link key={pack.airtableId} href={`/packs/${pack.packURL}`}>
+				  <div className="border rounded bg-white p-4 shadow-sm hover:shadow-md transition cursor-pointer">
+					{coverUrl && (
+					  <img
+						src={coverUrl}
+						alt={pack.packTitle}
+						className="w-full h-40 object-cover mb-2 rounded"
+					  />
+					)}
+					<h3 className="text-lg font-semibold">{pack.packTitle}</h3>
+					<p className="text-sm text-gray-600">URL: {pack.packURL}</p>
+				  </div>
+				</Link>
+			  );
+			})}
 		  </div>
 		)}
 	  </div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import InputMask from "react-input-mask";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,18 +41,30 @@ export default function LoginPage() {
 	  return;
 	}
 
-	// Call NextAuth signIn with credentials
+	// 1) Call NextAuth signIn with redirect: false so we can handle error ourselves
 	const result = await signIn("credentials", {
-	  redirect: false,
 	  phone,
 	  code,
+	  redirect: false, // no immediate redirect
 	});
+
 	if (!result.ok) {
+	  // e.g. "Invalid code" from NextAuth
 	  setError(result.error || "Invalid code or verification failed.");
 	  return;
 	}
-	// On success, redirect to the home or desired page
-	router.push("/");
+
+	// 2) On success => fetch the updated session to get the newly assigned profileID
+	const session = await getSession();
+	const profileID = session?.user?.profileID;
+
+	// 3) If we have a profileID, route them to /profile/<profileID>
+	if (profileID) {
+	  router.push(`/profile/${profileID}`);
+	} else {
+	  // Fallback => if somehow no profileID found, maybe route elsewhere
+	  router.push("/");
+	}
   }
 
   return (
