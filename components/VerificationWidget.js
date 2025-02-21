@@ -64,6 +64,7 @@ function StatusIndicator({ status, userTakeID }) {
 
 /**
  * Single Choice (side A or B) with a fill bar if showResults is true.
+ * Also shows a grading icon ("✅" / "❌") if prop is graded.
  */
 function Choice({
   label,
@@ -74,6 +75,8 @@ function Choice({
   propStatus,
   sideValue,
   onSelect,
+  // New prop: which side is correct if graded
+  winningSide,
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -96,6 +99,14 @@ function Choice({
 	isHovered && clickable && !isSelected ? "border-gray-400" : "",
   ].join(" ");
 
+  // Decide if we show a grading icon (✅ / ❌):
+  // If winningSide === sideValue => "✅"; otherwise => "❌".
+  // We only do this if propStatus is "gradedA" or "gradedB" (i.e., winningSide is not null).
+  let gradingIcon = null;
+  if (winningSide) {
+	gradingIcon = winningSide === sideValue ? "✅" : "❌";
+  }
+
   return (
 	<div
 	  className={containerClasses}
@@ -116,14 +127,20 @@ function Choice({
 		  transition: "width 0.4s ease",
 		}}
 	  />
-	  <div className="relative z-10">
-		{label}
-		{showResults && (
-		  <>
-			<span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
-			{isVerified && <span className="ml-2">🏴‍☠️</span>}
-		  </>
-		)}
+	  <div className="relative z-10 flex items-center">
+		{/* If there's a grading icon, show it to the left */}
+		{gradingIcon && <span className="mr-1">{gradingIcon}</span>}
+
+		<span>
+		  {label}
+		  {/* If showResults => also show the percentage, plus the "pirate" 🏴‍☠️ if isVerified */}
+		  {showResults && (
+			<>
+			  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
+			  {isVerified && <span className="ml-2">🏴‍☠️</span>}
+			</>
+		  )}
+		</span>
 	  </div>
 	</div>
   );
@@ -143,6 +160,16 @@ function PropChoices({
   sideBLabel,
   alreadyTookSide,
 }) {
+  // If prop is "gradedA" => side A is correct
+  // If prop is "gradedB" => side B is correct
+  // Otherwise => null
+  let winningSide = null;
+  if (propStatus === "gradedA") {
+	winningSide = "A";
+  } else if (propStatus === "gradedB") {
+	winningSide = "B";
+  }
+
   const choices = [
 	{ value: "A", label: sideALabel, percentage: sideAPct },
 	{ value: "B", label: sideBLabel, percentage: sideBPct },
@@ -153,6 +180,7 @@ function PropChoices({
 	  {choices.map((choice) => {
 		const isSelected = selectedChoice === choice.value;
 		const isVerified = alreadyTookSide === choice.value;
+
 		return (
 		  <Choice
 			key={choice.value}
@@ -164,6 +192,7 @@ function PropChoices({
 			propStatus={propStatus}
 			sideValue={choice.value}
 			onSelect={() => onSelectChoice(choice.value)}
+			winningSide={winningSide} // pass which side is correct if graded
 		  />
 		);
 	  })}
@@ -231,7 +260,7 @@ function PhoneNumberForm({
 		  {() => (
 			<input
 			  type="tel"
-			  inputMode="numeric"   // numeric keypad on mobile
+			  inputMode="numeric" // numeric keypad on mobile
 			  pattern="[0-9]*"
 			  autoComplete="tel"
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -299,7 +328,9 @@ function VerificationForm({
 	  });
 	  const takeData = await takeResp.json();
 	  if (!takeData.success) {
-		setError("Error submitting your take: " + (takeData.error || "Unknown error"));
+		setError(
+		  "Error submitting your take: " + (takeData.error || "Unknown error")
+		);
 		setWidgetStatus(STATUS.ERROR);
 		return;
 	  }
@@ -346,7 +377,7 @@ function VerificationForm({
 	  <div className="flex items-center gap-2">
 		<InputMask
 		  mask="999999"
-		  maskChar=""           // <--- Important to allow keystrokes on desktop
+		  maskChar="" // Important for desktop keystrokes
 		  value={code}
 		  onChange={(e) => setCode(e.target.value)}
 		>
@@ -385,6 +416,7 @@ function VerificationForm({
 
 /**
  * The main VerificationWidget
+ * - Now shows "✅" or "❌" next to the side label if prop is graded (gradedA or gradedB).
  */
 export default function VerificationWidget({
   embeddedPropID,
@@ -398,15 +430,15 @@ export default function VerificationWidget({
   const [error, setError] = useState("");
   const [widgetStatus, setWidgetStatus] = useState(STATUS.LOADING);
 
-  // Steps for phone verification (if user is not logged in)
+  // Steps for phone verification (if user not logged in)
   const [currentStep, setCurrentStep] = useState("phone");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [resultsRevealed, setResultsRevealed] = useState(false);
 
-  // Track if we already fetched userTake to avoid repeated calls
+  // Avoid repeated calls for userTake
   const [fetchedUserTake, setFetchedUserTake] = useState(false);
 
-  // Ensures we only call onVerificationComplete once
+  // Only call onVerificationComplete once
   const alreadyVerifiedCalled = useRef(false);
 
   // 1) Load the single prop from /api/prop
@@ -415,7 +447,9 @@ export default function VerificationWidget({
 
 	async function loadProp() {
 	  try {
-		const resp = await fetch(`/api/prop?propID=${encodeURIComponent(embeddedPropID)}`);
+		const resp = await fetch(
+		  `/api/prop?propID=${encodeURIComponent(embeddedPropID)}`
+		);
 		const data = await resp.json();
 		if (data.success) {
 		  setPropData(data);
@@ -434,14 +468,14 @@ export default function VerificationWidget({
   // 2) If user is logged in & we haven't fetched userTake => do it once
   useEffect(() => {
 	if (!session || !propData?.propID) return;
-	if (fetchedUserTake) return; // skip repeated calls
+	if (fetchedUserTake) return;
 
 	async function loadUserTake() {
 	  try {
 		const res = await fetch(`/api/userTakes?propID=${propData.propID}`);
 		const data = await res.json();
 		if (data.success && data.side && data.takeID) {
-		  // user already had a verified take
+		  // user already has a verified take
 		  setSelectedChoice(data.side);
 		  setAlreadyTookSide(data.side);
 		  setUserTakeID(data.takeID);
@@ -465,7 +499,7 @@ export default function VerificationWidget({
 	loadUserTake();
   }, [session, propData, fetchedUserTake, onVerificationComplete]);
 
-  // If prop data is loaded & user not logged in => "MAKE_THE_TAKE" if we were LOADING
+  // If prop data is loaded & user is not logged in => "MAKE_THE_TAKE" if status was LOADING
   useEffect(() => {
 	if (propData && !session?.user && widgetStatus === STATUS.LOADING) {
 	  setWidgetStatus(STATUS.MAKE_THE_TAKE);
@@ -488,7 +522,7 @@ export default function VerificationWidget({
   }
 
   /**
-   * Create or Update the user's take if they're logged in
+   * Create/Update the user's take if they're logged in
    */
   async function createLatestTake() {
 	setError("");
@@ -532,9 +566,6 @@ export default function VerificationWidget({
 	}
   }
 
-  /**
-   * Called when user picks a side locally
-   */
   function handleSelectChoice(sideValue) {
 	setSelectedChoice(sideValue);
 	setResultsRevealed(true);
@@ -562,6 +593,7 @@ export default function VerificationWidget({
 	);
   }
 
+  // Check the propStatus for "gradedA"/"gradedB" etc.
   const propStatus = propData.propStatus || "open";
   const readOnly = propStatus !== "open";
   const showResults = readOnly || resultsRevealed;
@@ -598,7 +630,7 @@ export default function VerificationWidget({
 		<div className="mb-2 text-sm text-gray-700">Not logged in</div>
 	  )}
 
-	  {/* Render choice A/B */}
+	  {/* Render choice A/B with new grading icons if prop is graded */}
 	  <PropChoices
 		propStatus={propStatus}
 		selectedChoice={selectedChoice}
