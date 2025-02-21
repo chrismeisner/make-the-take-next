@@ -1,5 +1,4 @@
-//components/Header.js
-
+// File: /components/Header.js
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -45,19 +44,19 @@ export default function Header() {
 	}
   }, [session, status]);
 
-  // Link to leaderboard => trophy on mobile, text on sm+.
-  function LeaderboardLink() {
+  // Link to /contests => 🎉 on mobile, "Contests" on sm+.
+  function ContestsLink() {
 	return (
-	  <Link href="/leaderboard" className="hover:text-gray-300 transition-colors">
-		<span className="inline-block sm:hidden" aria-label="Leaderboard">
-		  🏆
+	  <Link href="/contests" className="hover:text-gray-300 transition-colors">
+		<span className="inline-block sm:hidden" aria-label="Contests">
+		  🎉
 		</span>
-		<span className="hidden sm:inline">Leaderboard</span>
+		<span className="hidden sm:inline">Contests</span>
 	  </Link>
 	);
   }
 
-  // Link to prizes => gift on mobile, text on sm+
+  // Link to /prizes => 🎁 on mobile, "Prizes" on sm+.
   function PrizesLink() {
 	return (
 	  <Link href="/prizes" className="hover:text-gray-300 transition-colors">
@@ -69,19 +68,7 @@ export default function Header() {
 	);
   }
 
-  // Link to packs => added for navigation
-  function PacksLink() {
-	return (
-	  <Link href="/packs" className="hover:text-gray-300 transition-colors">
-		<span className="inline-block sm:hidden" aria-label="Packs">
-		  📦
-		</span>
-		<span className="hidden sm:inline">Packs</span>
-	  </Link>
-	);
-  }
-
-  // The login link
+  // Login link => route to /login with redirect
   function LoginButton() {
 	return (
 	  <Link
@@ -93,7 +80,7 @@ export default function Header() {
 	);
   }
 
-  // If user is logged in, show a skull (💀) linking to profile
+  // Profile link => “skull” icon linking to /profile/[profileID]
   function ProfileSkull({ profileID }) {
 	return (
 	  <Link
@@ -111,26 +98,31 @@ export default function Header() {
 	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		{/* Single row => brand on left, nav on right */}
 		<div className="flex items-center justify-between h-12">
-		  <Link href="/" className="font-bold hover:text-gray-200 text-base sm:text-2xl">
+		  {/* Brand name */}
+		  <Link
+			href="/"
+			className="font-bold hover:text-gray-200 text-base sm:text-2xl"
+		  >
 			Make The Take
 		  </Link>
 
+		  {/* Navigation */}
 		  <nav className="flex items-center space-x-4 text-sm">
-			{/* Show user points if logged in */}
-			{session?.user ? (
-			  <div className="text-xs sm:text-sm">
-				PTS: <span className="font-bold">{userPoints ?? "..."}</span>
-			  </div>
-			) : (
-			  <div className="hidden sm:block text-xs opacity-90">Not logged in</div>
-			)}
-
-			<LeaderboardLink />
+			{/* 1. Contests link (then prizes) */}
+			<ContestsLink />
 			<PrizesLink />
-			<PacksLink /> {/* Added link to packs */}
 
+			{/* If user is logged in => show bones + profile link */}
 			{session?.user && session.user.profileID ? (
-			  <ProfileSkull profileID={session.user.profileID} />
+			  <div className="flex items-center space-x-3">
+				{/* “Bones” = userPoints */}
+				<span className="text-xs sm:text-sm">
+				  🦴 {userPoints ?? "..."}
+				</span>
+
+				{/* Profile link (skull) */}
+				<ProfileSkull profileID={session.user.profileID} />
+			  </div>
 			) : (
 			  <LoginButton />
 			)}

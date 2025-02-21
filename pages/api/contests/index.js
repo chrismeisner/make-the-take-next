@@ -15,8 +15,7 @@ export default async function handler(req, res) {
 	const records = await base("Contests")
 	  .select({
 		maxRecords: 100,
-		// Optionally filter or sort, e.g.:
-		// filterByFormula: '{contestStatus} = "Active"',
+		// filterByFormula: '{contestStatus} != "Archived"', // example filter
 		// sort: [{ field: "createdAt", direction: "desc" }]
 	  })
 	  .all();
@@ -28,6 +27,10 @@ export default async function handler(req, res) {
 		airtableId: rec.id,
 		contestID: f.contestID || "",
 		contestTitle: f.contestTitle || "Untitled Contest",
+		contestSummary: f.contestSummary || "",
+		contestPrize: f.contestPrize || "",
+		contestEndTime: f.contestEndTime || null,
+		contestStatus: f.contestStatus || "",  // Single select, e.g. "open", "closed", etc.
 	  };
 	});
 

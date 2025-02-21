@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   console.log("[packURL] Received request =>", packURL);
 
   try {
-	// 1. Fetch the pack record by packURL
+	// 1) Fetch the pack record by packURL
 	console.log("[packURL] Querying Packs table => packURL:", packURL);
 	const packRecords = await base("Packs")
 	  .select({
@@ -36,9 +36,10 @@ export default async function handler(req, res) {
 	console.log("[packURL] packRecords length =>", packRecords.length);
 	if (!packRecords || packRecords.length === 0) {
 	  console.log("[packURL] No pack found for:", packURL);
-	  return res
-		.status(404)
-		.json({ success: false, error: "Pack not found" });
+	  return res.status(404).json({
+		success: false,
+		error: "Pack not found",
+	  });
 	}
 
 	const packRecord = packRecords[0];
@@ -102,7 +103,7 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 3. Parse packPrizeImage and packCover fields
+	// 3. Parse packPrizeImage and packCover
 	// ---------------------------------------------
 	let packPrizeImage = [];
 	if (Array.isArray(packFields.packPrizeImage)) {
@@ -121,7 +122,7 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4a. (Optional) Fetch linked Event record
+	// 4a. Linked Event record => eventTime
 	// ---------------------------------------------
 	const linkedEventIDs = packFields.Event || [];
 	let packEventTime = null;
@@ -143,7 +144,7 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4b. Fetch linked Content records (optional)
+	// 4b. Linked Content records => contentData
 	// ---------------------------------------------
 	const linkedContentIDs = packFields.Content || [];
 	let contentData = [];
@@ -180,7 +181,7 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4c. Fetch linked Contests (the new part)
+	// 4c. Linked Contests => we fetch contestTitle + contestPrize
 	// ---------------------------------------------
 	const linkedContestIDs = packFields.Contests || [];
 	let contestsData = [];
@@ -205,7 +206,7 @@ export default async function handler(req, res) {
 		  airtableId: rec.id,
 		  contestID: cf.contestID || "",
 		  contestTitle: cf.contestTitle || "Untitled Contest",
-		  // add any other relevant fields from your "Contests" table
+		  contestPrize: cf.contestPrize || "", // optional
 		};
 	  });
 	}
@@ -224,14 +225,14 @@ export default async function handler(req, res) {
 	  packPrizeURL: packFields.packPrizeURL || "",
 	  packCover,
 	  eventTime: packEventTime,
-	  contentData, // from "Content"
-	  contests: contestsData, // new array of linked Contests
+	  contentData,
+	  contests: contestsData, // new array with {contestID, contestTitle, contestPrize}
 	};
 
 	console.log("[packURL] packData =>", packData);
 
 	// ---------------------------------------------
-	// 6. Build leaderboard as before
+	// 6. Build leaderboard
 	// ---------------------------------------------
 	const linkedTakesIds = packFields.Takes || [];
 	console.log("[packURL] linkedTakesIds =>", linkedTakesIds);
@@ -300,7 +301,7 @@ export default async function handler(req, res) {
 
 	console.log("[packURL] final leaderboard =>", leaderboard);
 
-	// 7. Return success
+	// Return success
 	return res.status(200).json({
 	  success: true,
 	  pack: packData,

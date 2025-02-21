@@ -9,10 +9,56 @@ import { PackContextProvider, usePackContext } from "../../contexts/PackContext"
 import { useModal } from "../../contexts/ModalContext";
 
 /**
- * SSR wrapper: fetch packData + leaderboard from /api/packs/[packURL]
+ * getServerSideProps => fetch from /api/packs/[packURL]
+ */
+export async function getServerSideProps(context) {
+  const { packURL } = context.params;
+  if (!packURL) {
+	console.log("[PackPage] No packURL => 404");
+	return { notFound: true };
+  }
+
+  const proto = context.req.headers["x-forwarded-proto"] || "http";
+  const host = context.req.headers["x-forwarded-host"] || context.req.headers.host;
+  const fallbackOrigin = `${proto}://${host}`;
+  const origin = process.env.SITE_URL || fallbackOrigin;
+
+  console.log("[PackPage] getServerSideProps => packURL:", packURL);
+  console.log("[PackPage] getServerSideProps => final origin:", origin);
+
+  try {
+	const res = await fetch(`${origin}/api/packs/${encodeURIComponent(packURL)}`);
+	const data = await res.json();
+	console.log("[PackPage] /api/packs response =>", data);
+
+	if (!res.ok || !data.success) {
+	  throw new Error(data.error || "Failed to load pack");
+	}
+
+	const debugLogs = {
+	  packURL,
+	  origin,
+	  packDataReceived: !!data.pack,
+	  leaderboardCount: data.leaderboard ? data.leaderboard.length : 0,
+	};
+
+	return {
+	  props: {
+		packData: data.pack,
+		leaderboard: data.leaderboard || [],
+		debugLogs,
+	  },
+	};
+  } catch (error) {
+	console.error("[PackPage] Error =>", error);
+	return { notFound: true };
+  }
+}
+
+/**
+ * Outer component: wraps PackContext for the child
  */
 export default function PackPage({ packData, leaderboard, debugLogs }) {
-  // (Optional) log for debugging
   console.log("[PackPage] SSR => packData:", packData);
   console.log("[PackPage] SSR => leaderboard:", leaderboard);
   console.log("[PackPage] SSR => debugLogs:", debugLogs);
@@ -25,8 +71,7 @@ export default function PackPage({ packData, leaderboard, debugLogs }) {
 }
 
 /**
- * Renders the pack detail: cover, eventTime countdown, props, a "Contests" section,
- * and the leaderboard at the bottom.
+ * Child: Renders the pack detail page
  */
 function PackInner({ packData, leaderboard }) {
   const { data: session } = useSession();
@@ -40,7 +85,6 @@ function PackInner({ packData, leaderboard }) {
 	return <div className="text-red-600 p-4">No pack data found (404).</div>;
   }
 
-  // Destructure the important data
   const {
 	packTitle,
 	packCover,
@@ -51,10 +95,10 @@ function PackInner({ packData, leaderboard }) {
 	props,
 	eventTime,
 	contentData,
-	contests = [], // new array of linked contests
+	contests = [],
   } = packData;
 
-  // Optional countdown if there's eventTime
+  // Countdown if eventTime is present
   useEffect(() => {
 	if (!eventTime) return;
 
@@ -63,7 +107,6 @@ function PackInner({ packData, leaderboard }) {
 	function updateCountdown() {
 	  const now = Date.now();
 	  const diff = endTime - now;
-
 	  if (diff <= 0) {
 		setTimeLeft("Event Started or Ended!");
 		return;
@@ -88,7 +131,7 @@ function PackInner({ packData, leaderboard }) {
 	return () => clearInterval(intervalId);
   }, [eventTime]);
 
-  // Check if the user has a favorite team
+  // Check if user lacks favoriteTeam
   useEffect(() => {
 	if (session?.user && session.user.profileID) {
 	  async function checkFavoriteTeam() {
@@ -123,7 +166,7 @@ function PackInner({ packData, leaderboard }) {
 	}
   }, [session, openModal]);
 
-  // If all props are verified => show packCompleted modal
+  // If all props are verified => show "packCompleted" modal
   useEffect(() => {
 	if (props?.length > 0) {
 	  if (verifiedProps.size === props.length && !activityLogged) {
@@ -134,7 +177,7 @@ function PackInner({ packData, leaderboard }) {
 	}
   }, [verifiedProps, props, packTitle, openModal, activityLogged]);
 
-  // logActivity => optional
+  // Log activity => optional
   const logActivity = async () => {
 	if (!session?.user?.airtableId) {
 	  console.error("No airtableId in session; cannot log activity.");
@@ -168,7 +211,7 @@ function PackInner({ packData, leaderboard }) {
 	<>
 	  <StickyProgressHeader />
 	  <div className="p-4 max-w-4xl mx-auto">
-		{/* If there's an eventTime => show countdown */}
+		{/* Event Countdown if any */}
 		{eventTime && (
 		  <div className="text-center mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
 			<h2 className="text-lg font-semibold mb-1">Event Countdown</h2>
@@ -183,7 +226,7 @@ function PackInner({ packData, leaderboard }) {
 		  </div>
 		)}
 
-		{/* If there's contentData => show it */}
+		{/* contentData if any */}
 		{contentData && contentData.length > 0 && (
 		  <section className="mb-6">
 			<h2 className="text-xl font-bold">Additional Content</h2>
@@ -222,7 +265,7 @@ function PackInner({ packData, leaderboard }) {
 		  </section>
 		)}
 
-		{/* If there's a cover image => show it */}
+		{/* Cover Image */}
 		{packCover && packCover.length > 0 && (
 		  <div className="mb-4 w-48 h-48 mx-auto overflow-hidden rounded-lg shadow-md">
 			<img
@@ -235,7 +278,7 @@ function PackInner({ packData, leaderboard }) {
 
 		<h1 className="text-2xl font-bold mb-2">{packTitle}</h1>
 
-		{/* Prize Section */}
+		{/* Prize */}
 		<div className="flex items-center space-x-4 mb-4">
 		  {packPrizeImage && packPrizeImage.length > 0 && (
 			<img
@@ -262,18 +305,24 @@ function PackInner({ packData, leaderboard }) {
 		  Pack detail route: <span className="italic">/packs/[packURL]</span>
 		</p>
 
-		{/* Render a "Contests" section above the leaderboard, if any */}
-		{packData.contests && packData.contests.length > 0 && (
+		{/* Contests Section (above the leaderboard) */}
+		{contests.length > 0 && (
 		  <section className="mb-6">
 			<h2 className="text-xl font-bold mb-2">Contests for This Pack</h2>
 			<ul className="list-disc list-inside">
-			  {packData.contests.map((contest) => (
-				<li key={contest.airtableId}>
+			  {contests.map((contest) => (
+				<li key={contest.airtableId} className="mb-2">
 				  <Link href={`/contests/${contest.contestID}`}>
 					<span className="text-blue-600 underline cursor-pointer">
 					  {contest.contestTitle}
 					</span>
 				  </Link>
+				  {/* Optionally show the contestPrize if desired */}
+				  {contest.contestPrize && (
+					<p className="text-sm text-green-600 mt-1">
+					  Prize: {contest.contestPrize}
+					</p>
+				  )}
 				</li>
 			  ))}
 			</ul>
@@ -290,18 +339,17 @@ function PackInner({ packData, leaderboard }) {
 		  </div>
 		)}
 
-		{/* Pack Leaderboard at the bottom */}
 		<PackLeaderboard leaderboard={leaderboard} packData={packData} />
 	  </div>
 
-	  {/* Extra bottom padding to prevent the StickyProgressHeader from overlapping the bottom */}
+	  {/* Extra bottom padding to prevent StickyProgressHeader overlap */}
 	  <div className="pb-32" />
 	</>
   );
 }
 
 /**
- * Renders the pack-specific leaderboard at the bottom.
+ * Subcomponent: PackLeaderboard
  */
 function PackLeaderboard({ leaderboard, packData }) {
   function obscurePhone(e164Phone) {
@@ -368,51 +416,4 @@ function PackLeaderboard({ leaderboard, packData }) {
 	  </p>
 	</div>
   );
-}
-
-/**
- * getServerSideProps => fetch pack data + leaderboard from /api/packs/[packURL].
- */
-export async function getServerSideProps(context) {
-  const { packURL } = context.params;
-  if (!packURL) {
-	console.log("[PackPage] No packURL => 404");
-	return { notFound: true };
-  }
-
-  const proto = context.req.headers["x-forwarded-proto"] || "http";
-  const host = context.req.headers["x-forwarded-host"] || context.req.headers.host;
-  const fallbackOrigin = `${proto}://${host}`;
-  const origin = process.env.SITE_URL || fallbackOrigin;
-
-  console.log("[PackPage] getServerSideProps => packURL:", packURL);
-  console.log("[PackPage] getServerSideProps => final origin:", origin);
-
-  try {
-	const res = await fetch(`${origin}/api/packs/${encodeURIComponent(packURL)}`);
-	const data = await res.json();
-	console.log("[PackPage] /api/packs response =>", data);
-
-	if (!res.ok || !data.success) {
-	  throw new Error(data.error || "Failed to load pack");
-	}
-
-	const debugLogs = {
-	  packURL,
-	  origin,
-	  packDataReceived: !!data.pack,
-	  leaderboardCount: data.leaderboard ? data.leaderboard.length : 0,
-	};
-
-	return {
-	  props: {
-		packData: data.pack,
-		leaderboard: data.leaderboard || [],
-		debugLogs,
-	  },
-	};
-  } catch (error) {
-	console.error("[PackPage] Error =>", error);
-	return { notFound: true };
-  }
 }
