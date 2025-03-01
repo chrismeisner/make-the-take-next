@@ -1,5 +1,4 @@
 // File: /pages/login.js
-
 import { useState } from "react";
 import { useRouter } from "next/router";
 import InputMask from "react-input-mask";
@@ -27,7 +26,7 @@ export default function LoginPage() {
 	  }
 	  setStep("code");
 	} catch (err) {
-	  console.error("[LoginPage] handleSendCode error:", err);
+	  console.error("🚫 [LoginPage] handleSendCode error:", err);
 	  setError("Could not send code. Please try again.");
 	}
   }
@@ -41,28 +40,26 @@ export default function LoginPage() {
 	  return;
 	}
 
-	// 1) Call NextAuth signIn with redirect: false so we can handle error ourselves
+	// Call NextAuth signIn with redirect: false so we can handle the flow manually.
 	const result = await signIn("credentials", {
 	  phone,
 	  code,
-	  redirect: false, // no immediate redirect
+	  redirect: false,
 	});
 
 	if (!result.ok) {
-	  // e.g. "Invalid code" from NextAuth
 	  setError(result.error || "Invalid code or verification failed.");
 	  return;
 	}
 
-	// 2) On success => fetch the updated session to get the newly assigned profileID
+	// On success, fetch the updated session.
 	const session = await getSession();
 	const profileID = session?.user?.profileID;
 
-	// 3) If we have a profileID, route them to /profile/<profileID>
+	// Always redirect to the user's profile page.
 	if (profileID) {
 	  router.push(`/profile/${profileID}`);
 	} else {
-	  // Fallback => if somehow no profileID found, maybe route elsewhere
 	  router.push("/");
 	}
   }
@@ -114,6 +111,7 @@ export default function LoginPage() {
 			mask="999999"
 			value={code}
 			onChange={(e) => setCode(e.target.value)}
+			maskChar=""
 		  >
 			{() => (
 			  <input
@@ -121,7 +119,6 @@ export default function LoginPage() {
 				name="verificationCode"
 				autoComplete="one-time-code"
 				inputMode="numeric"
-				pattern="[0-9]*"
 				maxLength={6}
 				className="w-32 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
 				placeholder="123456"

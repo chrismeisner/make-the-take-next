@@ -1,35 +1,36 @@
-// components/modals/TeamsModal.js
-
 import React, { useState, useEffect } from "react";
 import GlobalModal from "./GlobalModal";
 
-export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
+export default function FavoriteTeamSelectorModal({ isOpen, onClose, onTeamSelected }) {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // Store the selected team's Airtable record id.
-  const [selectedTeamRecordId, setSelectedTeamRecordId] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
 	if (!isOpen) return;
-
 	async function fetchTeams() {
+	  console.log("🚀 [FavoriteTeamSelectorModal] Loading teams from Airtable...");
 	  setLoading(true);
 	  setError("");
 	  try {
 		const res = await fetch("/api/teams");
 		const data = await res.json();
+		console.log("📥 [FavoriteTeamSelectorModal] Received teams data:", data);
 		if (data.success) {
-		  // Filter out teams with teamType "league" and sort by teamNameFull.
-		  const sortedTeams = data.teams
-			.filter(team => team.teamType !== "league")
-			.sort((a, b) => a.teamNameFull.localeCompare(b.teamNameFull));
-		  setTeams(sortedTeams);
+		  const filteredTeams = data.teams.filter(team => team.teamType !== "league");
+		  const sorted = filteredTeams.sort((a, b) =>
+			a.teamNameFull.localeCompare(b.teamNameFull)
+		  );
+		  setTeams(sorted);
+		  console.log("✅ [FavoriteTeamSelectorModal] Teams loaded:", sorted);
 		} else {
 		  setError(data.error || "Failed to load teams");
+		  console.error("❌ [FavoriteTeamSelectorModal] Error loading teams:", data.error);
 		}
-	  } catch {
+	  } catch (err) {
+		console.error("💥 [FavoriteTeamSelectorModal] Error fetching teams:", err);
 		setError("Error fetching teams");
 	  } finally {
 		setLoading(false);
@@ -38,27 +39,22 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 	fetchTeams();
   }, [isOpen]);
 
-  // Toggle selection using the team's Airtable record id.
-  const toggleTeam = (teamRecordId) => {
-	setSelectedTeamRecordId(prev => (prev === teamRecordId ? null : teamRecordId));
-  };
-
-  const handleSubmit = async () => {
-	if (!selectedTeamRecordId) {
+  async function handleSubmit() {
+	if (!selectedTeam) {
 	  alert("Please select a team before submitting.");
 	  return;
 	}
 	setSaving(true);
 	try {
-	  // Pass the selected team's record id to the parent callback.
-	  await onTeamSelected(selectedTeamRecordId);
+	  console.log(`🎯 [FavoriteTeamSelectorModal] Submitting selected team: ${selectedTeam}`);
+	  await onTeamSelected(selectedTeam);
 	  onClose();
-	} catch (err) {
-	  console.error("Error during team submission:", err);
+	} catch (error) {
+	  console.error("💥 [FavoriteTeamSelectorModal] Error during team submission:", error);
 	} finally {
 	  setSaving(false);
 	}
-  };
+  }
 
   return (
 	<GlobalModal isOpen={isOpen} onClose={onClose}>
@@ -66,13 +62,16 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 	  {loading && <p className="text-center">Loading teams...</p>}
 	  {error && <p className="text-red-600 text-center">{error}</p>}
 	  {!loading && !error && (
-		<div className="grid grid-cols-6 sm:grid-cols-6 lg:grid-cols-8 gap-0">
-		  {teams.map(team => (
+		<div className="flex flex-wrap justify-center gap-2">
+		  {teams.map((team) => (
 			<button
-			  key={team.recordId}
-			  onClick={() => toggleTeam(team.recordId)}
-			  className={`aspect-square flex items-center justify-center p-2 rounded transition-all duration-300 ease-in-out ${
-				selectedTeamRecordId === team.recordId
+			  key={team.teamID}
+			  onClick={() => {
+				console.log(`🎯 [FavoriteTeamSelectorModal] Team selected: ${team.teamName}`);
+				setSelectedTeam(team.teamName);
+			  }}
+			  className={`w-20 h-20 flex items-center justify-center rounded transition-all duration-300 ease-in-out p-2 ${
+				selectedTeam === team.teamName
 				  ? "opacity-100 outline outline-1 outline-white/40"
 				  : "opacity-40 hover:opacity-80"
 			  }`}
@@ -97,8 +96,8 @@ export default function TeamsModal({ isOpen, onClose, onTeamSelected }) {
 	  <div className="mt-6 flex justify-center">
 		<button
 		  onClick={handleSubmit}
-		  disabled={!selectedTeamRecordId || saving}
 		  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+		  disabled={!selectedTeam || saving}
 		>
 		  {saving ? "Saving..." : "Submit"}
 		</button>

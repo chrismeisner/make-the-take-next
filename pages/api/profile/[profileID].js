@@ -1,4 +1,3 @@
-// File: /pages/api/profile/[profileID].js
 import Airtable from 'airtable';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -42,19 +41,14 @@ export default async function handler(req, res) {
 		.filter((t) => t.fields.takeStatus !== 'overwritten')
 		.map((t) => {
 		  const tf = t.fields;
-
-		  // Collect all the Packs linked to the take
+		  // Collect linked pack IDs from the take
 		  const packs = tf.Packs || [];
-
-		  // Add linked packs to userPacks array if the take is verified
+		  // Add linked packs to userPacks array (we'll deduplicate later)
 		  userPacks.push(...packs);
-
-		  // Possibly parse contentImage (if it's a lookup attachment field)
 		  let contentImageUrls = [];
 		  if (Array.isArray(tf.contentImage)) {
 			contentImageUrls = tf.contentImage.map((att) => att.url);
 		  }
-
 		  return {
 			airtableRecordId: t.id,
 			takeID: tf.TakeID || t.id,
@@ -67,28 +61,29 @@ export default async function handler(req, res) {
 			takeStatus: tf.takeStatus || '',
 			takeResult: tf.takeResult || '',
 			takePTS: tf.takePTS || 0,
-
-			// Additional fields:
 			takeTitle: tf.takeTitle || '',
 			takeContentImageUrls: contentImageUrls,
-
-			packs, // Return the packs linked to the take
+			packs, // packs linked to this take
 		  };
 		});
 	}
 
-	// 3) Fetch packURL for each unique pack
+	// 3) Deduplicate and fetch pack details for each unique pack ID in userPacks.
 	const uniquePackIDs = [...new Set(userPacks)];
 	const packDetails = await Promise.all(
 	  uniquePackIDs.map(async (packId) => {
-		const packRecord = await base('Packs')
+		const packRecords = await base("Packs")
 		  .select({ filterByFormula: `RECORD_ID()="${packId}"`, maxRecords: 1 })
 		  .firstPage();
-		if (packRecord.length > 0) {
-		  const pack = packRecord[0].fields;
+		if (packRecords.length > 0) {
+		  const pack = packRecords[0].fields;
 		  return {
 			id: packId,
 			packURL: pack.packURL || '',
+			packTitle: pack.packTitle || '',
+			packStatus: pack.packStatus || '',
+			packCover: pack.packCover || [],
+			eventTime: pack.eventTime || null,
 		  };
 		}
 		return null;
@@ -96,18 +91,14 @@ export default async function handler(req, res) {
 	);
 	const validPacks = packDetails.filter((p) => p !== null);
 
-	// 4) Also fetch the "Teams" record if profileTeam is linked
-	//    "profileTeam" might be an array of record IDs, so we handle that below
+	// 4) Fetch the Teams record if profileTeam is linked.
 	let profileTeamData = null;
 	if (Array.isArray(pf.profileTeam) && pf.profileTeam.length > 0) {
-	  // We'll assume the user has only one team linked. If multiple, pick the first.
 	  const teamRecordId = pf.profileTeam[0];
 	  if (teamRecordId) {
 		try {
 		  const teamRec = await base('Teams').find(teamRecordId);
 		  const tf = teamRec.fields;
-
-		  // Gather the team logo attachments
 		  let teamLogo = [];
 		  if (Array.isArray(tf.teamLogo)) {
 			teamLogo = tf.teamLogo.map((img) => ({
@@ -115,7 +106,6 @@ export default async function handler(req, res) {
 			  filename: img.filename,
 			}));
 		  }
-
 		  profileTeamData = {
 			airtableId: teamRec.id,
 			teamID: tf.teamID || '',
@@ -135,13 +125,11 @@ export default async function handler(req, res) {
 	  profileMobile: pf.profileMobile,
 	  profileUsername: pf.profileUsername || '',
 	  profileAvatar: pf.profileAvatar || [],
-	  // We no longer store just the raw profileTeam ID here
-	  // Instead, we store the new object for the front-end:
-	  profileTeamData, // can be null if no team or error
+	  profileTeamData, // Contains favorite team info
 	  createdTime: profRec._rawJson.createdTime,
 	};
 
-	// 6) Return everything
+	// 6) Return the aggregated data
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
@@ -151,8 +139,6 @@ export default async function handler(req, res) {
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);
-	return res
-	  .status(500)
-	  .json({ success: false, error: 'Server error fetching profile' });
+	return res.status(500).json({ success: false, error: 'Server error fetching profile' });
   }
 }
