@@ -30,7 +30,7 @@ export default function PackCarouselView({ packData }) {
         effect="cards"
         grabCursor={true}
         navigation
-        cardsEffect={{ slideShadows: false }}
+        cardsEffect={{ slideShadows: false, perSlideOffset: 4 }}
         style={{ width: '100%', height: '80vh' }}
       >
         {props.map((prop) => (
