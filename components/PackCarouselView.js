@@ -24,21 +24,22 @@ export default function PackCarouselView({ packData }) {
   return (
     <>
       <CardProgressFooter />
-
-      <Swiper
-        modules={[Navigation, EffectCards]}
-        effect="cards"
-        grabCursor={true}
-        navigation
-        cardsEffect={{ slideShadows: false, perSlideOffset: 4 }}
-        style={{ width: '100%', height: '80vh' }}
-      >
-        {props.map((prop) => (
-          <SwiperSlide key={prop.propID}>
-            <CardViewCard prop={prop} />
-          </SwiperSlide>
-        ))}
-      </Swiper>
+      <div className="px-4 sm:px-0 overflow-hidden">
+        <Swiper
+          modules={[Navigation, EffectCards]}
+          effect="cards"
+          grabCursor={true}
+          navigation
+          cardsEffect={{ slideShadows: false, perSlideOffset: 4 }}
+          style={{ width: '100%', height: '80vh' }}
+        >
+          {props.map((prop) => (
+            <SwiperSlide key={prop.propID}>
+              <CardViewCard prop={prop} />
+            </SwiperSlide>
+          ))}
+        </Swiper>
+      </div>
       <div className="pb-32" />
     </>
   );
