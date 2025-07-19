@@ -29,11 +29,26 @@ export default async function handler(req, res) {
 
     const record = records[0];
     const data = record.fields;
+    // Remove static side count fields; compute dynamic counts instead
+    delete data.propSideACount;
+    delete data.propSideBCount;
     const createdAt = record._rawJson.createdTime;
 
-    // Map relevant fields for front-end
-    const sideACount = data.propSideACount || 0;
-    const sideBCount = data.propSideBCount || 0;
+    // Compute dynamic side counts for this prop
+    const takesRecords = await base("Takes")
+      .select({
+        filterByFormula: `AND({propID}="${propID}", {takeStatus}!="overwritten")`,
+        maxRecords: 10000,
+      })
+      .all();
+
+    let sideACount = 0;
+    let sideBCount = 0;
+    takesRecords.forEach((take) => {
+      const side = take.fields.propSide;
+      if (side === "A") sideACount++;
+      if (side === "B") sideBCount++;
+    });
 
     let subjectLogoUrls = [];
     if (Array.isArray(data.subjectLogo)) {
@@ -54,6 +69,7 @@ export default async function handler(req, res) {
       success: true,
       propID,
       createdAt,
+      // include all other prop fields except static counts
       ...data,
       subjectLogoUrls,
       contentImageUrl,

@@ -60,6 +60,16 @@ export function PackContextProvider({ packData, children }) {
 
   // Selected choices: map of propID to chosen side (A/B)
   const [selectedChoices, setSelectedChoices] = useState({});
+  // Pre-populate selectedChoices from existing user takes so users can resubmit the same picks
+  useEffect(() => {
+    if (Object.keys(selectedChoices).length === 0 && Object.keys(userTakesByProp).length > 0) {
+      const initialSelections = {};
+      for (const [propID, take] of Object.entries(userTakesByProp)) {
+        initialSelections[propID] = take.side;
+      }
+      setSelectedChoices(initialSelections);
+    }
+  }, [userTakesByProp, selectedChoices]);
 
   // Handle selecting or toggling a choice for a prop
   const handleChoiceSelect = useCallback((propID, side) => {

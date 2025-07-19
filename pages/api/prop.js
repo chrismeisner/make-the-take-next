@@ -33,8 +33,9 @@ export default async function handler(req, res) {
 	const createdAt = record._rawJson.createdTime;
 
 	// 2) Enumerate the Takes table to count records for this Prop by matching the propID field
+	// Only count active takes (exclude overwritten)
 	const takeRecords = await base("Takes").select({
-	  filterByFormula: `{propID} = "${propID}"`
+	  filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`
 	}).all();
 	let sideACount = 0;
 	let sideBCount = 0;

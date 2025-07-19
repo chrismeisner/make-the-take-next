@@ -53,17 +53,6 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// 4) Read the current side counts (default to 0)
-	let sideACount = propRec.fields.propSideACount || 0;
-	let sideBCount = propRec.fields.propSideBCount || 0;
-
-	// 4a) If both are zero => initialize them to (1,1) => 50/50 baseline
-	if (sideACount + sideBCount === 0) {
-	  sideACount = 1;
-	  sideBCount = 1;
-	  console.log("[/api/take] Baseline init => sideACount=1, sideBCount=1");
-	}
-
 	// 5) Overwrite any old "latest" take for this phone + prop
 	const oldTakes = await base("Takes")
 	  .select({
@@ -111,25 +100,23 @@ export default async function handler(req, res) {
 	const newTake = takeResp[0];
 	const newTakeID = newTake.fields.takeID || newTake.id;
 
-	// 7) Increment the chosen side by 1
-	if (propSide === "A") {
-	  sideACount += 1;
-	} else if (propSide === "B") {
-	  sideBCount += 1;
-	}
+	// Compute dynamic side counts for this prop
+	const takesRecords = await base("Takes")
+	  .select({
+		filterByFormula: `AND({propID}="${propID}", {takeStatus}!="overwritten")`,
+		maxRecords: 10000,
+	  })
+	  .all();
 
-	// 8) Update the Prop record with new side counts
-	await base("Props").update([
-	  {
-		id: propRec.id,
-		fields: {
-		  propSideACount: sideACount,
-		  propSideBCount: sideBCount,
-		},
-	  },
-	]);
+	let sideACount = 0;
+	let sideBCount = 0;
+	takesRecords.forEach((take) => {
+	  const side = take.fields.propSide;
+	  if (side === "A") sideACount++;
+	  if (side === "B") sideBCount++;
+	});
 
-	// 9) Return success
+	// Return success with updated dynamic counts
 	return res.status(200).json({
 	  success: true,
 	  newTakeID,

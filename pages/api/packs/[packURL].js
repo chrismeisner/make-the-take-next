@@ -96,9 +96,7 @@ export default async function handler(req, res) {
 		  propSummary: f.propSummary || "",
 		  propShort: f.propShort || f.PropShort || "",
 		  propStatus: f.propStatus || "open",
-		  // Include side counts for percentages
-		  sideACount: f.propSideACount || 0,
-		  sideBCount: f.propSideBCount || 0,
+		  // static side counts removed; will compute dynamically below
 		  // Include short labels for sides
 		  sideALabel: f.PropSideAShort || f.propSideAShort || "Side A",
 		  sideBLabel: f.PropSideBShort || f.propSideBShort || "Side B",

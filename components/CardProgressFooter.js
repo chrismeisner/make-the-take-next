@@ -1,23 +1,41 @@
-import React from "react";
+import React, { useState } from "react";
 import { usePackContext } from "../contexts/PackContext";
 import { useModal } from "../contexts/ModalContext";
 
 export default function CardProgressFooter() {
-  const { packData, selectedChoices, submitAllTakes } = usePackContext();
+  const { packData, selectedChoices, submitAllTakes, userTakesByProp } = usePackContext();
   const { openModal } = useModal();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const totalProps = packData.props.length;
+  // If user has submits for all props, allow resubmission
+  const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
   const selectedCount = Object.keys(selectedChoices).length;
   const progressPercentage = totalProps === 0 ? 0 : Math.round((selectedCount / totalProps) * 100);
   const allSelected = selectedCount === totalProps;
+  // Determine if selections differ from previous submission
+  const hasChanges = previousSubmissions
+    ? Object.entries(selectedChoices).some(
+        ([propID, side]) => userTakesByProp[propID]?.side !== side
+      )
+    : true;
+  const canSubmit = allSelected && hasChanges;
 
   // Handle click: submit takes then show confirmation modal
   async function handleSubmit() {
+    setIsSubmitting(true);
     await submitAllTakes();
     openModal("packCompleted", { packTitle: packData.packTitle });
+    setIsSubmitting(false);
   }
 
   return (
-    <footer
+    <>
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-black opacity-50 z-40 flex items-center justify-center">
+          <div className="text-white text-lg">Submitting...</div>
+        </div>
+      )}
+      <footer
       style={{
         position: "fixed",
         bottom: 0,
@@ -60,19 +78,20 @@ export default function CardProgressFooter() {
         </p>
         <button
           onClick={handleSubmit}
-          disabled={!allSelected}
+          disabled={!canSubmit}
           style={{
-            backgroundColor: allSelected ? '#2196f3' : '#ccc',
+            backgroundColor: canSubmit ? '#2196f3' : '#ccc',
             color: '#fff',
             padding: '0.25rem 0.75rem',
             border: 'none',
             borderRadius: '3px',
-            cursor: allSelected ? 'pointer' : 'not-allowed',
+            cursor: canSubmit ? 'pointer' : 'not-allowed',
           }}
         >
-          Submit
+          {previousSubmissions ? 'Resubmit' : 'Submit'}
         </button>
       </div>
     </footer>
+    </>
   );
 } 
