@@ -94,6 +94,7 @@ export default async function handler(req, res) {
 		  propID: f.propID || null,
 		  propTitle: f.propTitle || "Untitled",
 		  propSummary: f.propSummary || "",
+		  propShort: f.propShort || f.PropShort || "",
 		  propStatus: f.propStatus || "open",
 		  // Include side counts for percentages
 		  sideACount: f.propSideACount || 0,
