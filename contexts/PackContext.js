@@ -58,13 +58,63 @@ export function PackContextProvider({ packData, children }) {
 	});
   }, []);
 
+  // Selected choices: map of propID to chosen side (A/B)
+  const [selectedChoices, setSelectedChoices] = useState({});
+
+  // Handle selecting or toggling a choice for a prop
+  const handleChoiceSelect = useCallback((propID, side) => {
+    setSelectedChoices((prev) => {
+      // If same side clicked again, remove selection
+      if (prev[propID] === side) {
+        const { [propID]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [propID]: side };
+    });
+  }, []);
+
+  // Submit all selected takes at once
+  const submitAllTakes = useCallback(async () => {
+    for (const [propID, side] of Object.entries(selectedChoices)) {
+      try {
+        const resp = await fetch("/api/take", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ propID, propSide: side }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+          // Mark as verified
+          setVerifiedProps((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(propID);
+            return newSet;
+          });
+          // Store the new take record
+          setUserTakesByProp((prev) => ({
+            ...prev,
+            [propID]: { propID, side, takeID: data.newTakeID },
+          }));
+        } else {
+          console.error(`Error submitting take for ${propID}:`, data.error);
+        }
+      } catch (err) {
+        console.error(`Exception submitting take for ${propID}:`, err);
+      }
+    }
+  }, [selectedChoices]);
+
   // Memoize the context value so children don’t re-render unnecessarily
   const value = useMemo(() => ({
 	packData,
 	verifiedProps,
 	userTakesByProp,
 	handlePropVerified,
-  }), [packData, verifiedProps, userTakesByProp, handlePropVerified]);
+	selectedChoices,
+	handleChoiceSelect,
+	submitAllTakes,
+  }), [packData, verifiedProps, userTakesByProp, handlePropVerified, selectedChoices, handleChoiceSelect, submitAllTakes]);
 
   return (
 	<PackContext.Provider value={value}>

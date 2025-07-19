@@ -1,11 +1,20 @@
 import React from "react";
 import { usePackContext } from "../contexts/PackContext";
+import { useModal } from "../contexts/ModalContext";
 
 export default function CardProgressFooter() {
-  const { packData, verifiedProps } = usePackContext();
+  const { packData, selectedChoices, submitAllTakes } = usePackContext();
+  const { openModal } = useModal();
   const totalProps = packData.props.length;
-  const verifiedCount = verifiedProps.size;
-  const progressPercentage = totalProps === 0 ? 0 : Math.round((verifiedCount / totalProps) * 100);
+  const selectedCount = Object.keys(selectedChoices).length;
+  const progressPercentage = totalProps === 0 ? 0 : Math.round((selectedCount / totalProps) * 100);
+  const allSelected = selectedCount === totalProps;
+
+  // Handle click: submit takes then show confirmation modal
+  async function handleSubmit() {
+    await submitAllTakes();
+    openModal("packCompleted", { packTitle: packData.packTitle });
+  }
 
   return (
     <footer
@@ -38,16 +47,32 @@ export default function CardProgressFooter() {
           }}
         />
       </div>
-      <p
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+        <p
         style={{
-          margin: "0.25rem 0 0",
+          margin: "0",
           fontSize: "0.8rem",
           color: "#666",
-          textAlign: "center",
+          textAlign: "left",
         }}
       >
-        {verifiedCount} / {totalProps} verified
-      </p>
+        {selectedCount} / {totalProps} selected
+        </p>
+        <button
+          onClick={handleSubmit}
+          disabled={!allSelected}
+          style={{
+            backgroundColor: allSelected ? '#2196f3' : '#ccc',
+            color: '#fff',
+            padding: '0.25rem 0.75rem',
+            border: 'none',
+            borderRadius: '3px',
+            cursor: allSelected ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Submit
+        </button>
+      </div>
     </footer>
   );
 } 

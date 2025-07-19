@@ -95,6 +95,12 @@ export default async function handler(req, res) {
 		  propTitle: f.propTitle || "Untitled",
 		  propSummary: f.propSummary || "",
 		  propStatus: f.propStatus || "open",
+		  // Include side counts for percentages
+		  sideACount: f.propSideACount || 0,
+		  sideBCount: f.propSideBCount || 0,
+		  // Include short labels for sides
+		  sideALabel: f.PropSideAShort || f.propSideAShort || "Side A",
+		  sideBLabel: f.PropSideBShort || f.propSideBShort || "Side B",
 		  contentImageUrls,
 		  contentLinks,
 		  propOrder: f.propOrder || 0,

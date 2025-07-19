@@ -201,6 +201,9 @@ function PropChoices({
   );
 }
 
+// Export PropChoices for reuse in CardViewCard
+export { PropChoices };
+
 /**
  * PhoneNumberForm => collects phone # for a logged-out user to request a code
  * using "(999) 999-9999" mask (no +1 prefix).
