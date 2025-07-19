@@ -32,10 +32,25 @@ export default async function handler(req, res) {
 	const data = record.fields;
 	const createdAt = record._rawJson.createdTime;
 
-	// 2) Directly read the numeric fields from Airtable
-	//    (instead of enumerating Takes)
-	const sideACount = data.propSideACount || 0;
-	const sideBCount = data.propSideBCount || 0;
+	// 2) Enumerate the Takes table to count records for this Prop by matching the propID field
+	const takeRecords = await base("Takes").select({
+	  filterByFormula: `{propID} = "${propID}"`
+	}).all();
+	let sideACount = 0;
+	let sideBCount = 0;
+	takeRecords.forEach((t) => {
+	  if (t.fields.propSide === "A") {
+		sideACount++;
+	  } else if (t.fields.propSide === "B") {
+		sideBCount++;
+	  }
+	});
+	// Print debug logs for counts and percentage calculations
+	console.log(`[API /prop] propID=${propID} counts: sideACount=${sideACount}, sideBCount=${sideBCount}, total=${sideACount + sideBCount}`);
+	const totalTakes = sideACount + sideBCount;
+	const sideAPct = totalTakes === 0 ? 50 : Math.round((sideACount / totalTakes) * 100);
+	const sideBPct = totalTakes === 0 ? 50 : Math.round((sideBCount / totalTakes) * 100);
+	console.log(`[API /prop] computed percentages: sideAPct=${sideAPct}%, sideBPct=${sideBPct}%`);
 
 	// 3) Optionally parse subject logos & content images
 	let subjectLogoUrls = [];

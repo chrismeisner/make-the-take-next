@@ -161,14 +161,15 @@ function PropChoices({
   alreadyTookSide,
 }) {
   // If prop is "gradedA" => side A is correct
-  // If prop is "gradedB" => side B is correct
-  // Otherwise => null
   let winningSide = null;
   if (propStatus === "gradedA") {
 	winningSide = "A";
   } else if (propStatus === "gradedB") {
 	winningSide = "B";
   }
+
+  // Only reveal results (bars + percentages) once the user has taken (or already had taken)
+  const shouldShowResults = resultsRevealed && (!!alreadyTookSide || !!selectedChoice);
 
   const choices = [
 	{ value: "A", label: sideALabel, percentage: sideAPct },
@@ -188,7 +189,7 @@ function PropChoices({
 			percentage={choice.percentage}
 			isSelected={isSelected}
 			isVerified={isVerified}
-			showResults={resultsRevealed}
+			showResults={shouldShowResults}
 			propStatus={propStatus}
 			sideValue={choice.value}
 			onSelect={() => onSelectChoice(choice.value)}
@@ -656,11 +657,14 @@ export default function VerificationWidget({
   const readOnly = propStatus !== "open";
   const showResults = resultsRevealed;
 
-  const sideACount = propData.sideACount || 0;
-  const sideBCount = propData.sideBCount || 0;
+  // Add an initial 'house' vote on each side (philosophical buffer)
+  const rawSideACount = propData.sideACount || 0;
+  const rawSideBCount = propData.sideBCount || 0;
+  const sideACount = rawSideACount + 1;
+  const sideBCount = rawSideBCount + 1;
   const total = sideACount + sideBCount;
-  const sideAPct = total === 0 ? 50 : Math.round((sideACount / total) * 100);
-  const sideBPct = total === 0 ? 50 : Math.round((sideBCount / total) * 100);
+  const sideAPct = Math.round((sideACount / total) * 100);
+  const sideBPct = Math.round((sideBCount / total) * 100);
 
   const hasVerifiedTake = !!alreadyTookSide;
   const buttonLabel = hasVerifiedTake ? "Update Take" : "Make This Take";

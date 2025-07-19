@@ -1,37 +1,37 @@
 // File: components/PackCarouselView.js
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import CardViewCard from "./CardViewCard";
 import { usePackContext } from "../contexts/PackContext";
 import CardProgressFooter from "./CardProgressFooter";
+// Removed TinderCard; using Swiper.js for swipe gestures
+import dynamic from 'next/dynamic';
+const Swiper = dynamic(() => import('swiper/react').then((mod) => mod.Swiper), { ssr: false });
+const SwiperSlide = dynamic(() => import('swiper/react').then((mod) => mod.SwiperSlide), { ssr: false });
+import { Navigation, EffectCards } from 'swiper/modules';
 
 export default function PackCarouselView({ packData }) {
+  useEffect(() => {
+    import('swiper')
+      .then((mod) => {
+        const version = mod.VERSION || (mod.default && mod.default.VERSION);
+        console.log('[Swiper Checker] swiper version:', version);
+      })
+      .catch((err) => {
+        console.error('[Swiper Checker] Failed to import swiper:', err);
+      });
+  }, []);
   const { props } = packData;
   const [index, setIndex] = useState(0);
-  const [fade, setFade] = useState(true);
-  const fadeDuration = 500;
+  const swiperRef = useRef(null);
   const { verifiedProps } = usePackContext();
   const [showUnansweredOnly, setShowUnansweredOnly] = useState(false);
   const displayedProps = showUnansweredOnly
     ? props.filter((p) => !verifiedProps.has(p.propID))
     : props;
 
-  const prev = () => {
-    setFade(false);
-    setTimeout(() => {
-      setIndex((i) => Math.max(i - 1, 0));
-      setTimeout(() => setFade(true), 50);
-    }, fadeDuration);
-  };
-
-  const next = () => {
-    setFade(false);
-    setTimeout(() => {
-      setIndex((i) => Math.min(i + 1, displayedProps.length - 1));
-      setTimeout(() => setFade(true), 50);
-    }, fadeDuration);
-  };
+  // Removed manual fade and prev/next; using Swiper.js for navigation
 
   if (displayedProps.length === 0) {
     return (
@@ -53,8 +53,10 @@ export default function PackCarouselView({ packData }) {
             type="checkbox"
             checked={showUnansweredOnly}
             onChange={() => {
-              setShowUnansweredOnly(!showUnansweredOnly);
+              const newVal = !showUnansweredOnly;
+              setShowUnansweredOnly(newVal);
               setIndex(0);
+              swiperRef.current?.slideTo(0);
             }}
           />
           <span>Only show unanswered props</span>
@@ -62,22 +64,47 @@ export default function PackCarouselView({ packData }) {
       </div>
       <CardProgressFooter />
       <div className="flex flex-col items-center">
-        <div className={`w-full max-w-lg transition-opacity duration-500 ease-in-out ${fade ? "opacity-100" : "opacity-0"}`}>
-          <CardViewCard prop={current} />
-          <div className="mt-2 text-sm">
-            <Link href={`/props/${current.propID}`} className="text-blue-600 underline">
-              See prop detail
-            </Link>
-          </div>
-        </div>
+        <Swiper
+          modules={[Navigation, EffectCards]}
+          effect="cards"
+          cardsEffect={{ slideShadows: true }}
+          grabCursor={true}
+          slidesPerView={1}
+          onSwiper={(swiper) => (swiperRef.current = swiper)}
+          onSlideChange={(swiper) => setIndex(swiper.activeIndex)}
+          navigation
+          initialSlide={index}
+          className="w-full max-w-lg"
+        >
+          {displayedProps.map((prop) => (
+            <SwiperSlide key={prop.propID}>
+              <div className="w-full">
+                <CardViewCard prop={prop} />
+                <div className="mt-2 text-sm">
+                  <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
+                    See prop detail
+                  </Link>
+                </div>
+              </div>
+            </SwiperSlide>
+          ))}
+        </Swiper>
         <div className="mt-2 text-sm text-gray-600">
           {index + 1} of {displayedProps.length}
         </div>
         <div className="flex justify-between w-full max-w-lg mt-4">
-          <button onClick={prev} disabled={index === 0} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">
+          <button
+            onClick={() => swiperRef.current?.slidePrev()}
+            disabled={index === 0}
+            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+          >
             Previous
           </button>
-          <button onClick={next} disabled={index === displayedProps.length - 1} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">
+          <button
+            onClick={() => swiperRef.current?.slideNext()}
+            disabled={index === displayedProps.length - 1}
+            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+          >
             Next
           </button>
         </div>
