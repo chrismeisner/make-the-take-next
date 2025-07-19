@@ -6,6 +6,7 @@ import InputMask from "react-input-mask";
 import Header from "../components/Header";
 import LeaderboardTable from "../components/LeaderboardTable";
 import Link from "next/link";
+import PackPreview from "../components/PackPreview";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function LandingPage() {
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [teamError, setTeamError] = useState("");
   const [selectedTeam, setSelectedTeam] = useState(null);
-  const [agreed, setAgreed] = useState(true); // Added to fix "agreed is not defined" error
+  const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
 
   // State for leaderboard (for logged-in users)
   const [leaderboard, setLeaderboard] = useState([]);
@@ -32,6 +33,9 @@ export default function LandingPage() {
   // State for active packs (for logged-in users)
   const [activePacks, setActivePacks] = useState([]);
   const [loadingPacks, setLoadingPacks] = useState(false);
+
+  // State for user takes (for logged-in users)
+  const [userTakes, setUserTakes] = useState([]);
 
   // Fetch teams on mount (for login flow)
   useEffect(() => {
@@ -109,6 +113,27 @@ export default function LandingPage() {
 		}
 	  }
 	  fetchActivePacks();
+	}
+  }, [session]);
+
+  // Fetch user takes if logged in
+  useEffect(() => {
+	if (session?.user?.profileID) {
+	  async function fetchUserTakes() {
+		try {
+		  const res = await fetch(`/api/userTakes?profileID=${session.user.profileID}`);
+		  const data = await res.json();
+		  if (data.success) {
+			setUserTakes(data.takes);
+			console.log("✅ [LandingPage] User takes:", data.takes);
+		  } else {
+			console.error("❌ [LandingPage] Error fetching user takes:", data.error);
+		  }
+		} catch (err) {
+		  console.error("💥 [LandingPage] Error fetching user takes:", err);
+		}
+	  }
+	  fetchUserTakes();
 	}
   }, [session]);
 
@@ -265,35 +290,7 @@ export default function LandingPage() {
 			  ) : activePacks.length > 0 ? (
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 				  {activePacks.map((pack) => (
-					<Link legacyBehavior key={pack.packID} href={`/packs/${pack.packURL}`}>
-					  <a className="border rounded shadow-md bg-white overflow-hidden p-2 block">
-						<div
-						  className="aspect-square relative bg-blue-600 bg-cover bg-center"
-						  style={{
-							backgroundImage: pack.packCover ? `url(${pack.packCover})` : undefined,
-						  }}
-						>
-						  {!pack.packCover && (
-							<div className="flex items-center justify-center h-full">
-							  <span>No Cover</span>
-							</div>
-						  )}
-						</div>
-						<div className="p-4">
-						  <h2 className="text-lg font-semibold">{pack.packTitle}</h2>
-						  {pack.eventTime && (
-							<p className="text-xs text-gray-500">
-							  Event: {new Date(pack.eventTime).toLocaleString()}
-							</p>
-						  )}
-						  {pack.propsCount !== undefined && (
-							<p className="text-xs text-gray-500">
-							  {pack.propsCount} proposition{pack.propsCount === 1 ? "" : "s"}
-							</p>
-						  )}
-						</div>
-					  </a>
-					</Link>
+					<PackPreview key={pack.packID} pack={pack} userTakes={userTakes} />
 				  ))}
 				</div>
 			  ) : (

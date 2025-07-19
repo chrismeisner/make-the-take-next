@@ -14,10 +14,11 @@ export default async function handler(req, res) {
   const { takeID } = req.query;
   
   try {
-	// Query the "Takes" table for a record where the TakeID field equals the provided takeID.
+	// Query the "Takes" table for a record matching either the TakeID field or the Airtable record ID
+	const filterFormula = `OR({TakeID} = "${takeID}", RECORD_ID() = "${takeID}")`;
 	const records = await base("Takes")
 	  .select({
-		filterByFormula: `{TakeID} = "${takeID}"`,
+		filterByFormula,
 		maxRecords: 1,
 	  })
 	  .firstPage();

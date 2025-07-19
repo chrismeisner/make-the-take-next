@@ -6,8 +6,10 @@ import VerificationWidget from "./VerificationWidget";
 
 export default function PropCard({ prop }) {
   const context = usePackContext();
-  const verifiedProps = context ? context.verifiedProps : new Set();
-  const handlePropVerified = context ? context.handlePropVerified : () => {};
+  const verifiedProps = context?.verifiedProps || new Set();
+  const handlePropVerified = context?.handlePropVerified || (() => {});
+  // Get user's take for this prop, if any
+  const userTake = context?.userTakesByProp?.[prop.propID];
 
   const [verified, setVerified] = useState(verifiedProps.has(prop.propID));
 
@@ -31,6 +33,13 @@ export default function PropCard({ prop }) {
 	<div className="border border-gray-300 rounded-md p-4">
 	  {/* Replace the old "headline" with a less bold style */}
 	  <p className="text-lg font-semibold mb-2">{propSummary}</p>
+
+	  {/* Show user's take if already taken */}
+	  {userTake && (
+		<p className="text-sm text-purple-600 mb-2">
+		  Your take: {userTake.side}
+		</p>
+	  )}
 
 	  {/* Status row */}
 	  <div className="mt-2 text-sm text-gray-600">

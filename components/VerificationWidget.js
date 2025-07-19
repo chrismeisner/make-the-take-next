@@ -430,6 +430,9 @@ export default function VerificationWidget({
   const [error, setError] = useState("");
   const [widgetStatus, setWidgetStatus] = useState(STATUS.LOADING);
 
+  // Track when we last fetched prop counts
+  const [lastUpdated, setLastUpdated] = useState(null);
+
   // Steps for phone verification (if user not logged in)
   const [currentStep, setCurrentStep] = useState("phone");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -437,32 +440,81 @@ export default function VerificationWidget({
 
   // Avoid repeated calls for userTake
   const [fetchedUserTake, setFetchedUserTake] = useState(false);
-
   // Only call onVerificationComplete once
   const alreadyVerifiedCalled = useRef(false);
+  // Reset widget state when switching props in carousel view
+  useEffect(() => {
+    // Clear previous take info for new prop
+    setSelectedChoice("");
+    setAlreadyTookSide(null);
+    setUserTakeID(null);
+    setResultsRevealed(false);
+    setWidgetStatus(STATUS.LOADING);
+    setFetchedUserTake(false);
+    // Allow onVerificationComplete to fire again for new prop
+    alreadyVerifiedCalled.current = false;
+  }, [embeddedPropID]);
 
   // 1) Load the single prop from /api/prop
-  useEffect(() => {
-	if (!embeddedPropID) return;
+  // Fetch prop and recalc percentages on mount or when propID changes, with 5-min caching
+  const CACHE_DURATION_MS = 5 * 60 * 1000;
+  const fetchPropData = async (force = false) => {
+    const cacheKey = `propCounts_${embeddedPropID}`;
+    if (!force) {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        try {
+          const { timestamp, data: cachedData } = JSON.parse(raw);
+          if (Date.now() - timestamp < CACHE_DURATION_MS) {
+            setPropData(cachedData);
+            setLastUpdated(new Date(timestamp));
+            // Only reveal bars if user already took it or prop is graded/closed
+            const propStatusCached = cachedData.propStatus || 'open';
+            if (alreadyTookSide || selectedChoice || propStatusCached !== 'open') {
+              setResultsRevealed(true);
+            } else {
+              setResultsRevealed(false);
+            }
+            return;
+          }
+        } catch {}
+      }
+    }
+    if (!embeddedPropID) return;
+    // Hide bars to animate recede
+    setResultsRevealed(false);
+    try {
+      const resp = await fetch(
+        `/api/prop?propID=${encodeURIComponent(embeddedPropID)}`
+      );
+      const data = await resp.json();
+      if (data.success) {
+        setPropData(data);
+        const now = Date.now();
+        setLastUpdated(new Date(now));
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data }));
+        } catch {}
+        // Only re-show bars if user has taken or it's a graded/closed prop
+        const propStatusFetched = data.propStatus || 'open';
+        if (alreadyTookSide || selectedChoice || propStatusFetched !== 'open') {
+          // Re-show bars to animate fill
+          setTimeout(() => {
+            setResultsRevealed(true);
+          }, 50);
+        }
+      } else {
+        console.error("[VerificationWidget] /api/prop error =>", data.error);
+        setWidgetStatus(STATUS.ERROR);
+      }
+    } catch (err) {
+      console.error("[VerificationWidget] loadProp error =>", err);
+      setWidgetStatus(STATUS.ERROR);
+    }
+  };
 
-	async function loadProp() {
-	  try {
-		const resp = await fetch(
-		  `/api/prop?propID=${encodeURIComponent(embeddedPropID)}`
-		);
-		const data = await resp.json();
-		if (data.success) {
-		  setPropData(data);
-		} else {
-		  console.error("[VerificationWidget] /api/prop error =>", data.error);
-		  setWidgetStatus(STATUS.ERROR);
-		}
-	  } catch (err) {
-		console.error("[VerificationWidget] loadProp error =>", err);
-		setWidgetStatus(STATUS.ERROR);
-	  }
-	}
-	loadProp();
+  useEffect(() => {
+    fetchPropData();
   }, [embeddedPropID]);
 
   // 2) If user is logged in & we haven't fetched userTake => do it once
@@ -567,8 +619,14 @@ export default function VerificationWidget({
   }
 
   function handleSelectChoice(sideValue) {
-	setSelectedChoice(sideValue);
-	setResultsRevealed(true);
+    // Toggle off if same side clicked again (before submitting)
+    if (selectedChoice === sideValue) {
+      setSelectedChoice("");
+      setResultsRevealed(false);
+    } else {
+      setSelectedChoice(sideValue);
+      setResultsRevealed(true);
+    }
   }
 
   // If the prop data is not loaded or there's an error
@@ -596,13 +654,13 @@ export default function VerificationWidget({
   // Check the propStatus for "gradedA"/"gradedB" etc.
   const propStatus = propData.propStatus || "open";
   const readOnly = propStatus !== "open";
-  const showResults = readOnly || resultsRevealed;
+  const showResults = resultsRevealed;
 
   const sideACount = propData.sideACount || 0;
   const sideBCount = propData.sideBCount || 0;
   const total = sideACount + sideBCount;
   const sideAPct = total === 0 ? 50 : Math.round((sideACount / total) * 100);
-  const sideBPct = 100 - sideAPct;
+  const sideBPct = total === 0 ? 50 : Math.round((sideBCount / total) * 100);
 
   const hasVerifiedTake = !!alreadyTookSide;
   const buttonLabel = hasVerifiedTake ? "Update Take" : "Make This Take";
@@ -642,6 +700,12 @@ export default function VerificationWidget({
 		sideBLabel={propData.PropSideBShort || "Side B"}
 		alreadyTookSide={alreadyTookSide}
 	  />
+	  <p className="text-xs text-gray-500">
+		Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : "–"}{' '}
+		<button onClick={() => fetchPropData(true)} className="underline ml-2">
+		  Refresh
+		</button>
+	  </p>
 
 	  {readOnly && (
 		<p className="mt-2 text-gray-500 italic">

@@ -16,6 +16,8 @@ export function PackContextProvider({ packData, children }) {
 
   // We store the verified props in a Set of propIDs
   const [verifiedProps, setVerifiedProps] = useState(new Set());
+  // Map of propID to user's take (includes side and takeID)
+  const [userTakesByProp, setUserTakesByProp] = useState({});
 
   // On mount (and whenever session changes), if the user is logged in, 
   // fetch their previously verified takes for this pack.
@@ -29,13 +31,16 @@ export function PackContextProvider({ packData, children }) {
 		if (data.success && data.userTakes) {
 		  const packPropIDs = new Set(packData.props.map((p) => p.propID));
 		  const verifiedFromServer = new Set();
+		  const takesMap = {};
 		  data.userTakes.forEach((take) => {
 			// Only add to verified if it's a prop in this pack
 			if (packPropIDs.has(take.propID)) {
 			  verifiedFromServer.add(take.propID);
+			  takesMap[take.propID] = take;
 			}
 		  });
 		  setVerifiedProps(verifiedFromServer);
+		  setUserTakesByProp(takesMap);
 		}
 	  } catch (err) {
 		console.error("[PackContext] Error fetching userTakes:", err);
@@ -57,8 +62,9 @@ export function PackContextProvider({ packData, children }) {
   const value = useMemo(() => ({
 	packData,
 	verifiedProps,
+	userTakesByProp,
 	handlePropVerified,
-  }), [packData, verifiedProps, handlePropVerified]);
+  }), [packData, verifiedProps, userTakesByProp, handlePropVerified]);
 
   return (
 	<PackContext.Provider value={value}>
