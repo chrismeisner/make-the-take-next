@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { usePackContext } from "../contexts/PackContext";
 import VerificationWidget from "./VerificationWidget";
 
@@ -28,7 +29,7 @@ export default function CardViewCard({ prop }) {
   } = prop;
 
   return (
-    <div className="border border-gray-300 rounded-md p-4">
+    <div className="bg-white border border-gray-300 rounded-md shadow-lg p-4 w-full max-w-[600px] mx-auto">
       {/* Replace the old "headline" with a less bold style */}
       <p className="text-lg font-semibold mb-2">{propSummary}</p>
 
@@ -42,6 +43,12 @@ export default function CardViewCard({ prop }) {
       {/* Status row */}
       <div className="mt-2 text-sm text-gray-600">
         <span className="font-semibold">Status:</span> {propStatus}
+      </div>
+      {/* See prop detail link */}
+      <div className="mt-1 text-sm">
+        <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
+          See prop detail
+        </Link>
       </div>
 
       {/* VerificationWidget */}
