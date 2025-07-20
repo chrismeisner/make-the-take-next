@@ -1,5 +1,6 @@
 // File: /pages/api/props/index.js
 import fetch from "node-fetch";
+import Airtable from "airtable";
 
 /**
  * This version uses Airtable's REST API (instead of the Airtable.js client),
@@ -12,9 +13,53 @@ import fetch from "node-fetch";
  *  => returns the next 10
  */
 export default async function handler(req, res) {
-  // Only GET allowed
-  if (req.method !== "GET") {
-	return res.status(405).json({ success: false, error: "Method not allowed" });
+  if (req.method === "POST") {
+    // Create a new Prop linked to a Pack
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, propType, packId } = req.body;
+    if (!propShort || !packId) {
+      return res.status(400).json({ success: false, error: "Missing propShort or packId" });
+    }
+    try {
+      const created = await base("Props").create([
+        {
+          fields: {
+            propShort,
+            propSummary,
+            PropSideAShort,
+            PropSideBShort,
+            propType,
+            propStatus: "draft",
+            Packs: [packId],
+          },
+        },
+      ]);
+      return res.status(200).json({ success: true, record: created[0] });
+    } catch (err) {
+      console.error("[api/props POST] Error =>", err);
+      return res.status(500).json({ success: false, error: "Failed to create prop" });
+    }
+  }
+  // PATCH: update propStatus of a specific prop
+  if (req.method === "PATCH") {
+    const { propId, propStatus } = req.body;
+    if (!propId || !propStatus) {
+      return res.status(400).json({ success: false, error: "Missing propId or propStatus" });
+    }
+    try {
+      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+      const updated = await base("Props").update([
+        { id: propId, fields: { propStatus } }
+      ]);
+      return res.status(200).json({ success: true, record: updated[0] });
+    } catch (err) {
+      console.error("[api/props PATCH] Error =>", err);
+      return res.status(500).json({ success: false, error: "Failed to update propStatus" });
+    }
+  }
+  // Only GET and POST allowed beyond this point
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
   try {
@@ -71,6 +116,7 @@ export default async function handler(req, res) {
 		contentImageUrls: Array.isArray(f.contentImage)
 		  ? f.contentImage.map((img) => img.url)
 		  : [],
+		linkedPacks: Array.isArray(f.Packs) ? f.Packs : [],
 
 		// If you previously had "linkedPacks" logic, you can add it here
 		// linkedPacks: ...

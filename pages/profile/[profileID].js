@@ -183,7 +183,7 @@ export default function ProfilePage() {
 			<Link
 			  key={pack.id}
 			  href={`/packs/${pack.packURL}`}
-			  className="border rounded shadow-md bg-white overflow-hidden p-2 block"
+			  className="border rounded shadow-md bg-white overflow-visible p-2 block"
 			>
 			  <div
 				className="aspect-square relative bg-blue-600 bg-cover bg-center"

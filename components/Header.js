@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut, useSession } from "next-auth/react";
+import { useWireframe } from "../contexts/WireframeContext";
 
 // Minimal link style for header links (non-pill)
 const linkBaseStyles = "text-sm text-gray-200 hover:text-gray-300 transition-colors";
@@ -18,8 +19,9 @@ const pillLinkStyles = `
 export default function Header() {
   const { data: session, status } = useSession();
   const router = useRouter();
-
+  const { enabled: wireframeMode, setEnabled: setWireframeMode } = useWireframe();
   const [userPoints, setUserPoints] = useState(null);
+  const [timezone, setTimezone] = useState("");
 
   useEffect(() => {
 	console.log("[Header] Session status:", status);
@@ -52,6 +54,14 @@ export default function Header() {
 	  setUserPoints(null);
 	}
   }, [session, status]);
+
+  // Detect and store user's time zone on client
+  useEffect(() => {
+	if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+	  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	  setTimezone(tz);
+	}
+  }, []);
 
   // Logged out => simple login button
   function LoginButton() {
@@ -89,11 +99,25 @@ export default function Header() {
 	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		{/* Single row: brand on left, nav on right */}
 		<div className="flex items-center justify-between h-12">
-		  {/* Brand now links to index page */}
-		  <Link href="/" className={linkBaseStyles}>
-			🏴‍☠️ Make The Take
-		  </Link>
+		  {/* Brand and timezone */}
+		  <div className="flex items-center">
+			<Link href="/" className={linkBaseStyles}>
+			  🏴‍☠️ Make The Take
+			</Link>
+			{timezone && (
+			  <span className="ml-4 text-xs text-gray-300">{timezone}</span>
+			)}
+		  </div>
 		  <nav className="flex items-center space-x-4">
+			<label className="flex items-center space-x-1">
+			  <input
+				type="checkbox"
+				checked={wireframeMode}
+				onChange={() => setWireframeMode(!wireframeMode)}
+				className="form-checkbox h-4 w-4 text-red-500 bg-gray-800 border-gray-300 rounded"
+			  />
+			  <span className="text-sm text-gray-200">Wireframe</span>
+			</label>
 			{session?.user && session.user.profileID ? (
 			  <LoggedInLinks />
 			) : (

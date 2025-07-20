@@ -130,7 +130,7 @@ export default function HomePage() {
 				{prop.subjectLogoUrls && prop.subjectLogoUrls.length > 0 && (
 				  <div className="flex items-center gap-2">
 					{prop.subjectLogoUrls.map((logoUrl, index) => (
-					  <div key={index} className="w-10 aspect-square overflow-hidden rounded">
+					  <div key={index} className="w-10 aspect-square overflow-visible rounded">
 						<img
 						  src={logoUrl}
 						  alt={
@@ -166,7 +166,7 @@ export default function HomePage() {
 			  <div className="mt-4">
 				{prop.contentImageUrls && prop.contentImageUrls.length > 0 ? (
 				  <Link href={`/props/${prop.propID}`}>
-					<div className="w-full max-w-sm aspect-video overflow-hidden bg-gray-300">
+					<div className="w-full max-w-sm aspect-video overflow-visible bg-gray-300">
 					  <img
 						src={prop.contentImageUrls[0]}
 						alt="Prop content"
@@ -176,7 +176,7 @@ export default function HomePage() {
 				  </Link>
 				) : (
 				  <Link href={`/props/${prop.propID}`}>
-					<div className="w-full max-w-sm aspect-video overflow-hidden bg-blue-500 text-white flex items-center justify-center font-bold">
+					<div className="w-full max-w-sm aspect-video overflow-visible bg-blue-500 text-white flex items-center justify-center font-bold">
 					  NEW IMAGE
 					</div>
 				  </Link>

@@ -219,9 +219,26 @@ export default async function handler(req, res) {
 	// ---------------------------------------------
 	// 5. Consolidate pack data
 	// ---------------------------------------------
+	// Additional pack detail fields
+	let packCreatorID = null;
+	if (Array.isArray(packFields.PackCreator) && packFields.PackCreator.length > 0) {
+	  const creatorRecordId = packFields.PackCreator[0];
+	  const profileRecs = await base("Profiles")
+		.select({
+		  filterByFormula: `RECORD_ID()='${creatorRecordId}'`,
+		  maxRecords: 1,
+		})
+		.firstPage();
+	  if (profileRecs.length > 0) {
+		packCreatorID = profileRecs[0].fields.profileID || profileRecs[0].id;
+	  }
+	}
 	const packData = {
 	  packID: packFields.packID,
 	  packTitle: packFields.packTitle || "Untitled Pack",
+	  packSummary: packFields.packSummary || "",
+	  packType: packFields.packType || "",
+	  packCreatorID,
 	  packURL: packFields.packURL,
 	  props: propsData,
 	  packPrize: packFields.packPrize || "",

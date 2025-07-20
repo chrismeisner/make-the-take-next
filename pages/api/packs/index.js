@@ -75,6 +75,45 @@ async function attachUserTakeCount(packsData, token) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "PATCH") {
+    // Update packStatus for a specific pack
+    const { packId, packStatus } = req.body;
+    if (!packId || !packStatus) {
+      return res.status(400).json({ success: false, error: "Missing packId or packStatus" });
+    }
+    try {
+      const updated = await base("Packs").update([
+        { id: packId, fields: { packStatus } }
+      ]);
+      return res.status(200).json({ success: true, record: updated[0] });
+    } catch (error) {
+      console.error("[api/packs PATCH] Error =>", error);
+      return res.status(500).json({ success: false, error: "Failed to update packStatus" });
+    }
+  }
+  if (req.method === "POST") {
+    try {
+      const { packTitle, packSummary, packURL, packType, eventId, packCoverUrl } = req.body;
+      if (!packTitle || !packURL) {
+        return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
+      }
+      // Prepare fields for Airtable record
+      const fields = { packTitle, packSummary, packURL, packType };
+      if (eventId) {
+        fields.Event = [eventId];
+      }
+      if (packCoverUrl) {
+        // Attach cover image
+        fields.packCover = [{ url: packCoverUrl }];
+      }
+      const created = await base("Packs").create([{ fields }]);
+      const record = created[0];
+      return res.status(200).json({ success: true, record });
+    } catch (error) {
+      console.error("[api/packs POST] Error =>", error);
+      return res.status(500).json({ success: false, error: "Failed to create pack." });
+    }
+  }
   if (req.method !== "GET") {
 	return res
 	  .status(405)

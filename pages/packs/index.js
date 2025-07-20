@@ -109,7 +109,7 @@ export default function PacksIndexPage({ packsData }) {
 			return (
 			  <div
 				key={pack.packID}
-				className="border rounded shadow-md bg-white overflow-hidden p-2"
+				className="border rounded shadow-md bg-white overflow-visible p-2"
 			  >
 				<div
 				  className={`aspect-square relative bg-blue-600 bg-cover bg-center ${

@@ -85,7 +85,11 @@ export function PackContextProvider({ packData, children }) {
 
   // Submit all selected takes at once
   const submitAllTakes = useCallback(async () => {
-    for (const [propID, side] of Object.entries(selectedChoices)) {
+    // Prepare only new or changed takes (skip unchanged previous takes)
+    const entries = Object.entries(selectedChoices).filter(
+      ([propID, side]) => userTakesByProp[propID]?.side !== side
+    );
+    for (const [propID, side] of entries) {
       try {
         const resp = await fetch("/api/take", {
           method: "POST",
@@ -113,7 +117,7 @@ export function PackContextProvider({ packData, children }) {
         console.error(`Exception submitting take for ${propID}:`, err);
       }
     }
-  }, [selectedChoices]);
+  }, [selectedChoices, userTakesByProp, packData.props]);
 
   // Memoize the context value so children don’t re-render unnecessarily
   const value = useMemo(() => ({

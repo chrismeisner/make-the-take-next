@@ -43,6 +43,7 @@ export default function CardProgressFooter() {
         right: 0,
         backgroundColor: "#ffffff",
         padding: "0.5rem",
+        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
         borderTop: "1px solid #eee",
         zIndex: 999,
       }}

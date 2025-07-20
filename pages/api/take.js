@@ -72,13 +72,6 @@ export default async function handler(req, res) {
 		  fields: { takeStatus: "overwritten" },
 		},
 	  ]);
-
-	  // Decrement the old side, but never drop below 1
-	  if (oldSide === "A") {
-		sideACount = Math.max(1, sideACount - 1);
-	  } else if (oldSide === "B") {
-		sideBCount = Math.max(1, sideBCount - 1);
-	  }
 	}
 
 	// 6) Create the new "latest" take

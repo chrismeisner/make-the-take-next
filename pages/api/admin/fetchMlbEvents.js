@@ -40,21 +40,57 @@ export default async function handler(req, res) {
       }
       let homeTeam = "";
       let awayTeam = "";
+      let homeTeamScore = null;
+      let awayTeamScore = null;
+      let homeTeamId = null;
+      let awayTeamId = null;
       const comp = evt.competitions?.[0];
       if (comp && Array.isArray(comp.competitors)) {
         for (const team of comp.competitors) {
           if (team.homeAway === "home") {
             homeTeam = team.team.displayName;
+            homeTeamId = team.team.id?.toString();
+            homeTeamScore = team.score != null ? parseInt(team.score, 10) : null;
           } else if (team.homeAway === "away") {
             awayTeam = team.team.displayName;
+            awayTeamId = team.team.id?.toString();
+            awayTeamScore = team.score != null ? parseInt(team.score, 10) : null;
           }
         }
+      }
+
+      // Lookup linked team records in Airtable
+      let homeTeamLink = [];
+      let awayTeamLink = [];
+      if (homeTeamId) {
+        const homeRecs = await base("Teams")
+          .select({ filterByFormula: `AND({teamID}="${homeTeamId}", {teamLeague}="MLB")`, maxRecords: 1 })
+          .firstPage();
+        if (homeRecs.length) homeTeamLink = [homeRecs[0].id];
+      }
+      if (awayTeamId) {
+        const awayRecs = await base("Teams")
+          .select({ filterByFormula: `AND({teamID}="${awayTeamId}", {teamLeague}="MLB")`, maxRecords: 1 })
+          .firstPage();
+        if (awayRecs.length) awayTeamLink = [awayRecs[0].id];
       }
 
       const existing = await base("Events")
         .select({ filterByFormula: `{espnGameID}="${espnGameID}"`, maxRecords: 1 })
         .firstPage();
-      const fields = { espnGameID, eventTime, eventTitle, eventStatus, homeTeam, awayTeam, eventLeague };
+      const fields = {
+        espnGameID,
+        eventTime,
+        eventTitle,
+        eventStatus,
+        homeTeam,
+        awayTeam,
+        eventLeague,
+        homeTeamLink,
+        awayTeamLink,
+        homeTeamScore,
+        awayTeamScore,
+      };
 
       if (existing.length) {
         await base("Events").update([{ id: existing[0].id, fields }]);

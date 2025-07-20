@@ -266,7 +266,7 @@ export default function ContestsIndexPage({ contests }) {
 				className="h-full flex flex-col border border-gray-200 rounded-md bg-white shadow-sm hover:shadow-md transition-shadow"
 			  >
 				{/* Cover */}
-				<div className="w-full h-40 overflow-hidden">
+				<div className="w-full h-40 overflow-visible">
 				  {coverUrl ? (
 					<img
 					  src={coverUrl}

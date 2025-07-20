@@ -9,8 +9,10 @@ export default function CardViewCard({ prop }) {
     handleChoiceSelect,
     userTakesByProp,
   } = usePackContext();
-  const selected = selectedChoices[prop.propID];
+  // Determine user's previous take if any
   const userTake = userTakesByProp[prop.propID];
+  // Pre-select the side based on previous user take if no new selection
+  const selected = selectedChoices[prop.propID] ?? userTake?.side;
   const alreadyTookSide = userTake?.side;
 
   // Live counts and refresh

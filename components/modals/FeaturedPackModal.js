@@ -54,7 +54,7 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 				className="text-center"
 			  >
 				{coverImageUrl && (
-				  <div className="mb-4 w-48 h-48 mx-auto overflow-hidden rounded-lg shadow-md">
+				  <div className="mb-4 w-48 h-48 mx-auto overflow-visible rounded-lg shadow-md">
 					<img
 					  src={coverImageUrl}
 					  alt={featuredPack.packTitle}

@@ -7,6 +7,7 @@ import 'swiper/css/effect-cards';
 import { SessionProvider } from "next-auth/react";
 import Layout from "../components/Layout";
 import { ModalProvider } from "../contexts/ModalContext";
+import { WireframeProvider } from "../contexts/WireframeContext";
 import GlobalModalRenderer from "../components/GlobalModalRenderer";
 
 export default function MyApp({ Component, pageProps: { session, ...pageProps } }) {
@@ -15,10 +16,12 @@ export default function MyApp({ Component, pageProps: { session, ...pageProps } 
   return (
 	<SessionProvider session={session}>
 	  <ModalProvider>
+      <WireframeProvider>
 		<Layout>
 		  <Component {...pageProps} />
 		  <GlobalModalRenderer />
 		</Layout>
+      </WireframeProvider>
 	  </ModalProvider>
 	</SessionProvider>
   );
