@@ -7,6 +7,7 @@ import { authOptions } from '../api/auth/[...nextauth]';
 import { PackContextProvider } from '../../contexts/PackContext';
 import { useModal } from '../../contexts/ModalContext';
 import PackCarouselView from '../../components/PackCarouselView';
+import Head from 'next/head';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -145,14 +146,34 @@ export async function getServerSideProps(context) {
 
 export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity }) {
   const { openModal } = useModal();
+  const origin = debugLogs.origin;
   useEffect(() => {
     if (friendProfile) {
       openModal('challenge', { friendName: friendProfile.profileUsername || friendProfile.profileID });
     }
   }, [friendProfile, openModal]);
   return (
-    <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-      <PackCarouselView packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} userReceipts={userReceipts} activity={activity} />
-    </PackContextProvider>
+    <>
+      <Head>
+        <title>{packData.packTitle}</title>
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content={packData.packTitle} />
+        <meta property="og:description" content={packData.packSummary} />
+        {packData.packCover?.[0]?.url && (
+          <meta property="og:image" content={packData.packCover[0].url} />
+        )}
+        <meta property="og:url" content={`${origin}/packs/${packData.packURL}`} />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={packData.packTitle} />
+        <meta name="twitter:description" content={packData.packSummary} />
+        {packData.packCover?.[0]?.url && (
+          <meta name="twitter:image" content={packData.packCover[0].url} />
+        )}
+      </Head>
+      <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+        <PackCarouselView packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} userReceipts={userReceipts} activity={activity} />
+      </PackContextProvider>
+    </>
   );
 }
