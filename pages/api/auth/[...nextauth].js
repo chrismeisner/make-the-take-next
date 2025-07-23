@@ -37,10 +37,12 @@ async function ensureProfileRecord(phoneE164) {
   if (found.length > 0) {
 	const existing = found[0];
 	console.log("[NextAuth] Profile found =>", existing);
+	const hasProfileID = Boolean(existing.fields.profileID);
 	return {
 	  airtableId: existing.id, // Airtable Record ID
 	  profileID: existing.fields.profileID, // e.g. "c_monster"
 	  mobile: existing.fields.profileMobile,
+	  isUsernameMissing: !hasProfileID
 	};
   }
 
@@ -57,17 +59,19 @@ async function ensureProfileRecord(phoneE164) {
 
   const newRec = created[0];
   console.log("[NextAuth] Profile created =>", newRec);
+  const hasProfileID = Boolean(newRec.fields.profileID);
   return {
 	airtableId: newRec.id,
 	profileID: newRec.fields.profileID,
 	mobile: newRec.fields.profileMobile,
+	isUsernameMissing: !hasProfileID
   };
 }
 
 // Debounce logs:
 let lastLoggedSession = {};
 
-export default NextAuth({
+export const authOptions = {
   session: {
 	strategy: "jwt",
   },
@@ -110,6 +114,7 @@ export default NextAuth({
 			phone: e164Phone,
 			profileID: profile.profileID,
 			airtableId: profile.airtableId,
+			isUsernameMissing: profile.isUsernameMissing
 		  };
 		} catch (err) {
 		  console.error("[NextAuth] Profile error:", err);
@@ -117,6 +122,44 @@ export default NextAuth({
 		}
 	  },
 	}),
+    // Add Super Admin credentials provider
+    CredentialsProvider({
+      id: "super-admin",
+      name: "Super Admin",
+      credentials: {
+        secret: { label: "Secret", type: "text" },
+      },
+      async authorize(credentials) {
+        if (credentials.secret === process.env.SUPERADMIN_SECRET) {
+          const phone = "+10000000000";
+          console.log("[NextAuth] SuperAdmin authorize => upserting Profiles record for", phone);
+
+          // Upsert super-admin profile in Airtable
+          const filter = `{profileMobile} = "${phone}"`;
+          const found = await base("Profiles").select({ filterByFormula: filter, maxRecords: 1 }).all();
+          let airtableId;
+          if (found.length > 0) {
+            airtableId = found[0].id;
+            // Ensure profileID is 'superadmin'
+            if (found[0].fields.profileID !== "superadmin") {
+              await base("Profiles").update([{ id: airtableId, fields: { profileID: "superadmin" } }]);
+            }
+          } else {
+            const created = await base("Profiles").create([
+              { fields: { profileMobile: phone, profileID: "superadmin" } },
+            ]);
+            airtableId = created[0].id;
+          }
+
+          return {
+            phone,
+            profileID: "superadmin",
+            airtableId,
+          };
+        }
+        return null;
+      },
+    }),
   ],
 
   callbacks: {
@@ -126,6 +169,7 @@ export default NextAuth({
 		token.phone = user.phone;
 		token.profileID = user.profileID;
 		token.airtableId = user.airtableId;
+		token.isUsernameMissing = user.isUsernameMissing;
 
 		// Debounce logs
 		const now = Date.now();
@@ -145,6 +189,7 @@ export default NextAuth({
 		  phone: token.phone,
 		  profileID: token.profileID,
 		  airtableId: token.airtableId,
+		  isUsernameMissing: token.isUsernameMissing
 		};
 	  }
 
@@ -157,15 +202,28 @@ export default NextAuth({
 	  return session;
 	},
 
-	// 3) Automatic redirect => /profile/<profileID>
+	// 3) Automatic redirect => /profile/<profileID> or choose username
 	async redirect({ url, baseUrl, token }) {
-	  // If user has a profileID => route them to /profile/<profileID>
+	  if (token?.isUsernameMissing) {
+		return `${baseUrl}/create-username`;
+	  }
+
 	  if (token?.profileID) {
 		return `${baseUrl}/profile/${token.profileID}`;
 	  }
 	  return baseUrl;
 	},
   },
-
+  // Log authentication events
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      console.log(`[NextAuth] signIn: profileID=${user.profileID} via provider=${account.provider}`);
+      if (account.provider === "super-admin") {
+        console.log("[NextAuth] Super Admin login successful for profileID superadmin");
+      }
+    },
+  },
   secret: process.env.NEXTAUTH_SECRET,
-});
+};
+
+export default NextAuth(authOptions);

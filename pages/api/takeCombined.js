@@ -55,6 +55,20 @@ export default async function handler(req, res) {
 	  await base("Takes").update(updates);
 	}
 
+	// 4) Calculate popularity of the chosen side before adding the new take
+	const popularityTakes = await base("Takes")
+	  .select({ filterByFormula: `AND({propID}="${propID}", {takeStatus}!="overwritten")` })
+	  .all();
+	let popularityA = 0;
+	let popularityB = 0;
+	popularityTakes.forEach((t) => {
+	  if (t.fields.propSide === "A") popularityA++;
+	  if (t.fields.propSide === "B") popularityB++;
+	});
+	const totalCount = popularityA + popularityB;
+	const chosenCount = propSide === "A" ? popularityA : popularityB;
+	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0;
+
 	// 4) Create new take
 	const created = await base("Takes").create([
 	  {
@@ -63,6 +77,7 @@ export default async function handler(req, res) {
 		  propSide,
 		  takeMobile: e164Phone,
 		  takeStatus: "latest",
+		  takePopularity,
 		},
 	  },
 	]);

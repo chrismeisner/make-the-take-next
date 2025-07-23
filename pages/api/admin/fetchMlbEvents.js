@@ -17,8 +17,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
+    const { date } = req.body;
+    const dateStr = date
+      ? date
+      : new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const url = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`;
     const response = await fetch(url);
     if (!response.ok) {

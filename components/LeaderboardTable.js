@@ -35,8 +35,8 @@ export default function LeaderboardTable({ leaderboard }) {
 		<tr className="border-b">
 		  <th className="text-left py-2 px-3">Phone</th>
 		  <th className="text-left py-2 px-3">Takes</th>
-		  <th className="text-left py-2 px-3">Points</th>
 		  <th className="text-left py-2 px-3">Record</th>
+		  <th className="text-left py-2 px-3">Points</th>
 		</tr>
 	  </thead>
 	  <tbody>
@@ -53,12 +53,9 @@ export default function LeaderboardTable({ leaderboard }) {
 				obscurePhone(item.phone)
 			  )}
 			</td>
-			<td className="py-2 px-3">{item.count}</td>
+			<td className="py-2 px-3">{item.takes}</td>
+			<td className="py-2 px-3">{item.won || 0}-{item.lost || 0}</td>
 			<td className="py-2 px-3">{Math.round(item.points)}</td>
-			<td className="py-2 px-3">
-			  {item.won || 0}-{item.lost || 0}
-			  {item.pending ? ` (Pending: ${item.pending})` : ""}
-			</td>
 		  </tr>
 		))}
 	  </tbody>

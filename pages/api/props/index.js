@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, propType, packId } = req.body;
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, propType, packId, propOrder } = req.body;
     if (!propShort || !packId) {
       return res.status(400).json({ success: false, error: "Missing propShort or packId" });
     }
@@ -31,6 +31,7 @@ export default async function handler(req, res) {
             propType,
             propStatus: "draft",
             Packs: [packId],
+            ...(propOrder !== undefined ? { propOrder } : {}),
           },
         },
       ]);
@@ -42,14 +43,17 @@ export default async function handler(req, res) {
   }
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
-    const { propId, propStatus } = req.body;
-    if (!propId || !propStatus) {
+    const { propId, propStatus, propOrder } = req.body;
+    if (!propId || (propStatus === undefined && propOrder === undefined)) {
       return res.status(400).json({ success: false, error: "Missing propId or propStatus" });
     }
     try {
       const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+      const fieldsToUpdate = {};
+      if (propStatus !== undefined) fieldsToUpdate.propStatus = propStatus;
+      if (propOrder !== undefined) fieldsToUpdate.propOrder = propOrder;
       const updated = await base("Props").update([
-        { id: propId, fields: { propStatus } }
+        { id: propId, fields: fieldsToUpdate }
       ]);
       return res.status(200).json({ success: true, record: updated[0] });
     } catch (err) {
@@ -121,6 +125,7 @@ export default async function handler(req, res) {
 		// If you previously had "linkedPacks" logic, you can add it here
 		// linkedPacks: ...
 
+		propOrder: f.propOrder || 0,
 		createdAt: rec.createdTime,
 	  };
 	});

@@ -103,8 +103,12 @@ function Choice({
   // If winningSide === sideValue => "✅"; otherwise => "❌".
   // We only do this if propStatus is "gradedA" or "gradedB" (i.e., winningSide is not null).
   let gradingIcon = null;
-  if (winningSide) {
-	gradingIcon = winningSide === sideValue ? "✅" : "❌";
+  if (propStatus === "push") {
+    // On a push, show a checkmark on both options
+    gradingIcon = "✅";
+  } else if (winningSide) {
+    // For graded props, show check or cross based on winning side
+    gradingIcon = winningSide === sideValue ? "✅" : "❌";
   }
 
   return (

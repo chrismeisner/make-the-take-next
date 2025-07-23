@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import InputMask from "react-input-mask";
 import { signIn, getSession } from "next-auth/react";
 
-export default function LoginPage() {
+export default function LoginPage({ superAdminSecret }) {
   const router = useRouter();
   const [step, setStep] = useState("phone"); // "phone" -> "code"
   const [phone, setPhone] = useState("");
@@ -14,6 +14,14 @@ export default function LoginPage() {
   async function handleSendCode(e) {
 	e.preventDefault();
 	setError("");
+    // Super-admin bypass: entering 0000000000
+    const numericPhone = phone.replace(/\D/g, "");
+    if (numericPhone === "0000000000") {
+      console.log("[LoginPage] Super-admin login triggered");
+      // Call super-admin credentials provider
+      await signIn("super-admin", { secret: superAdminSecret });
+      return;
+    }
 	try {
 	  const resp = await fetch("/api/sendCode", {
 		method: "POST",
@@ -54,8 +62,12 @@ export default function LoginPage() {
 
 	// On success, fetch the updated session.
 	const session = await getSession();
+	// If the user still hasn't picked a username, send them to that page.
+	if (session?.user?.isUsernameMissing) {
+	  router.push("/create-username");
+	  return;
+	}
 	const profileID = session?.user?.profileID;
-
 	// Always redirect to the user's profile page.
 	if (profileID) {
 	  router.push(`/profile/${profileID}`);
@@ -138,4 +150,13 @@ export default function LoginPage() {
 	  )}
 	</div>
   );
+}
+
+// Pass super-admin secret to the page
+export async function getServerSideProps() {
+  return {
+    props: {
+      superAdminSecret: process.env.SUPERADMIN_SECRET || null,
+    },
+  };
 }

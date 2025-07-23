@@ -61,6 +61,8 @@ export default async function handler(req, res) {
 	  const propsRecords = await base("Props")
 		.select({
 		  filterByFormula: formula,
+		  // Sort props by the new propOrder field
+		  sort: [{ field: "propOrder", direction: "asc" }],
 		  maxRecords: 100,
 		})
 		.all();
@@ -96,6 +98,7 @@ export default async function handler(req, res) {
 		  propSummary: f.propSummary || "",
 		  propShort: f.propShort || f.PropShort || "",
 		  propStatus: f.propStatus || "open",
+		  propResult: f.propResult || "",
 		  // static side counts removed; will compute dynamically below
 		  // Include short labels for sides
 		  sideALabel: f.PropSideAShort || f.propSideAShort || "Side A",
@@ -131,6 +134,12 @@ export default async function handler(req, res) {
 	// ---------------------------------------------
 	const linkedEventIDs = packFields.Event || [];
 	let packEventTime = null;
+	let espnGameID = null;
+	let eventLeague = null;
+	let homeTeam = null;
+	let awayTeam = null;
+	let homeTeamScore = null;
+	let awayTeamScore = null;
 	if (linkedEventIDs.length > 0) {
 	  const firstEventID = linkedEventIDs[0];
 	  console.log("[packURL] fetching Event record =>", firstEventID);
@@ -144,6 +153,12 @@ export default async function handler(req, res) {
 	  if (eventRecords.length > 0) {
 		const eventFields = eventRecords[0].fields;
 		packEventTime = eventFields.eventTime || null;
+		espnGameID = eventFields.espnGameID || null;
+		eventLeague = eventFields.eventLeague || null;
+		homeTeam = eventFields.homeTeam || null;
+		awayTeam = eventFields.awayTeam || null;
+		homeTeamScore = eventFields.homeTeamScore ?? null;
+		awayTeamScore = eventFields.awayTeamScore ?? null;
 		console.log("[packURL] Found eventTime =>", packEventTime);
 	  }
 	}
@@ -247,6 +262,12 @@ export default async function handler(req, res) {
 	  packPrizeURL: packFields.packPrizeURL || "",
 	  packCover,
 	  eventTime: packEventTime,
+	  espnGameID,
+	  eventLeague,
+	  homeTeam,
+	  awayTeam,
+	  homeTeamScore,
+	  awayTeamScore,
 	  contentData,
 	  contests: contestsData, // new array with {contestID, contestTitle, contestPrize}
 	};

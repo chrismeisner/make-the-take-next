@@ -1,12 +1,35 @@
 // File: /pages/admin/index.js
-import { useSession, signOut } from "next-auth/react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 import Link from "next/link";
+import { useModal } from "../../contexts/ModalContext";
 
-export default function AdminPage() {
+export default function AdminPage({ superAdminSecret }) {
   const { data: session } = useSession();
+  const { openModal } = useModal();
+  async function handleSwitchSuperAdmin() {
+    await signOut({ redirect: false });
+    signIn("super-admin", {
+      secret: superAdminSecret,
+      callbackUrl: "/admin",
+    });
+  }
+  const handleGradePacks = async () => {
+    try {
+      const res = await fetch("/api/admin/gradePacks", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        openModal("gradePacks", { packs: data.packs });
+      } else {
+        console.error("Grade Packs error:", data.error);
+      }
+    } catch (err) {
+      console.error("Grade Packs fetch failed:", err);
+    }
+  };
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [eventsResult, setEventsResult] = useState(null);
+  const [mlbDateOption, setMlbDateOption] = useState("Today");
   // State for updating MLB teams
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [teamsResult, setTeamsResult] = useState(null);
@@ -23,10 +46,20 @@ export default function AdminPage() {
 	signOut({ callbackUrl: "/" }); 
   }
 
+  // Handler for fetching MLB events
   const handleFetchEvents = async () => {
     setLoadingEvents(true);
     try {
-      const res = await fetch("/api/admin/fetchMlbEvents", { method: "POST" });
+      // Compute date string based on selected option
+      const dt = new Date();
+      if (mlbDateOption === "Yesterday") dt.setDate(dt.getDate() - 1);
+      else if (mlbDateOption === "Tomorrow") dt.setDate(dt.getDate() + 1);
+      const dateStr = dt.toISOString().slice(0, 10).replace(/-/g, "");
+      const res = await fetch("/api/admin/fetchMlbEvents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateStr }),
+      });
       const data = await res.json();
       setEventsResult(data);
     } catch (err) {
@@ -85,6 +118,12 @@ export default function AdminPage() {
 	<div className="p-4">
 	  <h1 className="text-2xl font-bold mb-4">Admin Tools</h1>
 	  <p>Welcome, Admin.</p>
+	  <button
+        onClick={handleSwitchSuperAdmin}
+        className="mt-4 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+      >
+        Switch to Super Admin
+      </button>
 
 	  <div className="mt-4">
 		<Link href="/admin/create-pack">
@@ -103,13 +142,24 @@ export default function AdminPage() {
 
   {/* Get MLB Events button */}
   <div className="mt-4">
-    <button
-      onClick={handleFetchEvents}
-      disabled={loadingEvents}
-      className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-    >
-      {loadingEvents ? "Fetching..." : "Get MLB Events"}
-    </button>
+    <div className="flex items-center space-x-2">
+      <select
+        value={mlbDateOption}
+        onChange={(e) => setMlbDateOption(e.target.value)}
+        className="px-2 py-2 border rounded"
+      >
+        <option value="Yesterday">Yesterday</option>
+        <option value="Today">Today</option>
+        <option value="Tomorrow">Tomorrow</option>
+      </select>
+      <button
+        onClick={handleFetchEvents}
+        disabled={loadingEvents}
+        className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+      >
+        {loadingEvents ? "Fetching..." : "Get MLB Events"}
+      </button>
+    </div>
     {eventsResult && (
       <div className="mt-2">
         {eventsResult.success ? (
@@ -178,7 +228,23 @@ export default function AdminPage() {
           </div>
         )}
       </div>
-
-	</div>
+     {/* Grade Packs button */}
+     <div className="mt-4">
+       <button
+         onClick={handleGradePacks}
+         className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+       >
+         Grade Packs
+       </button>
+     </div>
+    </div>
   );
+}
+
+export async function getServerSideProps() {
+  return {
+    props: {
+      superAdminSecret: process.env.SUPERADMIN_SECRET || null,
+    },
+  };
 }

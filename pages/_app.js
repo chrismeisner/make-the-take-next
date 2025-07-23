@@ -14,8 +14,9 @@ export default function MyApp({ Component, pageProps: { session, ...pageProps } 
   console.log("[_app] Starting with session =>", session);
 
   return (
-	<SessionProvider session={session}>
-	  <ModalProvider>
+    // Keep session fresh every 5 minutes and on window focus
+    <SessionProvider session={session} refetchInterval={300} refetchOnWindowFocus={true}>
+   	<ModalProvider>
       <WireframeProvider>
 		<Layout>
 		  <Component {...pageProps} />

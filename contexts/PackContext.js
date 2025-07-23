@@ -8,11 +8,13 @@ import React, {
   useEffect
 } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/router";
 
 const PackContext = createContext(null);
 
-export function PackContextProvider({ packData, children }) {
+export function PackContextProvider({ packData, friendTakesByProp = {}, children }) {
   const { data: session } = useSession();
+  const router = useRouter();
 
   // We store the verified props in a Set of propIDs
   const [verifiedProps, setVerifiedProps] = useState(new Set());
@@ -84,21 +86,29 @@ export function PackContextProvider({ packData, children }) {
   }, []);
 
   // Submit all selected takes at once
-  const submitAllTakes = useCallback(async () => {
+  const submitAllTakes = useCallback(async (receiptId) => {
+    const refID = router.query.ref;
+    console.log("[PackContext] submitAllTakes called", { receiptId, refID, selectedChoices });
+    // Collect created take IDs to report back
+    const createdTakeIDs = [];
     // Prepare only new or changed takes (skip unchanged previous takes)
     const entries = Object.entries(selectedChoices).filter(
       ([propID, side]) => userTakesByProp[propID]?.side !== side
     );
     for (const [propID, side] of entries) {
+      console.log(`[PackContext] submitting take for propID=${propID}, side=${side}, receiptId=${receiptId}, refID=${refID}`);
       try {
         const resp = await fetch("/api/take", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ propID, propSide: side }),
+          body: JSON.stringify({ propID, propSide: side, receiptId, refID }),
         });
         const data = await resp.json();
+        console.log(`[PackContext] /api/take response for propID=${propID}`, data);
         if (data.success) {
+          // Store the new take ID for reporting
+          createdTakeIDs.push(data.newTakeID);
           // Mark as verified
           setVerifiedProps((prev) => {
             const newSet = new Set(prev);
@@ -117,18 +127,21 @@ export function PackContextProvider({ packData, children }) {
         console.error(`Exception submitting take for ${propID}:`, err);
       }
     }
-  }, [selectedChoices, userTakesByProp, packData.props]);
+    // Return the list of created take IDs
+    return createdTakeIDs;
+  }, [selectedChoices, userTakesByProp, packData.props, router.query.ref]);
 
   // Memoize the context value so children don’t re-render unnecessarily
   const value = useMemo(() => ({
 	packData,
 	verifiedProps,
 	userTakesByProp,
+	friendTakesByProp,
 	handlePropVerified,
 	selectedChoices,
 	handleChoiceSelect,
 	submitAllTakes,
-  }), [packData, verifiedProps, userTakesByProp, handlePropVerified, selectedChoices, handleChoiceSelect, submitAllTakes]);
+  }), [packData, verifiedProps, userTakesByProp, friendTakesByProp, handlePropVerified, selectedChoices, handleChoiceSelect, submitAllTakes]);
 
   return (
 	<PackContext.Provider value={value}>

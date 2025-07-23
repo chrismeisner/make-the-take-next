@@ -35,7 +35,7 @@ export default function PackPreview({ pack, userTakes }) {
 
   return (
 	<Link
-	  href={`/packs/${pack.packURL}/list`}
+	  href={`/packs/${pack.packURL}`}
 	  className="border rounded shadow-md bg-white overflow-visible p-2 block"
 	>
 	  <div

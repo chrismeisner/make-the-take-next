@@ -62,6 +62,43 @@ export default function CreatePackPage() {
   const { packId: initialPackId } = router.query;
   const [packRecordId, setPackRecordId] = useState(initialPackId || null);
   const [packProps, setPackProps] = useState([]);
+  // Track when we're persisting prop order changes
+  const [savingOrder, setSavingOrder] = useState(false);
+  // Function to move a prop up or down in the packProps list
+  const moveProp = async (id, direction) => {
+    if (savingOrder) return;
+    setSavingOrder(true);
+    // Compute new order locally
+    const idx = packProps.findIndex((p) => p.airtableId === id);
+    const newIndex = idx + direction;
+    if (idx < 0 || newIndex < 0 || newIndex >= packProps.length) {
+      setSavingOrder(false);
+      return;
+    }
+    const newArr = [...packProps];
+    [newArr[idx], newArr[newIndex]] = [newArr[newIndex], newArr[idx]];
+    setPackProps(newArr);
+    // Persist the two swapped items
+    const swappedA = newArr[newIndex];
+    const swappedB = newArr[idx];
+    try {
+      await Promise.all([
+        fetch('/api/props', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propId: swappedA.airtableId, propOrder: newIndex }),
+        }),
+        fetch('/api/props', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propId: swappedB.airtableId, propOrder: idx }),
+        }),
+      ]);
+    } catch (err) {
+      console.error('Error saving prop order:', err);
+    }
+    setSavingOrder(false);
+  };
   const [loadingPackProps, setLoadingPackProps] = useState(false);
   const [propsError, setPropsError] = useState(null);
   const [newPropShort, setNewPropShort] = useState("");
@@ -164,7 +201,9 @@ export default function CreatePackPage() {
       const res = await fetch(`/api/props?limit=100`);
       const data = await res.json();
       if (data.success) {
-        setPackProps(data.props.filter((p) => p.linkedPacks.includes(packRecordId)));
+        const filtered = data.props.filter((p) => p.linkedPacks.includes(packRecordId));
+        filtered.sort((a, b) => (a.propOrder || 0) - (b.propOrder || 0));
+        setPackProps(filtered);
       } else {
         setPropsError(data.error);
       }
@@ -196,6 +235,7 @@ export default function CreatePackPage() {
           PropSideBShort: newPropSideBShort,
           propType: newPropType,
           packId: packRecordId,
+          propOrder: packProps.length,
         }),
       });
       const data = await res.json();
@@ -428,20 +468,45 @@ export default function CreatePackPage() {
             Refresh
           </button>
           {/* Dynamic props table */}
-          <table className="min-w-full divide-y divide-gray-200 mb-6">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Short Label</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {packProps.map((p) => (
-                <tr key={p.airtableId}>
-                  <td className="px-4 py-2 text-sm text-gray-900">{p.propShort}</td>
+          <div className={`transition-opacity duration-200 ${savingOrder ? 'opacity-50' : 'opacity-100'}`}>
+            <table className="min-w-full divide-y divide-gray-200 mb-6">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2"></th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Order</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Short Label</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 1</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 2</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {packProps.map((p, idx) => (
+                  <tr key={p.airtableId}>
+                    <td className="px-4 py-2">
+                      <button
+                        className="mr-2 text-sm text-gray-600 disabled:opacity-50"
+                        disabled={savingOrder || idx === 0}
+                        onClick={() => moveProp(p.airtableId, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="text-sm text-gray-600 disabled:opacity-50"
+                        disabled={savingOrder || idx === packProps.length - 1}
+                        onClick={() => moveProp(p.airtableId, 1)}
+                      >
+                        ↓
+                      </button>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{idx + 1}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.propShort}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideAShort}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBShort}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {/* Inline new Prop form */}
           <form onSubmit={handleCreateProp} className="space-y-4">
             <div>
