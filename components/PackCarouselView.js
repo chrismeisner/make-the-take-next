@@ -42,6 +42,8 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
+  // SLIDE_HEIGHT_OFFSET: adjust this (in px) to extend slide container for pagination dots
+  const SLIDE_HEIGHT_OFFSET = 64;
   console.log('[PackCarouselView] activity prop:', activity);
   const { props } = packData;
   const swiperRef = useRef(null);
@@ -199,7 +201,7 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
               <div className="mx-auto max-w-[420px] overflow-visible">
                 <Swiper
                   onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); }}
-                  style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}
+                  style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
                   className="pb-20 sm:pb-8"
                   modules={[EffectCards, Pagination]}
                   pagination={{ clickable: true, type: 'bullets', el: '.pack-pagination' }}
@@ -208,11 +210,11 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                   cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
                 >
                   {/* First slide: Pack Cover */}
-                  <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}>
+                  <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
                     <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} />
                   </SwiperSlide>
                   {props.map((prop) => (
-                    <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}>
+                    <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
                       <CardViewCard prop={prop} />
                     </SwiperSlide>
                   ))}
