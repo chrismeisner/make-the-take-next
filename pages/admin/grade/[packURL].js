@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import Toast from "../../../components/Toast";
 
 export default function GradePackPage() {
   const { data: session } = useSession();
@@ -12,6 +13,8 @@ export default function GradePackPage() {
   const [eventLeague, setEventLeague] = useState(null);
   const [homeTeam, setHomeTeam] = useState(null);
   const [awayTeam, setAwayTeam] = useState(null);
+  const [eventTime, setEventTime] = useState(null);
+  const [scoresFetched, setScoresFetched] = useState(false);
   const [homeTeamScore, setHomeTeamScore] = useState(null);
   const [awayTeamScore, setAwayTeamScore] = useState(null);
   const [propsList, setPropsList] = useState([]);
@@ -20,6 +23,7 @@ export default function GradePackPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [toastMessage, setToastMessage] = useState("");
 
   // Derive team nicknames (last word of full name)
   const homeNick = homeTeam ? homeTeam.split(' ').slice(-1)[0] : '';
@@ -46,6 +50,7 @@ export default function GradePackPage() {
           setAwayTeam(data.pack.awayTeam || null);
           setHomeTeamScore(data.pack.homeTeamScore ?? null);
           setAwayTeamScore(data.pack.awayTeamScore ?? null);
+          setEventTime(data.pack.eventTime || null);
         } else {
           console.error("Failed to load props:", data.error);
         }
@@ -53,6 +58,27 @@ export default function GradePackPage() {
       .catch((err) => console.error("Error fetching props:", err))
       .finally(() => setLoading(false));
   }, [packURL]);
+
+  useEffect(() => {
+    if (!loading && !scoresFetched && espnGameID && eventLeague) {
+      fetch("/api/admin/fetchMlbEvents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: eventTime ? eventTime.slice(0,10).replace(/-/g, "") : "" }),
+      })
+        .then((res) => res.json())
+        .then(() => fetch(`/api/packs/${packURL}`))
+        .then((res2) => res2.json())
+        .then((data2) => {
+          if (data2.success) {
+            setHomeTeamScore(data2.pack.homeTeamScore ?? null);
+            setAwayTeamScore(data2.pack.awayTeamScore ?? null);
+          }
+        })
+        .catch((err) => console.error("Error fetching live scores:", err))
+        .finally(() => setScoresFetched(true));
+    }
+  }, [loading, scoresFetched, espnGameID, eventLeague, packURL, eventTime]);
 
   const handleStatusChange = (id, value) => {
     setStatuses((prev) => ({ ...prev, [id]: value }));
@@ -67,6 +93,7 @@ export default function GradePackPage() {
     try {
       const updates = propsList.map((p) => ({
         airtableId: p.airtableId,
+        propID: p.propID,
         propStatus: statuses[p.airtableId],
         propResult: results[p.airtableId],
       }));
@@ -79,7 +106,7 @@ export default function GradePackPage() {
       if (!result.success) {
         setSaveError(result.error || "Save failed");
       } else {
-        router.push("/admin");
+        setToastMessage("Grades saved successfully!");
       }
     } catch (err) {
       setSaveError(err.message);
@@ -97,6 +124,7 @@ export default function GradePackPage() {
 
   return (
     <div className="p-4">
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage("")} />}
       <h1 className="text-2xl font-bold mb-4">Grade Pack: {packURL}</h1>
       {homeTeam && awayTeam && homeTeamScore !== null && awayTeamScore !== null && eventLeague && espnGameID && (
         <div className="mb-4">

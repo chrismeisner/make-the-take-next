@@ -17,13 +17,14 @@ import { useRouter } from "next/router";
 import ChallengeComponent from "./ChallengeComponent";
 
 // Add a swipeable cover card as the first slide
-function PackCoverCard({ packCover, packTitle }) {
+function PackCoverCard({ packCover, packTitle, onImgLoad }) {
   return (
     <div className="w-full max-w-[600px] aspect-square mx-auto border border-gray-300 rounded-lg shadow-lg overflow-hidden">
       {packCover && packCover.length > 0 ? (
         <img
           src={packCover[0].url}
           alt={packTitle}
+          onLoad={onImgLoad}
           className="w-full h-full object-cover rounded-lg"
         />
       ) : (
@@ -39,10 +40,16 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
   // Only show receipts section when user is authenticated
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState('leaderboard');
+  const [swiperReady, setSwiperReady] = useState(false);
+  const [cardHeight, setCardHeight] = useState(0);
   console.log('[PackCarouselView] activity prop:', activity);
   const { props } = packData;
   const swiperRef = useRef(null);
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
   // Add keyboard navigation for desktop: left/right arrows to switch cards
   useEffect(() => {
     const handleKey = (e) => {
@@ -71,6 +78,36 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [packData.eventTime]);
+ 
+  // Compute and apply a uniform card height across all slides
+  const adjustCardHeight = () => {
+    if (!swiperRef.current) return;
+    // Only apply equal heights on narrow (mobile) viewports
+    if (window.innerWidth >= 768) {
+      setCardHeight(0);
+      return;
+    }
+    const slideEls = swiperRef.current.el.querySelectorAll('.swiper-slide');
+    let maxH = 0;
+    slideEls.forEach((slide) => {
+      const content = slide.firstElementChild;
+      if (content) {
+        const h = content.getBoundingClientRect().height;
+        if (h > maxH) maxH = h;
+      }
+    });
+    setCardHeight(maxH);
+  };
+  useEffect(() => {
+    if (!swiperReady) return;
+    // Delay slightly to allow images/text to render
+    const timer = setTimeout(adjustCardHeight, 100);
+    window.addEventListener('resize', adjustCardHeight);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', adjustCardHeight);
+    };
+  }, [swiperReady, props]);
   function formatTime(ms) {
     const totalSeconds = Math.floor(ms / 1000);
     if (totalSeconds <= 0) return '';
@@ -112,7 +149,7 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
   return (
     <>
       {/* Removed sticky footer; using inline footer below pagination */}
-      <div className="p-4 overflow-hidden md:overflow-visible pb-16">
+      <div className="p-4 overflow-visible pb-16">
         <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-2">
           <div className="space-y-6">
             {/* Pack details header */}
@@ -124,11 +161,13 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                 {packData.packType === 'event' && packData.eventTime && (
                   <span className="inline-flex flex-col sm:flex-row sm:items-center gap-2">
                     <span>Event: {new Date(packData.eventTime).toLocaleString()}</span>
-                    <span>
-                      {timeLeft > 0
-                        ? `Starts in ${formatTime(timeLeft)}`
-                        : 'The event has started'}
-                    </span>
+                    {isClient && (
+                      <span>
+                        {timeLeft > 0
+                          ? `Starts in ${formatTime(timeLeft)}`
+                          : 'The event has started'}
+                      </span>
+                    )}
                   </span>
                 )}
                 {packData.packCreatorID && <span>Creator: {packData.packCreatorID}</span>}
@@ -155,12 +194,13 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
           </div>
           {/* Swiper and Inline Footer section */}
           <div className="md:col-start-2 md:row-span-2 flex justify-center">
-            <div className="w-full max-w-[520px] mx-auto">
+            <div className="w-full max-w-[520px] mx-auto overflow-visible">
               {/* Narrower wrapper for the card stack */}
-              <div className="mx-auto max-w-[420px]">
+              <div className="mx-auto max-w-[420px] overflow-visible">
                 <Swiper
-                  className="pb-8"
-                  onSwiper={(swiper) => (swiperRef.current = swiper)}
+                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); }}
+                  style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}
+                  className="pb-20 sm:pb-8"
                   modules={[EffectCards, Pagination]}
                   pagination={{ clickable: true, type: 'bullets', el: '.pack-pagination' }}
                   effect="cards"
@@ -168,17 +208,17 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                   cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
                 >
                   {/* First slide: Pack Cover */}
-                  <SwiperSlide key="cover">
-                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} />
+                  <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}>
+                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} />
                   </SwiperSlide>
                   {props.map((prop) => (
-                    <SwiperSlide key={prop.propID}>
+                    <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight}px` : 'auto' }}>
                       <CardViewCard prop={prop} />
                     </SwiperSlide>
                   ))}
                 </Swiper>
               </div>
-              <div className="mt-6 relative w-full flex items-center justify-center">
+              <div className="mt-8 sm:mt-6 relative w-full flex items-center justify-center">
                 <button type="button" onClick={() => swiperRef.current && swiperRef.current.slidePrev()} className="absolute left-0 p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -194,7 +234,7 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
               <InlineCardProgressFooter />
             </div>
           </div>
-          {/* Tabs for Leaderboard, Activity, and Prizes */}
+          {/* Tabs for Leaderboard, Activity, Prizes, and Challengers */}
           <div className="px-4 sm:px-0">
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-4" aria-label="Tabs">
@@ -216,6 +256,13 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                 >
                   Prizes
                 </button>
+                {/* Added Challengers tab */}
+                <button
+                  onClick={() => setActiveTab('challengers')}
+                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'challengers' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                >
+                  Challengers
+                </button>
               </nav>
             </div>
             <div className="pt-4">
@@ -229,9 +276,11 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                     </li>
                   ))}
                 </ul>
-              ) : (
+              ) : activeTab === 'prizes' ? (
                 <p className="text-gray-500">Prizes content coming soon.</p>
-              )}
+              ) : activeTab === 'challengers' ? (
+                <p className="text-gray-500">Challengers coming soon: the ability to challenge friends to make their take vs yours.</p>
+              ) : null}
             </div>
           </div>
         </div>

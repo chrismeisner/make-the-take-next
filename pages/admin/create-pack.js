@@ -21,6 +21,37 @@ export default function CreatePackPage() {
     return `${yyyy}-${mm}-${dd}`;
   });
 
+  // Live countdown timer for the selected event
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    if (!selectedEvent) {
+      setCountdown('');
+      return;
+    }
+    const updateCountdown = () => {
+      const now = new Date();
+      const eventTime = new Date(selectedEvent.eventTime);
+      const diff = eventTime - now;
+      if (diff <= 0) {
+        setCountdown('Started');
+        return;
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      let str = '';
+      if (days) str += `${days}d `;
+      if (hours) str += `${hours}h `;
+      if (minutes) str += `${minutes}m `;
+      str += `${seconds}s`;
+      setCountdown(str);
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [selectedEvent]);
+
   // Add timestamp suffix for slug uniqueness
   const [slugTimestamp] = useState(() => {
     const d = new Date();
@@ -106,6 +137,8 @@ export default function CreatePackPage() {
   const [newPropSideAShort, setNewPropSideAShort] = useState("");
   const [newPropSideBShort, setNewPropSideBShort] = useState("");
   const [newPropType, setNewPropType] = useState("fact");
+  // Track which prop is being edited (Airtable ID)
+  const [editingPropId, setEditingPropId] = useState(null);
   const [loadingPropCreate, setLoadingPropCreate] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
@@ -255,6 +288,43 @@ export default function CreatePackPage() {
       setLoadingPropCreate(false);
     }
   };
+  // Inline handler to update an existing prop
+  const handleUpdateProp = async (e) => {
+    e.preventDefault();
+    if (!editingPropId) return;
+    setLoadingPropCreate(true);
+    setPropsError(null);
+    try {
+      const res = await fetch('/api/props', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propId: editingPropId,
+          propShort: newPropShort,
+          propSummary: newPropSummary,
+          PropSideAShort: newPropSideAShort,
+          PropSideBShort: newPropSideBShort,
+          propType: newPropType,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingPropId(null);
+        setNewPropShort('');
+        setNewPropSummary('');
+        setNewPropSideAShort('');
+        setNewPropSideBShort('');
+        setNewPropType('fact');
+        await fetchPackProps();
+      } else {
+        setPropsError(data.error);
+      }
+    } catch (err) {
+      setPropsError(err.message);
+    } finally {
+      setLoadingPropCreate(false);
+    }
+  };
 
   // Cancel confirm handler
   const handleCancelConfirm = async () => {
@@ -273,11 +343,12 @@ export default function CreatePackPage() {
   };
    
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Create a Pack (v0.1)</h1>
       {/* Step 1: Pack Info */}
       {step === 1 && (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="max-w-lg mx-auto">
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* Type selection at top */}
           <div>
             <label htmlFor="packType" className="block text-sm font-medium text-gray-700">Type</label>
@@ -305,6 +376,33 @@ export default function CreatePackPage() {
               {selectedEvent && (
                 <p className="mt-2 text-sm text-gray-700">
                   Selected: {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}
+                </p>
+              )}
+              {selectedEvent && (
+                <div className="flex items-center space-x-2 mt-2">
+                  {selectedEvent.awayTeamLogo && (
+                    <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-8 h-8 object-contain" />
+                  )}
+                  {selectedEvent.homeTeamLogo && (
+                    <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-8 h-8 object-contain" />
+                  )}
+                </div>
+              )}
+              {selectedEvent && countdown && (
+                <p className="mt-2 text-sm text-gray-700">Starts in: {countdown}</p>
+              )}
+              {selectedEvent && selectedEvent.espnLink && (
+                <p className="mt-2">
+                  <a
+                    href={selectedEvent.espnLink.startsWith("http")
+                      ? selectedEvent.espnLink
+                      : `https://espn.com/mlb/boxscore/_/gameId/${selectedEvent.espnLink}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline"
+                  >
+                    View on ESPN
+                  </a>
                 </p>
               )}
             </div>
@@ -358,6 +456,7 @@ export default function CreatePackPage() {
             {loading ? "Saving..." : "Next: Create Props"}
           </button>
         </form>
+        </div>
       )}
       {step === 1 && eventModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -411,9 +510,18 @@ export default function CreatePackPage() {
                         <button
                           type="button"
                           onClick={() => { setSelectedEvent(evt); setPackTitle(evt.eventTitle); setEventModalOpen(false); }}
-                          className="w-full text-left px-2 py-1 hover:bg-gray-100 rounded"
+                          className="w-full flex items-center space-x-2 px-2 py-1 hover:bg-gray-100 rounded"
                         >
-                          {evt.eventTitle} — {new Date(evt.eventTime).toLocaleString()}
+                          {evt.homeTeamLogo && (
+                            <img src={evt.homeTeamLogo} alt={evt.homeTeam} className="w-6 h-6 object-contain" />
+                          )}
+                          {evt.awayTeamLogo && (
+                            <img src={evt.awayTeamLogo} alt={evt.awayTeam} className="w-6 h-6 object-contain" />
+                          )}
+                          <div className="flex-1 text-left">
+                            <div>{evt.eventTitle}</div>
+                            <div className="text-sm text-gray-500">{new Date(evt.eventTime).toLocaleString()}</div>
+                          </div>
                         </button>
                       </li>
                     ))}
@@ -434,7 +542,7 @@ export default function CreatePackPage() {
 
       {/* Step 2: Props Builder */}
       {step === 2 && packRecordId && (
-        <div className="mt-8">
+        <div className="mt-8 container mx-auto">
           <div className="mb-4">
             <button
               type="button"
@@ -475,8 +583,11 @@ export default function CreatePackPage() {
                   <th className="px-4 py-2"></th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Order</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Short Label</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Summary</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 1</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 2</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Edit</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -500,8 +611,47 @@ export default function CreatePackPage() {
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-900">{idx + 1}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.propShort}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.propSummary}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideAShort}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBShort}</td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={p.propStatus || 'open'}
+                        onChange={async (e) => {
+                          const newStatus = e.target.value;
+                          setPackProps(prev =>
+                            prev.map(item =>
+                              item.airtableId === p.airtableId ? { ...item, propStatus: newStatus } : item
+                            )
+                          );
+                          await fetch('/api/props', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ propId: p.airtableId, propStatus: newStatus }),
+                          });
+                        }}
+                        className="mt-1 block w-full border rounded px-2 py-1"
+                      >
+                        <option value="open">Open</option>
+                        <option value="draft">Draft</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-900">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPropId(p.airtableId);
+                          setNewPropShort(p.propShort);
+                          setNewPropSummary(p.propSummary);
+                          setNewPropSideAShort(p.PropSideAShort);
+                          setNewPropSideBShort(p.PropSideBShort);
+                          setNewPropType(p.propType);
+                        }}
+                        className="text-blue-600 underline"
+                      >
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -561,22 +711,63 @@ export default function CreatePackPage() {
               </select>
             </div>
             {propsError && <p className="text-red-600">{propsError}</p>}
-            <button
-              type="submit"
-              disabled={loadingPropCreate}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loadingPropCreate ? "Adding..." : "Add Prop"}
-            </button>
+            <div className="flex space-x-2">
+              <button
+                type="submit"
+                disabled={loadingPropCreate}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loadingPropCreate ? "Adding..." : "Add Prop"}
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateProp}
+                disabled={!editingPropId || loadingPropCreate}
+                className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {loadingPropCreate && editingPropId ? "Updating..." : "Update Prop"}
+              </button>
+            </div>
           </form>
-          {/* Action buttons: Preview & Cancel */}
+          {/* Action buttons: Publish, Save Draft & Cancel */}
           <div className="mt-6 flex space-x-4">
             <button
               type="button"
-              onClick={() => setStep(3)}
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+              onClick={async () => {
+                // Publish: set all props to open
+                for (const p of packProps) {
+                  await fetch('/api/props', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ propId: p.airtableId, propStatus: 'open' }),
+                  });
+                }
+                // Update packStatus to Active
+                await fetch('/api/packs', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ packId: packRecordId, packStatus: 'Active' }),
+                });
+                router.push('/admin');
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
             >
-              Preview
+              Publish
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                // Save Draft: update packStatus to Draft
+                await fetch('/api/packs', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ packId: packRecordId, packStatus: 'Draft' }),
+                });
+                router.push('/admin');
+              }}
+              className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+            >
+              Save Draft
             </button>
             <button
               type="button"
@@ -614,13 +805,13 @@ export default function CreatePackPage() {
         </div>
       )}
 
-      {/* Step 3: Preview & Publish */}
-      {step === 3 && packRecordId && (
+      {/* Step 3: Preview & Publish (disabled) */}
+      {false && (
         <div className="mt-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             {/* Left: Pack details */}
             <div className="p-4 border rounded bg-gray-50">
-              <h2 className="text-lg font-semibold mb-2">Pack Details Preview</h2>
+              <h2 className="text-lg font-semibold mb-2">Pack Details</h2>
               <p><strong>Title:</strong> {packDetails.packTitle}</p>
               <p><strong>Summary:</strong> {packDetails.packSummary}</p>
               <p><strong>Type:</strong> {packDetails.packType}</p>

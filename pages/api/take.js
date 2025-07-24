@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   // 2) Extract propID and propSide from request body
-  const { propID, propSide, receiptId, refID } = req.body;
+  const { propID, propSide, receiptId } = req.body;
   if (!propID || !propSide || !receiptId) {
 	return res.status(400).json({
 	  success: false,
@@ -104,7 +104,6 @@ export default async function handler(req, res) {
 		  Prop: [propRec.id],    // link to the Prop record
 		  Profile: [profileRecId], // link to the user's Profile record
 		  receiptID: receiptId,
-		  refID,
 		  takePopularity,
 		},
 	  },

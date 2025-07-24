@@ -1,6 +1,6 @@
 // File: pages/packs/[packURL].js
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Airtable from 'airtable';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../api/auth/[...nextauth]';
@@ -13,6 +13,7 @@ export async function getServerSideProps(context) {
   const { packURL } = context.params;
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
   const { ref } = context.query;
+  const isRef = Boolean(ref);
   const proto = context.req.headers['x-forwarded-proto'] || 'http';
   const host = context.req.headers['x-forwarded-host'] || context.req.headers.host;
   const origin = process.env.SITE_URL || `${proto}://${host}`;
@@ -137,6 +138,7 @@ export async function getServerSideProps(context) {
         friendProfile,
         userReceipts,
         activity,
+        isRef,
       },
     };
   } catch {
@@ -144,9 +146,13 @@ export async function getServerSideProps(context) {
   }
 }
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef }) {
   const { openModal } = useModal();
+  const [mounted, setMounted] = useState(false);
   const origin = debugLogs.origin;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   useEffect(() => {
     if (friendProfile) {
       openModal('challenge', { friendName: friendProfile.profileUsername || friendProfile.profileID });
@@ -171,9 +177,11 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           <meta name="twitter:image" content={packData.packCover[0].url} />
         )}
       </Head>
-      <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-        <PackCarouselView packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} userReceipts={userReceipts} activity={activity} />
-      </PackContextProvider>
+      {(!isRef || mounted) && (
+        <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+          <PackCarouselView packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} userReceipts={userReceipts} activity={activity} />
+        </PackContextProvider>
+      )}
     </>
   );
 }

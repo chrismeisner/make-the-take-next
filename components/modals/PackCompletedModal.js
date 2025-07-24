@@ -9,10 +9,12 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const router = useRouter();
   const profileID = session?.user?.profileID;
   const [receiptUrl, setReceiptUrl] = useState("");
+  const [challengeUrl, setChallengeUrl] = useState("");
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
       setReceiptUrl(`${window.location.origin}/packs/${router.query.packURL}/${receiptId}`);
+      setChallengeUrl(`${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`);
     }
   }, [receiptId, router.query.packURL]);
 
@@ -20,6 +22,28 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 	onClose(); // Close the modal first
 	router.push(`/profile/${profileID}`);
   };
+
+// Define handleShare to open native share sheet or fallback to copy
+const handleShare = async () => {
+	if (navigator.share) {
+		try {
+			await navigator.share({
+				title: `Challenge a friend: ${packTitle}`,
+				text: `Can you beat my score on ${packTitle}?`,
+				url: challengeUrl,
+			});
+		} catch (error) {
+			console.error("Error sharing", error);
+		}
+	} else {
+		try {
+			await navigator.clipboard.writeText(challengeUrl);
+			alert("Link copied to clipboard");
+		} catch (error) {
+			console.error("Failed to copy", error);
+		}
+	}
+};
 
   return (
 	<GlobalModal isOpen={isOpen} onClose={onClose}>
@@ -35,6 +59,21 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 			  {receiptUrl}
 			</a>
 		  </p>
+		)}
+		{challengeUrl && (
+		  <div className="mb-4">
+			<p className="mb-2 font-medium">Challenge a friend:</p>
+			<a href={challengeUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">
+			  {challengeUrl}
+			</a>
+			{/* Add share button below the link */}
+			<button
+				onClick={handleShare}
+				className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+			>
+				Share this link
+			</button>
+		  </div>
 		)}
 		{/* Display created take record IDs for verification */}
 		{newTakeIDs.length > 0 && (

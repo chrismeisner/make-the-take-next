@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       // When prop is graded or pushed, compute final side popularity
       if (["gradedA", "gradedB", "push"].includes(u.propStatus)) {
         const takes = await base("Takes").select({
-          filterByFormula: `AND(FIND("${u.airtableId}", ARRAYJOIN({Prop})) > 0, {takeStatus} != "overwritten")`
+          filterByFormula: `AND({propID}="${u.propID}", {takeStatus} != "overwritten")`
         }).all();
         let countA = 0;
         let countB = 0;

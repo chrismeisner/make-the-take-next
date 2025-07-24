@@ -1,5 +1,5 @@
 // File: /pages/index.js
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
@@ -36,6 +36,16 @@ export default function LandingPage() {
 
   // State for user takes (for logged-in users)
   const [userTakes, setUserTakes] = useState([]);
+  // State and memo for sorting active packs by event time
+  const [sortOption, setSortOption] = useState("eventTimeDesc");
+  const sortedPacks = useMemo(() => {
+    if (sortOption === "eventTimeAsc") {
+      return [...activePacks].sort((a, b) => new Date(a.eventTime) - new Date(b.eventTime));
+    } else if (sortOption === "eventTimeDesc") {
+      return [...activePacks].sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime));
+    }
+    return activePacks;
+  }, [activePacks, sortOption]);
 
   // Fetch teams on mount (for login flow)
   useEffect(() => {
@@ -285,11 +295,26 @@ export default function LandingPage() {
 			{/* Active Packs Section */}
 			<div className="mb-8">
 			  <h2 className="text-2xl font-bold mb-4 text-center">Active Pack Drops</h2>
+			  {/* Sort control for active packs */}
+			  {!loadingPacks && activePacks.length > 0 && (
+				<div className="flex justify-center mb-4">
+				  <label htmlFor="sortOption" className="mr-2 text-sm font-medium text-gray-200">Sort by:</label>
+				  <select
+					id="sortOption"
+					value={sortOption}
+					onChange={(e) => setSortOption(e.target.value)}
+					className="border rounded px-2 py-1 bg-black text-white"
+				  >
+					<option value="eventTimeDesc">Latest</option>
+					<option value="eventTimeAsc">Coming Up Soonest</option>
+				  </select>
+				</div>
+			  )}
 			  {loadingPacks ? (
 				<p className="text-center">Loading packs...</p>
-			  ) : activePacks.length > 0 ? (
+			  ) : sortedPacks.length > 0 ? (
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-				  {activePacks.map((pack) => (
+				  {sortedPacks.map((pack) => (
 					<PackPreview key={pack.packID} pack={pack} userTakes={userTakes} />
 				  ))}
 				</div>

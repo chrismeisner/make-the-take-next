@@ -67,15 +67,15 @@ export default function CardViewCard({ prop }) {
 
   return (
     <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">
-      {/* Status badge */}
-      <div className="mb-2">
-        <span className="inline-block px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-800 rounded">
-          {statusLabel}
-        </span>
+      <div className="mb-4 min-h-[144px] max-h-[144px] overflow-hidden">
+        <div className="mb-2">
+          <span className="inline-block px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-800 rounded">
+            {statusLabel}
+          </span>
+        </div>
+        {propShort && <p className="text-lg font-bold mb-2">{propShort}</p>}
+        <p className="text-sm text-gray-500">{displaySummary}</p>
       </div>
-      {propShort && <p className="text-lg font-bold mb-2">{propShort}</p>}
-      <p className="text-sm text-gray-500 mb-4">{displaySummary}</p>
-
       <PropChoices
         propStatus={prop.propStatus}
         selectedChoice={selected}

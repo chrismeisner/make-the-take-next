@@ -87,8 +87,7 @@ export function PackContextProvider({ packData, friendTakesByProp = {}, children
 
   // Submit all selected takes at once
   const submitAllTakes = useCallback(async (receiptId) => {
-    const refID = router.query.ref;
-    console.log("[PackContext] submitAllTakes called", { receiptId, refID, selectedChoices });
+    console.log("[PackContext] submitAllTakes called", { receiptId, selectedChoices });
     // Collect created take IDs to report back
     const createdTakeIDs = [];
     // Prepare only new or changed takes (skip unchanged previous takes)
@@ -96,13 +95,13 @@ export function PackContextProvider({ packData, friendTakesByProp = {}, children
       ([propID, side]) => userTakesByProp[propID]?.side !== side
     );
     for (const [propID, side] of entries) {
-      console.log(`[PackContext] submitting take for propID=${propID}, side=${side}, receiptId=${receiptId}, refID=${refID}`);
+      console.log(`[PackContext] submitting take for propID=${propID}, side=${side}, receiptId=${receiptId}`);
       try {
         const resp = await fetch("/api/take", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ propID, propSide: side, receiptId, refID }),
+          body: JSON.stringify({ propID, propSide: side, receiptId }),
         });
         const data = await resp.json();
         console.log(`[PackContext] /api/take response for propID=${propID}`, data);
@@ -129,7 +128,7 @@ export function PackContextProvider({ packData, friendTakesByProp = {}, children
     }
     // Return the list of created take IDs
     return createdTakeIDs;
-  }, [selectedChoices, userTakesByProp, packData.props, router.query.ref]);
+  }, [selectedChoices, userTakesByProp, packData.props]);
 
   // Memoize the context value so children don’t re-render unnecessarily
   const value = useMemo(() => ({
