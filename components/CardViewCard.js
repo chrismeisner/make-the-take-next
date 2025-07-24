@@ -67,7 +67,8 @@ export default function CardViewCard({ prop }) {
 
   return (
     <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">
-      <div className="mb-4 min-h-[144px] max-h-[144px] overflow-hidden">
+      {/* HEADER_HEIGHT: adjust this value (160px) to tweak status/title/overview block height */}
+      <div className="mb-4 min-h-[160px] max-h-[160px] overflow-hidden">
         <div className="mb-2">
           <span className="inline-block px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-800 rounded">
             {statusLabel}
