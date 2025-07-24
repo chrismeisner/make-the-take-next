@@ -15,9 +15,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all active packs
+    // Fetch packs that are active or pending (case-insensitive)
     const records = await base("Packs")
-      .select({ filterByFormula: `{packStatus}="Active"` })
+      .select({
+        filterByFormula: `OR(LOWER({packStatus})="active", LOWER({packStatus})="pending")`
+      })
       .all();
     const now = new Date();
     // Filter packs with eventTime in the past

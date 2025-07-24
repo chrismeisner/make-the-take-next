@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
-  const { updates } = req.body;
+  const { updates, packURL } = req.body;
   if (!Array.isArray(updates) || updates.length === 0) {
     return res.status(400).json({ success: false, error: "Missing updates array" });
   }
@@ -45,6 +45,24 @@ export default async function handler(req, res) {
       formatted.push({ id: u.airtableId, fields });
     }
     await base("Props").update(formatted);
+
+    // If packURL provided and all props are graded or pushed, update packStatus to "graded"
+    if (packURL && updates.every(u => ["gradedA", "gradedB", "push"].includes(u.propStatus))) {
+      try {
+        const packRecords = await base("Packs").select({
+          filterByFormula: `{packURL} = "${packURL}"`,
+          maxRecords: 1,
+        }).firstPage();
+        if (packRecords.length > 0) {
+          await base("Packs").update([
+            { id: packRecords[0].id, fields: { packStatus: "graded" } },
+          ]);
+        }
+      } catch (err) {
+        console.error("[admin/updatePropsStatus] Error updating packStatus:", err);
+      }
+    }
+
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error("[admin/updatePropsStatus] Error:", error);

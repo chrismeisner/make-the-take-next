@@ -85,6 +85,12 @@ export default async function handler(req, res) {
 	  });
 	}
 
+	// Exclude any takes for archived or draft props
+	allTakes = allTakes.filter((take) => {
+	  const propStatus = take.fields.propStatus || 'open';
+	  return propStatus !== 'archived' && propStatus !== 'draft';
+	});
+
 	// phoneStats will store data like:
 	// {
 	//   takes: <number>,
@@ -100,7 +106,7 @@ export default async function handler(req, res) {
 	  const result = take.fields.takeResult || ''; // "Won", "Lost", etc.
 
 	  if (!phoneStats.has(phone)) {
-		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0 });
+		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0, pushed: 0 });
 	  }
 
 	  const currentStats = phoneStats.get(phone);
@@ -114,6 +120,8 @@ export default async function handler(req, res) {
 		currentStats.won += 1;
 	  } else if (result === 'Lost') {
 		currentStats.lost += 1;
+	  } else if (result === 'Pushed' || result === 'Push') {
+		currentStats.pushed += 1;
 	  }
 
 	  phoneStats.set(phone, currentStats);
@@ -128,6 +136,7 @@ export default async function handler(req, res) {
 		profileID: phoneToProfileID.get(phone) || null,
 		won: stats.won,
 		lost: stats.lost,
+		pushed: stats.pushed,
 	  }))
 	  // Sort by points descending (or however you want)
 	  .sort((a, b) => b.points - a.points);

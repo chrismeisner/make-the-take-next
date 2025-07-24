@@ -111,8 +111,8 @@ export default function LandingPage() {
 		  const res = await fetch("/api/packs");
 		  const data = await res.json();
 		  if (data.success && data.packs) {
-			// Only include packs with status "Active"
-			const active = data.packs.filter(pack => pack.packStatus === "Active");
+			// Only include packs with status "active" or "graded"
+			const active = data.packs.filter(pack => ["active","graded"].includes(String(pack.packStatus).toLowerCase()));
 			setActivePacks(active);
 			console.log("✅ [LandingPage] Active packs:", active);
 		  }

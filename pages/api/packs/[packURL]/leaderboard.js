@@ -59,7 +59,11 @@ export default async function handler(req, res) {
 
 	for (const take of takes) {
 	  const tf = take.fields;
-
+	  // Skip any takes for archived or draft props
+	  const propStatus = tf.propStatus || 'open';
+	  if (propStatus === 'archived' || propStatus === 'draft') {
+		continue;
+	  }
 	  // Skip any "overwritten" takes
 	  if (tf.takeStatus === 'overwritten') {
 		continue;
@@ -67,7 +71,7 @@ export default async function handler(req, res) {
 
 	  const phone = tf.takeMobile || 'Unknown';
 	  const points = tf.takePTS || 0;
-	  const result = tf.takeResult || ''; // "Won", "Lost", or "Pending"
+	  const result = (tf.takeResult || '').trim().toLowerCase(); // Normalize result to lowercase
 	  const profileLink = tf.Profile || [];
 	  let profileID = null;
 
@@ -87,6 +91,7 @@ export default async function handler(req, res) {
 		  won: 0,
 		  lost: 0,
 		  pending: 0,
+		  pushed: 0,
 		});
 	  }
 
@@ -95,12 +100,14 @@ export default async function handler(req, res) {
 	  // Update stats
 	  currentStats.takes += 1;
 	  currentStats.points += points;
-	  if (result === 'Won') {
+	  if (result === 'won') {
 		currentStats.won += 1;
-	  } else if (result === 'Lost') {
+	  } else if (result === 'lost') {
 		currentStats.lost += 1;
-	  } else if (result === 'Pending') {
+	  } else if (result === 'pending') {
 		currentStats.pending += 1;
+	  } else if (result === 'pushed' || result === 'push') {
+		currentStats.pushed += 1;
 	  }
 
 	  phoneStats.set(phone, currentStats);

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import LeaderboardTable from '../../../components/LeaderboardTable';
 
 export default function PackLeaderboardPage() {
   const router = useRouter();
@@ -60,37 +61,7 @@ export default function PackLeaderboardPage() {
 	  {leaderboard.length === 0 ? (
 		<p>No data found for this pack’s leaderboard.</p>
 	  ) : (
-		<table style={{ borderCollapse: 'collapse', width: '100%' }}>
-		  <thead>
-			<tr style={{ borderBottom: '1px solid #ccc' }}>
-			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>User</th>
-			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Takes</th>
-			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Points</th>
-			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>W-L</th>
-			</tr>
-		  </thead>
-		  <tbody>
-			{leaderboard.map((item, idx) => (
-			  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-				<td style={{ padding: '0.5rem' }}>
-				  {item.profileID ? (
-					<Link href={`/profile/${item.profileID}`}>
-					  {obscurePhone(item.phone)}
-					</Link>
-				  ) : (
-					obscurePhone(item.phone)
-				  )}
-				</td>
-				<td style={{ padding: '0.5rem' }}>{item.takes}</td>
-				<td style={{ padding: '0.5rem' }}>{item.points}</td>
-				<td style={{ padding: '0.5rem' }}>
-				  {item.won}-{item.lost}
-				  {item.pending ? ` (Pending: ${item.pending})` : ''}
-				</td>
-			  </tr>
-			))}
-		  </tbody>
-		</table>
+		<LeaderboardTable leaderboard={leaderboard} />
 	  )}
 	  <p style={{ marginTop: '1rem' }}>
 		<Link href={`/packs/${packURL}`}>Back to Pack</Link>

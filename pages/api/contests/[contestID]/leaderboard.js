@@ -98,12 +98,17 @@ export default async function handler(req, res) {
 	const phoneStats = new Map();
 
 	for (const take of relevantTakes) {
+	  // Skip any takes for archived or draft props
+	  const propStatus = take.fields.propStatus || 'open';
+	  if (propStatus === 'archived' || propStatus === 'draft') {
+		continue;
+	  }
 	  const phone = take.fields.takeMobile || "Unknown";
 	  const points = take.fields.takePTS || 0;
 	  const result = take.fields.takeResult || "";
 
 	  if (!phoneStats.has(phone)) {
-		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0 });
+		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0, pushed: 0 });
 	  }
 
 	  const currentStats = phoneStats.get(phone);
@@ -112,6 +117,7 @@ export default async function handler(req, res) {
 
 	  if (result === "Won") currentStats.won += 1;
 	  if (result === "Lost") currentStats.lost += 1;
+	  if (result === "Pushed" || result === "Push") currentStats.pushed += 1;
 
 	  phoneStats.set(phone, currentStats);
 	}
@@ -136,6 +142,7 @@ export default async function handler(req, res) {
 		points: stats.points,
 		won: stats.won,
 		lost: stats.lost,
+		pushed: stats.pushed,
 	  }))
 	  .sort((a, b) => b.points - a.points);
 

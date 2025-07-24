@@ -100,7 +100,7 @@ export default function GradePackPage() {
       const res = await fetch("/api/admin/updatePropsStatus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates }),
+        body: JSON.stringify({ updates, packURL }),
       });
       const result = await res.json();
       if (!result.success) {
