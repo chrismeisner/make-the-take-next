@@ -1,6 +1,7 @@
-// File: /pages/api/contests/[contestID]/leaderboard.js
+// File: pages/api/contests/[contestID]/leaderboard.js
 
 import Airtable from "airtable";
+import { aggregateTakeStats } from '../../../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -94,33 +95,8 @@ export default async function handler(req, res) {
 	  return uniquePropIDs.includes(tPropID);
 	});
 
-	// 4) Build phone-based stats as in your existing /api/leaderboard
-	const phoneStats = new Map();
-
-	for (const take of relevantTakes) {
-	  // Skip any takes for archived or draft props
-	  const propStatus = take.fields.propStatus || 'open';
-	  if (propStatus === 'archived' || propStatus === 'draft') {
-		continue;
-	  }
-	  const phone = take.fields.takeMobile || "Unknown";
-	  const points = take.fields.takePTS || 0;
-	  const result = take.fields.takeResult || "";
-
-	  if (!phoneStats.has(phone)) {
-		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0, pushed: 0 });
-	  }
-
-	  const currentStats = phoneStats.get(phone);
-	  currentStats.takes += 1;
-	  currentStats.points += points;
-
-	  if (result === "Won") currentStats.won += 1;
-	  if (result === "Lost") currentStats.lost += 1;
-	  if (result === "Pushed" || result === "Push") currentStats.pushed += 1;
-
-	  phoneStats.set(phone, currentStats);
-	}
+	// Aggregate stats using shared helper
+	const statsList = aggregateTakeStats(relevantTakes);
 
 	// 5) Build a phone -> profileID map by fetching all "Profiles" rows
 	const allProfiles = await base("Profiles").select({ maxRecords: 5000 }).all();
@@ -133,18 +109,15 @@ export default async function handler(req, res) {
 	});
 
 	// 6) Build the final leaderboard array
-	const leaderboard = Array.from(phoneStats.entries())
-	  .map(([phone, stats]) => ({
-		// We'll store phone internally if needed, but the front end only uses profileID
-		phone,
-		profileID: phoneToProfileID.get(phone) || null,
-		count: stats.takes,
-		points: stats.points,
-		won: stats.won,
-		lost: stats.lost,
-		pushed: stats.pushed,
-	  }))
-	  .sort((a, b) => b.points - a.points);
+	const leaderboard = statsList.map((s) => ({
+	  phone: s.phone,
+	  profileID: phoneToProfileID.get(s.phone) || null,
+	  count: s.takes,
+	  points: s.points,
+	  won: s.won,
+	  lost: s.lost,
+	  pushed: s.pushed,
+	}));
 
 	return res.status(200).json({ success: true, leaderboard });
   } catch (err) {

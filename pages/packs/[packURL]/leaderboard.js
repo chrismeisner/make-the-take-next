@@ -1,17 +1,15 @@
 //pages/packs/[packURL]/leaderboard.js 
  
 import { useRouter } from 'next/router';
-import { useState, useEffect } from 'react';
+// React state hooks are no longer needed here
 import Link from 'next/link';
 import LeaderboardTable from '../../../components/LeaderboardTable';
+import useLeaderboard from '../../../hooks/useLeaderboard';
 
 export default function PackLeaderboardPage() {
   const router = useRouter();
   const { packURL } = router.query; // e.g. "super-bowl"
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [packTitle, setPackTitle] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { leaderboard, loading, error } = useLeaderboard({ packURL });
 
   // Obscure phone for privacy
   function obscurePhone(e164Phone) {
@@ -22,26 +20,7 @@ export default function PackLeaderboardPage() {
 	return `xxxx-${last4}`;
   }
 
-  useEffect(() => {
-	if (!packURL) return;
-	async function fetchLeaderboard() {
-	  try {
-		const res = await fetch(`/api/packs/${encodeURIComponent(packURL)}/leaderboard`);
-		const data = await res.json();
-		if (!data.success) {
-		  setError(data.error || 'Error fetching leaderboard');
-		} else {
-		  setLeaderboard(data.leaderboard || []);
-		  setPackTitle(data.packTitle || '');
-		}
-	  } catch (err) {
-		setError('Failed to load leaderboard');
-	  } finally {
-		setLoading(false);
-	  }
-	}
-	fetchLeaderboard();
-  }, [packURL]);
+  // Leaderboard data is now handled by useLeaderboard hook
 
   if (loading) {
 	return <div style={{ padding: '1rem' }}>Loading leaderboard...</div>;
@@ -57,7 +36,7 @@ export default function PackLeaderboardPage() {
 
   return (
 	<div style={{ padding: '1rem' }}>
-	  <h2>Pack Leaderboard: {packTitle || packURL}</h2>
+	  <h2>Pack Leaderboard: {packURL}</h2>
 	  {leaderboard.length === 0 ? (
 		<p>No data found for this pack’s leaderboard.</p>
 	  ) : (

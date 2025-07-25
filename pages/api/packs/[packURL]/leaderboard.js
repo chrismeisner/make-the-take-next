@@ -1,6 +1,7 @@
 //pages/api/packs/[packURL]/leaderboard.js  
 
 import Airtable from 'airtable';
+import { aggregateTakeStats } from '../../../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -54,67 +55,30 @@ export default async function handler(req, res) {
 	  })
 	  .all();
 
-	// 4) Aggregate stats for each user phone or profile
-	const phoneStats = new Map(); // key = phone, value = { takes, points, won, lost, pending }
-
-	for (const take of takes) {
+	// Build phone->profileID map
+	const phoneToProfileID = new Map();
+	takes.forEach((take) => {
 	  const tf = take.fields;
-	  // Skip any takes for archived or draft props
-	  const propStatus = tf.propStatus || 'open';
-	  if (propStatus === 'archived' || propStatus === 'draft') {
-		continue;
-	  }
-	  // Skip any "overwritten" takes
-	  if (tf.takeStatus === 'overwritten') {
-		continue;
-	  }
-
-	  const phone = tf.takeMobile || 'Unknown';
-	  const points = tf.takePTS || 0;
-	  const result = (tf.takeResult || '').trim().toLowerCase(); // Normalize result to lowercase
 	  const profileLink = tf.Profile || [];
-	  let profileID = null;
-
-	  // If there's a linked profile, store that user’s unique ID if you want
-	  if (profileLink.length > 0) {
-		// If your Takes table stores profileID as well, you could use tf.profileID
-		profileID = tf.profileID || null;
+	  if (profileLink.length > 0 && tf.profileID) {
+		const phoneKey = tf.takeMobile || 'Unknown';
+		phoneToProfileID.set(phoneKey, tf.profileID);
 	  }
+	});
 
-	  // Initialize stats for the phone if needed
-	  if (!phoneStats.has(phone)) {
-		phoneStats.set(phone, {
-		  phone,
-		  profileID,
-		  takes: 0,
-		  points: 0,
-		  won: 0,
-		  lost: 0,
-		  pending: 0,
-		  pushed: 0,
-		});
-	  }
+	// Aggregate stats using shared helper
+	const statsList = aggregateTakeStats(takes);
 
-	  const currentStats = phoneStats.get(phone);
-
-	  // Update stats
-	  currentStats.takes += 1;
-	  currentStats.points += points;
-	  if (result === 'won') {
-		currentStats.won += 1;
-	  } else if (result === 'lost') {
-		currentStats.lost += 1;
-	  } else if (result === 'pending') {
-		currentStats.pending += 1;
-	  } else if (result === 'pushed' || result === 'push') {
-		currentStats.pushed += 1;
-	  }
-
-	  phoneStats.set(phone, currentStats);
-	}
-
-	// 5) Convert map to an array and sort by points descending
-	const leaderboard = Array.from(phoneStats.values()).sort((a, b) => b.points - a.points);
+	const leaderboard = statsList.map((s) => ({
+	  phone: s.phone,
+	  takes: s.takes,
+	  points: s.points,
+	  won: s.won,
+	  lost: s.lost,
+	  pending: s.pending,
+	  pushed: s.pushed,
+	  profileID: phoneToProfileID.get(s.phone) || null,
+	}));
 
 	// Return success
 	return res.status(200).json({

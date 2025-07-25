@@ -1,5 +1,6 @@
-// File: /pages/api/leaderboard.js
+// File: pages/api/leaderboard.js
 import Airtable from 'airtable';
+import { aggregateTakeStats } from '../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
@@ -91,55 +92,17 @@ export default async function handler(req, res) {
 	  return propStatus !== 'archived' && propStatus !== 'draft';
 	});
 
-	// phoneStats will store data like:
-	// {
-	//   takes: <number>,
-	//   points: <number>,
-	//   won: <number>,
-	//   lost: <number>
-	// }
-	const phoneStats = new Map();
-
-	allTakes.forEach((take) => {
-	  const phone = take.fields.takeMobile || 'Unknown';
-	  const points = take.fields.takePTS || 0;
-	  const result = take.fields.takeResult || ''; // "Won", "Lost", etc.
-
-	  if (!phoneStats.has(phone)) {
-		phoneStats.set(phone, { takes: 0, points: 0, won: 0, lost: 0, pushed: 0 });
-	  }
-
-	  const currentStats = phoneStats.get(phone);
-
-	  currentStats.takes += 1;      // increment total # of takes
-	  currentStats.points += points; // add any points
-
-	  // if takeResult is "Won" => increment won
-	  // if "Lost" => increment lost
-	  if (result === 'Won') {
-		currentStats.won += 1;
-	  } else if (result === 'Lost') {
-		currentStats.lost += 1;
-	  } else if (result === 'Pushed' || result === 'Push') {
-		currentStats.pushed += 1;
-	  }
-
-	  phoneStats.set(phone, currentStats);
-	});
-
-	// Build the final array
-	const leaderboard = Array.from(phoneStats.entries())
-	  .map(([phone, stats]) => ({
-		phone,
-		count: stats.takes,
-		points: stats.points,
-		profileID: phoneToProfileID.get(phone) || null,
-		won: stats.won,
-		lost: stats.lost,
-		pushed: stats.pushed,
-	  }))
-	  // Sort by points descending (or however you want)
-	  .sort((a, b) => b.points - a.points);
+	// Aggregate stats using shared helper
+	const statsList = aggregateTakeStats(allTakes);
+	const leaderboard = statsList.map((s) => ({
+	  phone: s.phone,
+	  takes: s.takes,
+	  points: s.points,
+	  profileID: phoneToProfileID.get(s.phone) || null,
+	  won: s.won,
+	  lost: s.lost,
+	  pushed: s.pushed,
+	}));
 
 	res.status(200).json({ success: true, leaderboard });
   } catch (err) {

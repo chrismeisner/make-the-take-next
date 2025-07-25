@@ -1,6 +1,7 @@
 // File: /pages/api/packs/[packURL].js
 
 import Airtable from "airtable";
+import { aggregateTakeStats } from '../../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -277,69 +278,39 @@ export default async function handler(req, res) {
 	// ---------------------------------------------
 	// 6. Build leaderboard
 	// ---------------------------------------------
+	// Replace manual aggregation with shared helper
 	const linkedTakesIds = packFields.Takes || [];
-	console.log("[packURL] linkedTakesIds =>", linkedTakesIds);
-
 	let leaderboard = [];
 	if (linkedTakesIds.length > 0) {
-	  const orFormula = `OR(${linkedTakesIds
-		.map((id) => `RECORD_ID()="${id}"`)
-		.join(",")})`;
-	  console.log("[packURL] Takes formula =>", orFormula);
+	  const orFormula = `OR(${linkedTakesIds.map((id) => `RECORD_ID()="${id}"`).join(",")})`;
+	  const takesRecords = await base("Takes").select({
+		filterByFormula: orFormula,
+		maxRecords: 10000,
+	  }).all();
 
-	  const takesRecords = await base("Takes")
-		.select({
-		  filterByFormula: orFormula,
-		  maxRecords: 10000,
-		})
-		.all();
+	  // Aggregate stats using shared helper
+	  const statsList = aggregateTakeStats(takesRecords);
 
-	  console.log("[packURL] takesRecords length =>", takesRecords.length);
-
-	  const phoneStats = new Map();
+	  // Map phone to profileID if available
+	  const phoneToProfileID = new Map();
 	  takesRecords.forEach((take) => {
 		const tf = take.fields;
-		if (tf.takeStatus === "overwritten") return;
-
-		const phone = tf.takeMobile || "Unknown";
-		const points = tf.takePTS || 0;
-		const result = tf.takeResult || "";
-		let profileID = null;
-
-		if (tf.Profile && tf.Profile.length > 0) {
-		  profileID = tf.profileID || null;
+		const phoneKey = tf.takeMobile || "Unknown";
+		if (tf.Profile && Array.isArray(tf.Profile) && tf.Profile.length > 0 && tf.profileID) {
+		  phoneToProfileID.set(phoneKey, tf.profileID);
 		}
-
-		if (!phoneStats.has(phone)) {
-		  phoneStats.set(phone, {
-			phone,
-			profileID,
-			takes: 0,
-			points: 0,
-			won: 0,
-			lost: 0,
-			pending: 0,
-		  });
-		}
-
-		const stats = phoneStats.get(phone);
-		stats.takes += 1;
-		stats.points += points;
-
-		if (result === "Won") {
-		  stats.won += 1;
-		} else if (result === "Lost") {
-		  stats.lost += 1;
-		} else if (result === "Pending") {
-		  stats.pending += 1;
-		}
-
-		phoneStats.set(phone, stats);
 	  });
 
-	  leaderboard = Array.from(phoneStats.values()).sort(
-		(a, b) => b.points - a.points
-	  );
+	  leaderboard = statsList.map((s) => ({
+		phone: s.phone,
+		takes: s.takes,
+		points: s.points,
+		won: s.won,
+		lost: s.lost,
+		pending: s.pending,
+		pushed: s.pushed,
+		profileID: phoneToProfileID.get(s.phone) || null,
+	  }));
 	}
 
 	console.log("[packURL] final leaderboard =>", leaderboard);

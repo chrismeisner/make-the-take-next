@@ -1,16 +1,18 @@
 // File: /pages/index.js
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
 import Header from "../components/Header";
 import LeaderboardTable from "../components/LeaderboardTable";
+import useLeaderboard from "../hooks/useLeaderboard";
 import Link from "next/link";
 import PackPreview from "../components/PackPreview";
 
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const hasFetchedPacks = useRef(false);
 
   // States for login flow (when not logged in)
   const [phone, setPhone] = useState("");
@@ -26,13 +28,12 @@ export default function LandingPage() {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
 
-  // State for leaderboard (for logged-in users)
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  // Unified leaderboard hook
+  const { leaderboard, loading: loadingLeaderboard, error: leaderboardError } = useLeaderboard({});
 
   // State for active packs (for logged-in users)
   const [activePacks, setActivePacks] = useState([]);
-  const [loadingPacks, setLoadingPacks] = useState(false);
+  const [loadingPacks, setLoadingPacks] = useState(true);
 
   // State for user takes (for logged-in users)
   const [userTakes, setUserTakes] = useState([]);
@@ -78,32 +79,10 @@ export default function LandingPage() {
 	fetchTeams();
   }, []);
 
-  // Fetch leaderboard if user is logged in
-  useEffect(() => {
-	if (session?.user) {
-	  async function fetchLeaderboard() {
-		console.log("🚀 [LandingPage] Fetching leaderboard...");
-		setLoadingLeaderboard(true);
-		try {
-		  const res = await fetch("/api/leaderboard");
-		  const data = await res.json();
-		  console.log("📥 [LandingPage] Leaderboard data:", data);
-		  if (data.success) {
-			setLeaderboard(data.leaderboard);
-		  }
-		} catch (err) {
-		  console.error("💥 [LandingPage] Error fetching leaderboard:", err);
-		} finally {
-		  setLoadingLeaderboard(false);
-		}
-	  }
-	  fetchLeaderboard();
-	}
-  }, [session]);
-
   // Fetch active packs if user is logged in
   useEffect(() => {
-	if (session?.user) {
+	if (session?.user && !hasFetchedPacks.current) {
+	  hasFetchedPacks.current = true;
 	  async function fetchActivePacks() {
 		console.log("🚀 [LandingPage] Fetching packs...");
 		setLoadingPacks(true);
@@ -327,6 +306,8 @@ export default function LandingPage() {
 			  <h2 className="text-2xl font-bold mb-4 text-center">Leaderboard</h2>
 			  {loadingLeaderboard ? (
 				<p className="text-center">Loading leaderboard...</p>
+			  ) : leaderboardError ? (
+				<p className="text-center text-red-500">Error: {leaderboardError}</p>
 			  ) : leaderboard && leaderboard.length > 0 ? (
 				<LeaderboardTable leaderboard={leaderboard} />
 			  ) : (

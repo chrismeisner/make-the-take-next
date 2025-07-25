@@ -1,26 +1,12 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
+import EventSelector from '../../components/EventSelector';
 
 export default function CreatePackPage() {
   const [packTitle, setPackTitle] = useState("");
   const [packDetails, setPackDetails] = useState(null);
   const [step, setStep] = useState(1); // 1 = pack info, 2 = props builder
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [eventModalOpen, setEventModalOpen] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [eventsError, setEventsError] = useState(null);
-  const [sortOrder, setSortOrder] = useState("asc"); // 'asc' for soonest first, 'desc' for latest first
-  // Date filter for events modal (default to today)
-  const [filterDate, setFilterDate] = useState(() => {
-    // Default to user's local date in YYYY-MM-DD
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  });
-
   // Live countdown timer for the selected event
   const [countdown, setCountdown] = useState('');
   useEffect(() => {
@@ -93,42 +79,18 @@ export default function CreatePackPage() {
   const { packId: initialPackId } = router.query;
   const [packRecordId, setPackRecordId] = useState(initialPackId || null);
   const [packProps, setPackProps] = useState([]);
-  // Track when we're persisting prop order changes
-  const [savingOrder, setSavingOrder] = useState(false);
-  // Function to move a prop up or down in the packProps list
-  const moveProp = async (id, direction) => {
-    if (savingOrder) return;
-    setSavingOrder(true);
-    // Compute new order locally
-    const idx = packProps.findIndex((p) => p.airtableId === id);
-    const newIndex = idx + direction;
-    if (idx < 0 || newIndex < 0 || newIndex >= packProps.length) {
-      setSavingOrder(false);
-      return;
-    }
-    const newArr = [...packProps];
-    [newArr[idx], newArr[newIndex]] = [newArr[newIndex], newArr[idx]];
-    setPackProps(newArr);
-    // Persist the two swapped items
-    const swappedA = newArr[newIndex];
-    const swappedB = newArr[idx];
-    try {
-      await Promise.all([
-        fetch('/api/props', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ propId: swappedA.airtableId, propOrder: newIndex }),
-        }),
-        fetch('/api/props', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ propId: swappedB.airtableId, propOrder: idx }),
-        }),
-      ]);
-    } catch (err) {
-      console.error('Error saving prop order:', err);
-    }
-    setSavingOrder(false);
+  // Assign a localId to each prop and buffer new ones until publish
+  const [nextLocalId, setNextLocalId] = useState(1);
+  // Function to move a prop up or down in the packProps list (local only)
+  const moveProp = (localId, direction) => {
+    setPackProps(prev => {
+      const idx = prev.findIndex(p => p.localId === localId);
+      const newIndex = idx + direction;
+      if (idx < 0 || newIndex < 0 || newIndex >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[newIndex]] = [arr[newIndex], arr[idx]];
+      return arr.map((p, i) => ({ ...p, propOrder: i }));
+    });
   };
   const [loadingPackProps, setLoadingPackProps] = useState(false);
   const [propsError, setPropsError] = useState(null);
@@ -158,26 +120,7 @@ export default function CreatePackPage() {
       setCoverPreview(null);
     }
   };
-  // Fetch events when modal opens
-  useEffect(() => {
-    if (!eventModalOpen) return;
-    setLoadingEvents(true);
-    setEventsError(null);
-    fetch("/api/events")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          // sort events by ascending eventTime (soonest first)
-          const sortedEvents = data.events
-            .slice()
-            .sort((a, b) => new Date(a.eventTime) - new Date(b.eventTime));
-          setEvents(sortedEvents);
-        }
-        else setEventsError(data.error);
-      })
-      .catch((err) => setEventsError(err.message))
-      .finally(() => setLoadingEvents(false));
-  }, [eventModalOpen]);
+  // EventSelector handles its own modal; removed inline modal code
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -236,7 +179,8 @@ export default function CreatePackPage() {
       if (data.success) {
         const filtered = data.props.filter((p) => p.linkedPacks.includes(packRecordId));
         filtered.sort((a, b) => (a.propOrder || 0) - (b.propOrder || 0));
-        setPackProps(filtered);
+        // Map Airtable props to include a localId for editing
+        setPackProps(filtered.map(p => ({ ...p, localId: p.airtableId })));
       } else {
         setPropsError(data.error);
       }
@@ -252,78 +196,45 @@ export default function CreatePackPage() {
     if (packRecordId) fetchPackProps();
   }, [packRecordId, fetchPackProps]);
 
-  // Inline handler to create a new prop
-  const handleCreateProp = async (e) => {
+  // Inline handler to create a new prop (local only)
+  const handleCreateProp = (e) => {
     e.preventDefault();
-    setLoadingPropCreate(true);
-    setPropsError(null);
-    try {
-      const res = await fetch('/api/props', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          propShort: newPropShort,
-          propSummary: newPropSummary,
-          PropSideAShort: newPropSideAShort,
-          PropSideBShort: newPropSideBShort,
-          propType: newPropType,
-          packId: packRecordId,
-          propOrder: packProps.length,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewPropShort('');
-        setNewPropSummary('');
-        setNewPropSideAShort('');
-        setNewPropSideBShort('');
-        setNewPropType('fact');
-        await fetchPackProps();
-      } else {
-        setPropsError(data.error);
-      }
-    } catch (err) {
-      setPropsError(err.message);
-    } finally {
-      setLoadingPropCreate(false);
-    }
+    const newProp = {
+      localId: `local-${nextLocalId}`,
+      airtableId: null,
+      propShort: newPropShort,
+      propSummary: newPropSummary,
+      PropSideAShort: newPropSideAShort,
+      PropSideBShort: newPropSideBShort,
+      propType: newPropType,
+      propStatus: 'open',
+      propOrder: packProps.length,
+    };
+    setPackProps(prev => [...prev, newProp]);
+    setNextLocalId(prev => prev + 1);
+    setNewPropShort('');
+    setNewPropSummary('');
+    setNewPropSideAShort('');
+    setNewPropSideBShort('');
+    setNewPropType('fact');
   };
-  // Inline handler to update an existing prop
-  const handleUpdateProp = async (e) => {
+  // Inline handler to update an existing prop (local only)
+  const handleUpdateProp = (e) => {
     e.preventDefault();
     if (!editingPropId) return;
-    setLoadingPropCreate(true);
-    setPropsError(null);
-    try {
-      const res = await fetch('/api/props', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          propId: editingPropId,
-          propShort: newPropShort,
-          propSummary: newPropSummary,
-          PropSideAShort: newPropSideAShort,
-          PropSideBShort: newPropSideBShort,
-          propType: newPropType,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setEditingPropId(null);
-        setNewPropShort('');
-        setNewPropSummary('');
-        setNewPropSideAShort('');
-        setNewPropSideBShort('');
-        setNewPropType('fact');
-        await fetchPackProps();
-      } else {
-        setPropsError(data.error);
-      }
-    } catch (err) {
-      setPropsError(err.message);
-    } finally {
-      setLoadingPropCreate(false);
-    }
+    setPackProps(prev =>
+      prev.map(p =>
+        p.localId === editingPropId
+          ? { ...p, propShort: newPropShort, propSummary: newPropSummary, PropSideAShort: newPropSideAShort, PropSideBShort: newPropSideBShort, propType: newPropType }
+          : p
+      )
+    );
+    setEditingPropId(null);
+    setNewPropShort('');
+    setNewPropSummary('');
+    setNewPropSideAShort('');
+    setNewPropSideBShort('');
+    setNewPropType('fact');
   };
 
   // Cancel confirm handler
@@ -339,6 +250,112 @@ export default function CreatePackPage() {
       console.error(err);
     } finally {
       router.push('/admin');
+    }
+  };
+  // Batch persist all props and then finalize pack
+  const [savingAll, setSavingAll] = useState(false);
+  const handlePublish = async () => {
+    setSavingAll(true);
+    try {
+      for (const p of packProps) {
+        if (!p.airtableId) {
+          const res = await fetch('/api/props', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              propShort: p.propShort,
+              propSummary: p.propSummary,
+              PropSideAShort: p.PropSideAShort,
+              PropSideBShort: p.PropSideBShort,
+              propType: p.propType,
+              propStatus: p.propStatus,
+              packId: packRecordId,
+              propOrder: p.propOrder,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error);
+        } else {
+          const res = await fetch('/api/props', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              propId: p.airtableId,
+              propShort: p.propShort,
+              propSummary: p.propSummary,
+              PropSideAShort: p.PropSideAShort,
+              PropSideBShort: p.PropSideBShort,
+              propType: p.propType,
+              propStatus: p.propStatus,
+              propOrder: p.propOrder,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error);
+        }
+      }
+      await fetch('/api/packs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: packRecordId, packStatus: 'Active' }),
+      });
+      router.push('/admin');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAll(false);
+    }
+  };
+  const handleSaveDraft = async () => {
+    setSavingAll(true);
+    try {
+      for (const p of packProps) {
+        if (!p.airtableId) {
+          const res = await fetch('/api/props', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              propShort: p.propShort,
+              propSummary: p.propSummary,
+              PropSideAShort: p.PropSideAShort,
+              PropSideBShort: p.PropSideBShort,
+              propType: p.propType,
+              propStatus: p.propStatus,
+              packId: packRecordId,
+              propOrder: p.propOrder,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error);
+        } else {
+          const res = await fetch('/api/props', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              propId: p.airtableId,
+              propShort: p.propShort,
+              propSummary: p.propSummary,
+              PropSideAShort: p.PropSideAShort,
+              PropSideBShort: p.PropSideBShort,
+              propType: p.propType,
+              propStatus: p.propStatus,
+              propOrder: p.propOrder,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error);
+        }
+      }
+      await fetch('/api/packs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId: packRecordId, packStatus: 'Draft' }),
+      });
+      router.push('/admin');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAll(false);
     }
   };
    
@@ -365,45 +382,45 @@ export default function CreatePackPage() {
           </div>
           {packType === "event" && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">Event</label>
-              <button
-                type="button"
-                onClick={() => setEventModalOpen(true)}
-                className="mt-1 px-2 py-1 bg-gray-200 rounded"
-              >
-                {selectedEvent ? "Change Event" : "Add Event"}
-              </button>
+              <label htmlFor="event" className="block text-sm font-medium text-gray-700">Event</label>
+              <EventSelector
+                selectedEvent={selectedEvent}
+                onSelect={(evt) => {
+                  setSelectedEvent(evt);
+                  setPackTitle(evt.eventTitle);
+                }}
+              />
               {selectedEvent && (
-                <p className="mt-2 text-sm text-gray-700">
-                  Selected: {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}
-                </p>
-              )}
-              {selectedEvent && (
-                <div className="flex items-center space-x-2 mt-2">
-                  {selectedEvent.awayTeamLogo && (
-                    <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-8 h-8 object-contain" />
+                <>
+                  <p className="mt-2 text-sm text-gray-700">
+                    Selected: {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}
+                  </p>
+                  <div className="flex items-center space-x-2 mt-2">
+                    {selectedEvent.awayTeamLogo && (
+                      <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-8 h-8 object-contain" />
+                    )}
+                    {selectedEvent.homeTeamLogo && (
+                      <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-8 h-8 object-contain" />
+                    )}
+                  </div>
+                  {countdown && (
+                    <p className="mt-2 text-sm text-gray-700">Starts in: {countdown}</p>
                   )}
-                  {selectedEvent.homeTeamLogo && (
-                    <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-8 h-8 object-contain" />
+                  {selectedEvent && selectedEvent.espnLink && (
+                    <p className="mt-2">
+                      <a
+                        href={selectedEvent.espnLink.startsWith("http")
+                          ? selectedEvent.espnLink
+                          : `https://espn.com/mlb/boxscore/_/gameId/${selectedEvent.espnLink}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline"
+                      >
+                        View on ESPN
+                      </a>
+                    </p>
                   )}
-                </div>
-              )}
-              {selectedEvent && countdown && (
-                <p className="mt-2 text-sm text-gray-700">Starts in: {countdown}</p>
-              )}
-              {selectedEvent && selectedEvent.espnLink && (
-                <p className="mt-2">
-                  <a
-                    href={selectedEvent.espnLink.startsWith("http")
-                      ? selectedEvent.espnLink
-                      : `https://espn.com/mlb/boxscore/_/gameId/${selectedEvent.espnLink}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
-                  >
-                    View on ESPN
-                  </a>
-                </p>
+                </>
               )}
             </div>
           )}
@@ -458,87 +475,7 @@ export default function CreatePackPage() {
         </form>
         </div>
       )}
-      {step === 1 && eventModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-4 rounded max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4">Select Event</h2>
-            {loadingEvents ? (
-              <p>Loading events...</p>
-            ) : eventsError ? (
-              <p className="text-red-600">{eventsError}</p>
-            ) : (
-              <>
-                <div className="mb-4">
-                  <label htmlFor="sortOrder" className="block text-sm font-medium text-gray-700">Sort By</label>
-                  <select
-                    id="sortOrder"
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value)}
-                    className="mt-1 block w-full border rounded px-2 py-1"
-                  >
-                    <option value="asc">Soonest First</option>
-                    <option value="desc">Latest First</option>
-                  </select>
-                </div>
-                <div className="mb-4">
-                  <label htmlFor="filterDate" className="block text-sm font-medium text-gray-700">Filter by Date</label>
-                  <input
-                    id="filterDate"
-                    type="date"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    className="mt-1 block w-full border rounded px-2 py-1"
-                  />
-                </div>
-                <ul className="max-h-64 overflow-y-auto space-y-2">
-                  {events
-                    .filter((evt) => {
-                      if (!evt.eventTime) return false;
-                      const d = new Date(evt.eventTime);
-                      const yyyy = d.getFullYear();
-                      const mm = String(d.getMonth() + 1).padStart(2, '0');
-                      const dd = String(d.getDate()).padStart(2, '0');
-                      return `${yyyy}-${mm}-${dd}` === filterDate;
-                    })
-                    .sort((a, b) =>
-                      sortOrder === "asc"
-                        ? new Date(a.eventTime) - new Date(b.eventTime)
-                        : new Date(b.eventTime) - new Date(a.eventTime)
-                    )
-                    .map((evt) => (
-                      <li key={evt.id}>
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedEvent(evt); setPackTitle(evt.eventTitle); setEventModalOpen(false); }}
-                          className="w-full flex items-center space-x-2 px-2 py-1 hover:bg-gray-100 rounded"
-                        >
-                          {evt.homeTeamLogo && (
-                            <img src={evt.homeTeamLogo} alt={evt.homeTeam} className="w-6 h-6 object-contain" />
-                          )}
-                          {evt.awayTeamLogo && (
-                            <img src={evt.awayTeamLogo} alt={evt.awayTeam} className="w-6 h-6 object-contain" />
-                          )}
-                          <div className="flex-1 text-left">
-                            <div>{evt.eventTitle}</div>
-                            <div className="text-sm text-gray-500">{new Date(evt.eventTime).toLocaleString()}</div>
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-              </>
-            )}
-            <div className="mt-4 text-right">
-              <button
-                onClick={() => setEventModalOpen(false)}
-                className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* EventSelector handles its own modal; removed inline modal code */}
 
       {/* Step 2: Props Builder */}
       {step === 2 && packRecordId && (
@@ -576,7 +513,7 @@ export default function CreatePackPage() {
             Refresh
           </button>
           {/* Dynamic props table */}
-          <div className={`transition-opacity duration-200 ${savingOrder ? 'opacity-50' : 'opacity-100'}`}>
+          <div className={`transition-opacity duration-200 ${loadingPackProps ? 'opacity-50' : 'opacity-100'}`}>
             <table className="min-w-full divide-y divide-gray-200 mb-6">
               <thead>
                 <tr>
@@ -592,19 +529,19 @@ export default function CreatePackPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {packProps.map((p, idx) => (
-                  <tr key={p.airtableId}>
+                  <tr key={p.localId}>
                     <td className="px-4 py-2">
                       <button
                         className="mr-2 text-sm text-gray-600 disabled:opacity-50"
-                        disabled={savingOrder || idx === 0}
-                        onClick={() => moveProp(p.airtableId, -1)}
+                        disabled={loadingPackProps || idx === 0}
+                        onClick={() => moveProp(p.localId, -1)}
                       >
                         ↑
                       </button>
                       <button
                         className="text-sm text-gray-600 disabled:opacity-50"
-                        disabled={savingOrder || idx === packProps.length - 1}
-                        onClick={() => moveProp(p.airtableId, 1)}
+                        disabled={loadingPackProps || idx === packProps.length - 1}
+                        onClick={() => moveProp(p.localId, 1)}
                       >
                         ↓
                       </button>
@@ -615,32 +552,27 @@ export default function CreatePackPage() {
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideAShort}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBShort}</td>
                     <td className="px-4 py-2">
-                      <select
-                        value={p.propStatus || 'open'}
-                        onChange={async (e) => {
-                          const newStatus = e.target.value;
+                      <button
+                        type="button"
+                        onClick={() =>
                           setPackProps(prev =>
                             prev.map(item =>
-                              item.airtableId === p.airtableId ? { ...item, propStatus: newStatus } : item
+                              item.localId === p.localId
+                                ? { ...item, propStatus: item.propStatus === 'open' ? 'draft' : 'open' }
+                                : item
                             )
-                          );
-                          await fetch('/api/props', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ propId: p.airtableId, propStatus: newStatus }),
-                          });
-                        }}
-                        className="mt-1 block w-full border rounded px-2 py-1"
+                          )
+                        }
+                        className={`px-3 py-1 rounded ${p.propStatus === 'open' ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}
                       >
-                        <option value="open">Open</option>
-                        <option value="draft">Draft</option>
-                      </select>
+                        {p.propStatus === 'open' ? 'Open' : 'Draft'}
+                      </button>
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-900">
                       <button
                         type="button"
                         onClick={() => {
-                          setEditingPropId(p.airtableId);
+                          setEditingPropId(p.localId);
                           setNewPropShort(p.propShort);
                           setNewPropSummary(p.propSummary);
                           setNewPropSideAShort(p.PropSideAShort);
@@ -733,41 +665,19 @@ export default function CreatePackPage() {
           <div className="mt-6 flex space-x-4">
             <button
               type="button"
-              onClick={async () => {
-                // Publish: set all props to open
-                for (const p of packProps) {
-                  await fetch('/api/props', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ propId: p.airtableId, propStatus: 'open' }),
-                  });
-                }
-                // Update packStatus to Active
-                await fetch('/api/packs', {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ packId: packRecordId, packStatus: 'Active' }),
-                });
-                router.push('/admin');
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              onClick={handlePublish}
+              disabled={savingAll}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
             >
-              Publish
+              {savingAll ? 'Publishing...' : 'Publish'}
             </button>
             <button
               type="button"
-              onClick={async () => {
-                // Save Draft: update packStatus to Draft
-                await fetch('/api/packs', {
-                  method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ packId: packRecordId, packStatus: 'Draft' }),
-                });
-                router.push('/admin');
-              }}
-              className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+              onClick={handleSaveDraft}
+              disabled={savingAll}
+              className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50"
             >
-              Save Draft
+              {savingAll ? 'Saving...' : 'Save Draft'}
             </button>
             <button
               type="button"

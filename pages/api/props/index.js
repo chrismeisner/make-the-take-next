@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, propType, packId, propOrder } = req.body;
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, propType, packId, propOrder, propStatus } = req.body;
     if (!propShort || !packId) {
       return res.status(400).json({ success: false, error: "Missing propShort or packId" });
     }
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
             PropSideAShort,
             PropSideBShort,
             propType,
-            propStatus: "draft",
+            propStatus: propStatus ?? "open",
             Packs: [packId],
             ...(propOrder !== undefined ? { propOrder } : {}),
           },
@@ -43,15 +43,31 @@ export default async function handler(req, res) {
   }
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
-    const { propId, propStatus, propOrder } = req.body;
-    if (!propId || (propStatus === undefined && propOrder === undefined)) {
-      return res.status(400).json({ success: false, error: "Missing propId or propStatus" });
+    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, propType } = req.body;
+    if (!propId) {
+      return res.status(400).json({ success: false, error: "Missing propId" });
+    }
+    if (
+      propStatus === undefined &&
+      propOrder  === undefined &&
+      propShort  === undefined &&
+      propSummary=== undefined &&
+      PropSideAShort=== undefined &&
+      PropSideBShort=== undefined &&
+      propType=== undefined
+    ) {
+      return res.status(400).json({ success: false, error: "No fields provided to update" });
     }
     try {
       const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
       const fieldsToUpdate = {};
-      if (propStatus !== undefined) fieldsToUpdate.propStatus = propStatus;
-      if (propOrder !== undefined) fieldsToUpdate.propOrder = propOrder;
+      if (propStatus     !== undefined) fieldsToUpdate.propStatus     = propStatus;
+      if (propOrder      !== undefined) fieldsToUpdate.propOrder      = propOrder;
+      if (propShort      !== undefined) fieldsToUpdate.propShort      = propShort;
+      if (propSummary    !== undefined) fieldsToUpdate.propSummary    = propSummary;
+      if (PropSideAShort !== undefined) fieldsToUpdate.PropSideAShort = PropSideAShort;
+      if (PropSideBShort !== undefined) fieldsToUpdate.PropSideBShort = PropSideBShort;
+      if (propType       !== undefined) fieldsToUpdate.propType       = propType;
       const updated = await base("Props").update([
         { id: propId, fields: fieldsToUpdate }
       ]);

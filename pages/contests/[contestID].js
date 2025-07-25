@@ -1,6 +1,7 @@
 // File: /pages/contests/[contestID].js
 
 import React, { useEffect, useState } from "react";
+import useLeaderboard from '../../hooks/useLeaderboard';
 import { useSession } from "next-auth/react"; // <-- Import useSession
 import Head from "next/head";
 import Link from "next/link";
@@ -9,11 +10,8 @@ export default function ContestDetailPage({ contestData, error }) {
   // 1) NextAuth session
   const { data: session } = useSession();
   const isLoggedIn = !!session;
-
-  // Leaderboard state
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [loadingLB, setLoadingLB] = useState(true);
-  const [lbError, setLbError] = useState("");
+  // Unified leaderboard hook
+  const { leaderboard, loading: loadingLB, error: lbError } = useLeaderboard({ contestID: contestData?.contestID });
 
   // SMS subscription state
   const [subscribeSMS, setSubscribeSMS] = useState(false);
@@ -23,27 +21,7 @@ export default function ContestDetailPage({ contestData, error }) {
   // Countdown state
   const [timeLeft, setTimeLeft] = useState("");
 
-  /*******************************
-   * Fetch the leaderboard data  *
-   *******************************/
-  useEffect(() => {
-	if (!contestData?.contestID) return;
-	async function fetchLB() {
-	  try {
-		const res = await fetch(`/api/contests/${contestData.contestID}/leaderboard`);
-		const data = await res.json();
-		if (!res.ok || !data.success) {
-		  throw new Error(data.error || "Could not fetch contest leaderboard");
-		}
-		setLeaderboard(data.leaderboard || []);
-	  } catch (err) {
-		setLbError(err.message);
-	  } finally {
-		setLoadingLB(false);
-	  }
-	}
-	fetchLB();
-  }, [contestData]);
+  // Fetching leaderboard is now handled by useLeaderboard hook
 
   /*******************************
    * Dynamic second-by-second countdown
