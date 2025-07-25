@@ -14,73 +14,38 @@ export default async function handler(req, res) {
   const { takeID } = req.query;
   
   try {
-	// Query the "Takes" table for a record matching either the TakeID field or the Airtable record ID
-	const filterFormula = `OR({TakeID} = "${takeID}", RECORD_ID() = "${takeID}")`;
+    // Query the "Takes" table for all records matching the receiptID field
+	const filterFormula = `{receiptID} = "${takeID}"`;
+	console.log('[API Takes] filterFormula for receiptID fetch:', filterFormula);
 	const records = await base("Takes")
 	  .select({
-		filterByFormula,
-		maxRecords: 1,
+		filterByFormula: filterFormula,
+		maxRecords: 1000,
 	  })
-	  .firstPage();
-
-	if (!records || records.length === 0) {
+	  .all();
+	console.log('[API Takes] Retrieved', records.length, 'records for receiptID:', takeID);
+	if (records.length === 0) {
+	  console.log('[API Takes] No takes found for receiptID:', takeID);
 	  return res.status(404).json({ success: false, error: "Take not found" });
 	}
 
-	const record = records[0];
-	const take = {
-	  airtableRecordId: record.id,
-	  takeID: record.fields.TakeID || record.id,
-	  propID: record.fields.propID,
-	  propSide: record.fields.propSide,
-	  takeMobile: record.fields.takeMobile,
-	  takePopularity: record.fields.takePopularity || 0,
-	  createdTime: record._rawJson.createdTime,
-	  takeStatus: record.fields.takeStatus || "",
-	  propTitle: record.fields.propTitle || "",
-	  subjectTitle: record.fields.subjectTitle || "",
-	  propSideAShort: record.fields.propSideAShort || "Side A",
-	  propSideBShort: record.fields.propSideBShort || "Side B",
-	};
- 
-	// Optionally, include related prop data:
-	let prop = null;
-	let content = [];
-	if (record.fields.propID) {
-	  const propRecords = await base("Props")
-		.select({
-		  filterByFormula: `{propID} = "${record.fields.propID}"`,
-		  maxRecords: 1,
-		})
-		.firstPage();
+	// Map each record to a simpler take object
+	const takes = records.map((r) => ({
+	  id: r.id,
+	  receiptID: r.fields.receiptID || r.id,
+	  propID: r.fields.propID,
+	  propSide: r.fields.propSide,
+	  // include short labels for each side
+	  propSideAShort: r.fields.propSideAShort || "",
+	  propSideBShort: r.fields.propSideBShort || "",
+	  propTitle: r.fields.propTitle || "",
+	  createdTime: r._rawJson.createdTime,
+	}));
 
-	  if (propRecords.length > 0) {
-		const propRec = propRecords[0];
-		const pf = propRec.fields;
-		prop = {
-		  airtableRecordId: propRec.id,
-		  propID: pf.propID,
-		  propShort: pf.propShort || "",
-		  PropSideAShort: pf.PropSideAShort || "Side A",
-		  PropSideBShort: pf.PropSideBShort || "Side B",
-		  propStatus: pf.propStatus || "open",
-		  propSubjectID: pf.propSubjectID || "",
-		  propTitle: pf.propTitle || "",
-		  propLong: pf.propLong || "",
-		};
-
-		const contentTitles = pf.contentTitles || [];
-		const contentURLs = pf.contentURLs || [];
-		content = contentTitles.map((title, i) => ({
-		  contentTitle: title,
-		  contentURL: contentURLs[i] || "",
-		}));
-	  }
-	}
-
-	return res.status(200).json({ success: true, take, prop, content });
+	// Return all takes for this receipt
+	return res.status(200).json({ success: true, takes });
   } catch (error) {
-	console.error("[API Takes] Error fetching single take:", error);
-	return res.status(500).json({ success: false, error: "Server error fetching take" });
+	console.error("[API Takes] Error fetching takes for receiptID:", error);
+	return res.status(500).json({ success: false, error: "Server error fetching takes" });
   }
 }

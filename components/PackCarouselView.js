@@ -13,6 +13,7 @@ import InlineCardProgressFooter from "./InlineCardProgressFooter";
 import LeaderboardTable from "./LeaderboardTable";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import ChallengeComponent from "./ChallengeComponent";
 
@@ -39,6 +40,7 @@ function PackCoverCard({ packCover, packTitle, onImgLoad }) {
 export default function PackCarouselView({ packData, leaderboard, userReceipts = [], activity = [] }) {
   // Only show receipts section when user is authenticated
   const { data: session } = useSession();
+  const { handleChoiceSelect } = usePackContext();
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
@@ -52,18 +54,98 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
   useEffect(() => {
     setIsClient(true);
   }, []);
+  // Stores an array of { challenge, takes } objects
+  const [acceptedTakes, setAcceptedTakes] = useState([]);
+  const [loadingChallenges, setLoadingChallenges] = useState(false);
+  const [errorChallenges, setErrorChallenges] = useState(null);
+
+  // Fetch all challenges when 'Challenges' tab is active
+  useEffect(() => {
+    if (activeTab !== 'challenges') return;
+    const initiatorProfileID = session?.user?.profileID;
+    if (!initiatorProfileID) return;
+    setLoadingChallenges(true);
+    setErrorChallenges(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/challenges?packURL=${encodeURIComponent(packData.packURL)}`
+        );
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        const raw = data.challenges || [];
+        // include challenges where user is initiator or challenger, and has been accepted
+        const accepted = raw.filter(r => {
+          const initiatorIDs = r.fields.initiatorProfileID || [];
+          const challengerIDs = r.fields.challengerProfileID || [];
+          const isInitiator = initiatorIDs.includes(initiatorProfileID);
+          const isChallenger = challengerIDs.includes(initiatorProfileID);
+          return r.fields.challengerReceiptID && (isInitiator || isChallenger);
+        });
+      // fetch both initiator and challenger takes for each challenge
+      const entries = await Promise.all(
+        accepted.map(async (r) => {
+          const isInitiator = (r.fields.initiatorProfileID || []).includes(initiatorProfileID);
+          const entry = { challenge: r, initiatorTakes: [], challengerTakes: [], isInitiator };
+          // initiator's takes
+          try {
+            const ires = await fetch(`/api/takes/${encodeURIComponent(r.fields.initiatorReceiptID)}`);
+            const idata = await ires.json();
+            if (idata.success) entry.initiatorTakes = idata.takes;
+            else console.error('[PackCarouselView] initiator fetch error:', idata.error);
+          } catch (ie) {
+            console.error('[PackCarouselView] initiator exception:', ie);
+          }
+          // challenger's takes
+          try {
+            const cres = await fetch(`/api/takes/${encodeURIComponent(r.fields.challengerReceiptID)}`);
+            const cdata = await cres.json();
+            if (cdata.success) entry.challengerTakes = cdata.takes;
+            else console.error('[PackCarouselView] challenger fetch error:', cdata.error);
+          } catch (ce) {
+            console.error('[PackCarouselView] challenger exception:', ce);
+          }
+          return entry;
+        })
+      );
+        setAcceptedTakes(entries);
+      } catch (err) {
+        setErrorChallenges(err.message);
+      } finally {
+        setLoadingChallenges(false);
+      }
+    })();
+  }, [activeTab, packData.packURL, session?.user?.profileID]);
   // Add keyboard navigation for desktop: left/right arrows to switch cards
   useEffect(() => {
     const handleKey = (e) => {
       // Ignore if focus is on input, textarea, or editable elements
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
-      if (e.key === 'ArrowLeft') swiperRef.current?.slidePrev();
-      if (e.key === 'ArrowRight') swiperRef.current?.slideNext();
+      // Arrow keys navigate cards
+      if (e.key === 'ArrowLeft') {
+        swiperRef.current?.slidePrev();
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        swiperRef.current?.slideNext();
+        return;
+      }
+      // Number keys select choice on current card
+      if (e.key === '1' || e.key === '2') {
+        const idx = swiperRef.current?.activeIndex;
+        // Skip the cover slide at index 0
+        if (typeof idx === 'number' && idx > 0 && idx <= packData.props.length) {
+          const prop = packData.props[idx - 1];
+          const side = e.key === '1' ? 'A' : 'B';
+          console.log(`[PackCarouselView] Key '${e.key}' pressed: selecting side ${side} for propID=${prop.propID}`);
+          handleChoiceSelect(prop.propID, side);
+        }
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [handleChoiceSelect, packData.props]);
   // Countdown timer for event
   const [timeLeft, setTimeLeft] = useState(() => {
     if (!packData.eventTime) return null;
@@ -258,12 +340,12 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                 >
                   Prizes
                 </button>
-                {/* Added Challengers tab */}
+                {/* Added Challenges tab */}
                 <button
-                  onClick={() => setActiveTab('challengers')}
-                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'challengers' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  onClick={() => setActiveTab('challenges')}
+                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'challenges' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                 >
-                  Challengers
+                  Challenges
                 </button>
               </nav>
             </div>
@@ -280,8 +362,52 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                 </ul>
               ) : activeTab === 'prizes' ? (
                 <p className="text-gray-500">Prizes content coming soon.</p>
-              ) : activeTab === 'challengers' ? (
-                <p className="text-gray-500">Challengers coming soon: the ability to challenge friends to make their take vs yours.</p>
+              ) : activeTab === 'challenges' ? (
+                loadingChallenges ? (
+                  <p>Loading challenges…</p>
+                ) : errorChallenges ? (
+                  <p className="text-red-500">Error: {errorChallenges}</p>
+                ) : acceptedTakes.length === 0 ? (
+                  <p className="text-gray-500">No accepted challenges found.</p>
+                ) : (
+                  <ul className="space-y-6">
+                    {acceptedTakes.map(({ challenge, initiatorTakes, challengerTakes, isInitiator }) => {
+                      // determine which side is 'you' and opponent
+                      const myTakes = isInitiator ? initiatorTakes : challengerTakes;
+                      const theirTakes = isInitiator ? challengerTakes : initiatorTakes;
+                      const opponentName = isInitiator
+                        ? challenge.fields.challengerProfileID?.[0]
+                        : challenge.fields.initiatorProfileID?.[0];
+                      return (
+                      <li key={challenge.id}>
+                        <div className="font-bold mb-2">
+                          Challenge ID: {challenge.fields.challengeID || challenge.id}
+                        </div>
+                        <div className="mb-2">
+                          <div className="font-semibold">Your takes:</div>
+                          <ul className="pl-4 list-disc space-y-1">
+                            {myTakes.map((t) => (
+                              <li key={t.id} className="text-sm">
+                                {t.propTitle}: <em>{t.propSide === 'A' ? t.propSideAShort : t.propSideBShort}</em>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <div className="font-semibold">{opponentName || 'Opponent'}'s takes:</div>
+                          <ul className="pl-4 list-disc space-y-1">
+                            {theirTakes.map((t) => (
+                              <li key={t.id} className="text-sm">
+                                {t.propTitle}: <em>{t.propSide === 'A' ? t.propSideAShort : t.propSideBShort}</em>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </li>
+                      );
+                    })}
+                  </ul>
+                )
               ) : null}
             </div>
           </div>

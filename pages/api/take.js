@@ -30,6 +30,14 @@ export default async function handler(req, res) {
 	});
   }
 
+  // Determine if this take is part of a challenge by inspecting the referer URL
+  const refHeader = req.headers.referer || req.headers.referrer || "";
+  const isChallenge = refHeader.includes("?ref=");
+  console.log(
+    `[ /api/take ] ${isChallenge ? "🎯 Challenge submission detected" : "📦 Standard submission"}` +
+      ` -> propID=${propID}, receiptId=${receiptId}`
+  );
+
   try {
 	// 3) Find the matching Prop record by propID
 	const propsFound = await base("Props")

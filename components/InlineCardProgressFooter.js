@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePackContext } from "../contexts/PackContext";
 import { useModal } from "../contexts/ModalContext";
 import { useSession } from "next-auth/react";
@@ -22,6 +22,22 @@ export default function InlineCardProgressFooter() {
     : true;
   const canSubmit = allSelected && hasChanges;
 
+  // Keyboard shortcut: Enter to submit pack
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      // Ignore if focus is on input or editable element
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === 'Enter' && canSubmit) {
+        e.preventDefault();
+        console.log('[InlineCardProgressFooter] Enter key pressed: submitting pack');
+        handleSubmit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [canSubmit, handleSubmit]);
+
   async function handleSubmit() {
     const receiptId = Math.random().toString(36).substring(2, 8);
     if (!session?.user) {
@@ -33,6 +49,11 @@ export default function InlineCardProgressFooter() {
     // If this is a friend acceptance (ref query present), create or update a challenge record
     if (router.query.ref) {
       try {
+        console.log("[InlineCardProgressFooter] Attempting to create/update challenge record with:", {
+          packURL: packData.packURL,
+          initiatorReceiptId: router.query.ref,
+          challengerReceiptId: receiptId,
+        });
         await fetch("/api/challenges", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -42,6 +63,7 @@ export default function InlineCardProgressFooter() {
             challengerReceiptId: receiptId,
           }),
         });
+        console.log("[InlineCardProgressFooter] Challenge API call completed");
       } catch (err) {
         console.error("[InlineCardProgressFooter] Error creating challenge record:", err);
       }
