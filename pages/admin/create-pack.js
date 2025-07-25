@@ -99,6 +99,9 @@ export default function CreatePackPage() {
   const [newPropSideAShort, setNewPropSideAShort] = useState("");
   const [newPropSideBShort, setNewPropSideBShort] = useState("");
   const [newPropType, setNewPropType] = useState("fact");
+  // Add new state hooks for Side A and Side B takes
+  const [newPropSideATake, setNewPropSideATake] = useState("");
+  const [newPropSideBTake, setNewPropSideBTake] = useState("");
   // Track which prop is being edited (Airtable ID)
   const [editingPropId, setEditingPropId] = useState(null);
   const [loadingPropCreate, setLoadingPropCreate] = useState(false);
@@ -206,6 +209,8 @@ export default function CreatePackPage() {
       propSummary: newPropSummary,
       PropSideAShort: newPropSideAShort,
       PropSideBShort: newPropSideBShort,
+      PropSideATake: newPropSideATake,
+      PropSideBTake: newPropSideBTake,
       propType: newPropType,
       propStatus: 'open',
       propOrder: packProps.length,
@@ -217,6 +222,9 @@ export default function CreatePackPage() {
     setNewPropSideAShort('');
     setNewPropSideBShort('');
     setNewPropType('fact');
+    // Clear new take fields
+    setNewPropSideATake('');
+    setNewPropSideBTake('');
   };
   // Inline handler to update an existing prop (local only)
   const handleUpdateProp = (e) => {
@@ -225,7 +233,7 @@ export default function CreatePackPage() {
     setPackProps(prev =>
       prev.map(p =>
         p.localId === editingPropId
-          ? { ...p, propShort: newPropShort, propSummary: newPropSummary, PropSideAShort: newPropSideAShort, PropSideBShort: newPropSideBShort, propType: newPropType }
+          ? { ...p, propShort: newPropShort, propSummary: newPropSummary, PropSideAShort: newPropSideAShort, PropSideBShort: newPropSideBShort, PropSideATake: newPropSideATake, PropSideBTake: newPropSideBTake, propType: newPropType }
           : p
       )
     );
@@ -235,6 +243,9 @@ export default function CreatePackPage() {
     setNewPropSideAShort('');
     setNewPropSideBShort('');
     setNewPropType('fact');
+    // Clear take fields
+    setNewPropSideATake('');
+    setNewPropSideBTake('');
   };
 
   // Cancel confirm handler
@@ -267,6 +278,8 @@ export default function CreatePackPage() {
               propSummary: p.propSummary,
               PropSideAShort: p.PropSideAShort,
               PropSideBShort: p.PropSideBShort,
+              PropSideATake: p.PropSideATake,
+              PropSideBTake: p.PropSideBTake,
               propType: p.propType,
               propStatus: p.propStatus,
               packId: packRecordId,
@@ -285,6 +298,8 @@ export default function CreatePackPage() {
               propSummary: p.propSummary,
               PropSideAShort: p.PropSideAShort,
               PropSideBShort: p.PropSideBShort,
+              PropSideATake: p.PropSideATake,
+              PropSideBTake: p.PropSideBTake,
               propType: p.propType,
               propStatus: p.propStatus,
               propOrder: p.propOrder,
@@ -319,6 +334,8 @@ export default function CreatePackPage() {
               propSummary: p.propSummary,
               PropSideAShort: p.PropSideAShort,
               PropSideBShort: p.PropSideBShort,
+              PropSideATake: p.PropSideATake,
+              PropSideBTake: p.PropSideBTake,
               propType: p.propType,
               propStatus: p.propStatus,
               packId: packRecordId,
@@ -337,6 +354,8 @@ export default function CreatePackPage() {
               propSummary: p.propSummary,
               PropSideAShort: p.PropSideAShort,
               PropSideBShort: p.PropSideBShort,
+              PropSideATake: p.PropSideATake,
+              PropSideBTake: p.PropSideBTake,
               propType: p.propType,
               propStatus: p.propStatus,
               propOrder: p.propOrder,
@@ -523,6 +542,8 @@ export default function CreatePackPage() {
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Summary</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 1</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 2</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side A Take</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side B Take</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Edit</th>
                 </tr>
@@ -551,6 +572,8 @@ export default function CreatePackPage() {
                     <td className="px-4 py-2 text-sm text-gray-900">{p.propSummary}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideAShort}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBShort}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideATake}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBTake}</td>
                     <td className="px-4 py-2">
                       <button
                         type="button"
@@ -578,6 +601,8 @@ export default function CreatePackPage() {
                           setNewPropSideAShort(p.PropSideAShort);
                           setNewPropSideBShort(p.PropSideBShort);
                           setNewPropType(p.propType);
+                          setNewPropSideATake(p.PropSideATake);
+                          setNewPropSideBTake(p.PropSideBTake);
                         }}
                         className="text-blue-600 underline"
                       >
@@ -627,6 +652,27 @@ export default function CreatePackPage() {
                 type="text"
                 value={newPropSideBShort}
                 onChange={(e) => setNewPropSideBShort(e.target.value)}
+                className="mt-1 block w-full border rounded px-2 py-1"
+              />
+            </div>
+            {/* Add take inputs */}
+            <div>
+              <label htmlFor="newPropSideATake" className="block text-sm font-medium text-gray-700">Side A Take</label>
+              <input
+                id="newPropSideATake"
+                type="text"
+                value={newPropSideATake}
+                onChange={(e) => setNewPropSideATake(e.target.value)}
+                className="mt-1 block w-full border rounded px-2 py-1"
+              />
+            </div>
+            <div>
+              <label htmlFor="newPropSideBTake" className="block text-sm font-medium text-gray-700">Side B Take</label>
+              <input
+                id="newPropSideBTake"
+                type="text"
+                value={newPropSideBTake}
+                onChange={(e) => setNewPropSideBTake(e.target.value)}
                 className="mt-1 block w-full border rounded px-2 py-1"
               />
             </div>

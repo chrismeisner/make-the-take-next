@@ -23,19 +23,36 @@ export default function GlobalModalRenderer() {
 
   switch (modalConfig.modalType) {
 	case "challenge":
-	  return (
-		<GlobalModal isOpen={true} onClose={closeModal}>
-		  <h2 className="text-2xl font-bold mb-4">
-			You've been challenged by {modalConfig.modalProps.friendName}!
-		  </h2>
-		  <button
-			onClick={closeModal}
-			className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-		  >
-			OK
-		  </button>
-		</GlobalModal>
-	  );
+	  {
+        const { friendName, friendTakesByProp, packProps } = modalConfig.modalProps;
+        return (
+          <GlobalModal isOpen={true} onClose={closeModal}>
+            <h2 className="text-2xl font-bold mb-4">
+              You've been challenged by {friendName}!
+            </h2>
+            <ul className="space-y-2">
+              {packProps.map((p) => {
+                const take = friendTakesByProp[p.propID];
+                if (!take) return null;
+                const label = p.propShort || p.propTitle || p.propID;
+                const sideLabel = take.side === 'A' ? p.sideALabel : p.sideBLabel;
+                return (
+                  <li key={p.propID} className="flex justify-between">
+                    <span>{label}</span>
+                    <span className="font-semibold">{sideLabel}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              onClick={closeModal}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+            >
+              OK
+            </button>
+          </GlobalModal>
+        );
+      }
 	case "featuredPack":
 	  return (
 		<FeaturedPackModal

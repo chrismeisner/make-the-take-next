@@ -154,7 +154,11 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
   }, []);
   useEffect(() => {
     if (friendProfile) {
-      openModal('challenge', { friendName: friendProfile.profileUsername || friendProfile.profileID });
+      openModal('challenge', {
+        friendName: friendProfile.profileUsername || friendProfile.profileID,
+        friendTakesByProp,
+        packProps: packData.props,
+      });
     }
   }, [friendProfile, openModal]);
   return (

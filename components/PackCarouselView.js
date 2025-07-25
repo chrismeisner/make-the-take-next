@@ -15,7 +15,6 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
-import ChallengeComponent from "./ChallengeComponent";
 import { useModal } from "../contexts/ModalContext";
 
 // Add a swipeable cover card as the first slide
@@ -297,7 +296,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                     </li>
                   ))}
                 </ul>
-                <ChallengeComponent packUrl={packData.packURL} receiptId={allReceipts[0].receiptID} />
+                {/* Removed original copy link component; use Share & QR buttons below */}
                 {/* Share & QR buttons */}
                 <div className="flex space-x-2 mt-2">
                   <button
