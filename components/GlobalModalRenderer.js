@@ -12,6 +12,7 @@ import FeaturedPackModal from "./modals/FeaturedPackModal";
 import PackCompletedModal from "./modals/PackCompletedModal";
 import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
 import GradePacksModal from "./modals/GradePacksModal";
+import QRCodeModal from "./modals/QRCodeModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -114,7 +115,14 @@ export default function GlobalModalRenderer() {
 		  packs={modalConfig.modalProps.packs}
 		/>
 	  );
-
+	case "qrCode":
+	  return (
+		<QRCodeModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  url={modalConfig.modalProps.url}
+		/>
+	  );
 	default:
 	  return null;
   }

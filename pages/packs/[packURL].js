@@ -149,7 +149,6 @@ export async function getServerSideProps(context) {
 export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef }) {
   const { openModal } = useModal();
   const [mounted, setMounted] = useState(false);
-  const origin = debugLogs.origin;
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -168,7 +167,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         {packData.packCover?.[0]?.url && (
           <meta property="og:image" content={packData.packCover[0].url} />
         )}
-        <meta property="og:url" content={`${origin}/packs/${packData.packURL}`} />
+        <meta property="og:url" content={`${debugLogs.origin}/packs/${packData.packURL}`} />
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={packData.packTitle} />

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Airtable from 'airtable';
+import { useModal } from '../../../contexts/ModalContext';
 
 export async function getServerSideProps(context) {
   const { packURL, receiptId } = context.params;
@@ -61,6 +62,7 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
   // build share URL and setup copy state/handlers
   const shareUrl = `${origin}/packs/${packData.packURL}?ref=${receiptId}`;
   const [copied, setCopied] = useState(false);
+  const { openModal } = useModal();
   const fallbackCopyTextToClipboard = (text) => {
     const textArea = document.createElement('textarea');
     textArea.value = text;
@@ -140,6 +142,13 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
           className="ml-2 px-3 py-1 bg-blue-600 text-white text-sm rounded"
         >
           {copied ? 'Copied!' : 'Copy Link'}
+        </button>
+        <button
+          type="button"
+          onClick={() => openModal('qrCode', { url: shareUrl })}
+          className="ml-2 px-3 py-1 bg-gray-700 text-white text-sm rounded"
+        >
+          Generate QR
         </button>
       </div>
       <ul className="space-y-4">

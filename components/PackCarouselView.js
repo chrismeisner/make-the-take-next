@@ -16,6 +16,7 @@ import { useSession } from "next-auth/react";
 import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import ChallengeComponent from "./ChallengeComponent";
+import { useModal } from "../contexts/ModalContext";
 
 // Add a swipeable cover card as the first slide
 function PackCoverCard({ packCover, packTitle, onImgLoad }) {
@@ -37,10 +38,12 @@ function PackCoverCard({ packCover, packTitle, onImgLoad }) {
   );
 }
 
-export default function PackCarouselView({ packData, leaderboard, userReceipts = [], activity = [] }) {
+export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [], activity = [] }) {
   // Only show receipts section when user is authenticated
   const { data: session } = useSession();
   const { handleChoiceSelect } = usePackContext();
+  const { openModal } = useModal();
+  const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
@@ -221,6 +224,28 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
     }
   });
   allReceipts = Object.values(receiptMap);
+  // Prepare share link for the first receipt
+  const hasReceipts = session?.user && allReceipts.length > 0;
+  const currentReceiptId = hasReceipts ? allReceipts[0].receiptID : null;
+  const shareUrl = hasReceipts ? `${debugLogs.origin}/packs/${packData.packURL}?ref=${currentReceiptId}` : "";
+  const fallbackCopyTextToClipboard = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try { document.execCommand('copy'); } catch (err) { console.error('Fallback: unable to copy', err); }
+    document.body.removeChild(textArea);
+  };
 
   if (props.length === 0) {
     return (
@@ -273,6 +298,32 @@ export default function PackCarouselView({ packData, leaderboard, userReceipts =
                   ))}
                 </ul>
                 <ChallengeComponent packUrl={packData.packURL} receiptId={allReceipts[0].receiptID} />
+                {/* Share & QR buttons */}
+                <div className="flex space-x-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(shareUrl)
+                          .then(() => setCopied(true))
+                          .catch(() => fallbackCopyTextToClipboard(shareUrl));
+                      } else {
+                        fallbackCopyTextToClipboard(shareUrl);
+                      }
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className={`px-3 py-1 rounded text-white text-sm ${copied ? 'bg-gray-500' : 'bg-blue-600'}`}
+                  >
+                    {copied ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openModal('qrCode', { url: shareUrl })}
+                    className="px-3 py-1 bg-gray-700 text-white text-sm rounded"
+                  >
+                    Generate QR
+                  </button>
+                </div>
               </div>
             )}
           </div>
