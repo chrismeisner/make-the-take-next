@@ -67,7 +67,7 @@ export default async function handler(req, res) {
 	});
 	const totalCount = popularityA + popularityB;
 	const chosenCount = propSide === "A" ? popularityA : popularityB;
-	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0;
+	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0.5;
 
 	// 4) Create new take
 	const created = await base("Takes").create([
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
 		  propSide,
 		  takeMobile: e164Phone,
 		  takeStatus: "latest",
-		  takePopularity,
+		  takeLivePopularity: takePopularity,
 		},
 	  },
 	]);

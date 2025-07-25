@@ -297,7 +297,7 @@ export default function CreatePackPage() {
       await fetch('/api/packs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId: packRecordId, packStatus: 'Active' }),
+        body: JSON.stringify({ packId: packRecordId, packStatus: 'active' }),
       });
       router.push('/admin');
     } catch (err) {
@@ -349,7 +349,7 @@ export default function CreatePackPage() {
       await fetch('/api/packs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId: packRecordId, packStatus: 'Draft' }),
+        body: JSON.stringify({ packId: packRecordId, packStatus: 'draft' }),
       });
       router.push('/admin');
     } catch (err) {

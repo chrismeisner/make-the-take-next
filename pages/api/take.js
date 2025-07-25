@@ -88,7 +88,7 @@ export default async function handler(req, res) {
 	});
 	const totalCount = sideACount + sideBCount;
 	const chosenCount = propSide === "A" ? sideACount : sideBCount;
-	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0;
+	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0.5;
 
 	// 7) Create the new "latest" take
 	//    We'll link the "Profile" field to the user's profile record in Airtable
@@ -104,7 +104,7 @@ export default async function handler(req, res) {
 		  Prop: [propRec.id],    // link to the Prop record
 		  Profile: [profileRecId], // link to the user's Profile record
 		  receiptID: receiptId,
-		  takePopularity,
+		  takeLivePopularity: takePopularity,
 		},
 	  },
 	]);
