@@ -102,6 +102,17 @@ export default function CreatePackPage() {
   // Add new state hooks for Side A and Side B takes
   const [newPropSideATake, setNewPropSideATake] = useState("");
   const [newPropSideBTake, setNewPropSideBTake] = useState("");
+  // State for selecting teams in new prop
+  const [newPropTeams, setNewPropTeams] = useState([]);
+  // Initialize default teams when event changes
+  useEffect(() => {
+    if (selectedEvent) {
+      const defaults = [];
+      if (selectedEvent.homeTeamLink) defaults.push(selectedEvent.homeTeamLink);
+      if (selectedEvent.awayTeamLink) defaults.push(selectedEvent.awayTeamLink);
+      setNewPropTeams(defaults);
+    }
+  }, [selectedEvent]);
   // Track which prop is being edited (Airtable ID)
   const [editingPropId, setEditingPropId] = useState(null);
   const [loadingPropCreate, setLoadingPropCreate] = useState(false);
@@ -214,6 +225,8 @@ export default function CreatePackPage() {
       propType: newPropType,
       propStatus: 'open',
       propOrder: packProps.length,
+      // Teams linked to this prop
+      teams: newPropTeams,
     };
     setPackProps(prev => [...prev, newProp]);
     setNextLocalId(prev => prev + 1);
@@ -225,6 +238,13 @@ export default function CreatePackPage() {
     // Clear new take fields
     setNewPropSideATake('');
     setNewPropSideBTake('');
+    // Reset teams to default for next prop
+    {
+      const defaultTeams = [];
+      if (selectedEvent?.homeTeamLink) defaultTeams.push(selectedEvent.homeTeamLink);
+      if (selectedEvent?.awayTeamLink) defaultTeams.push(selectedEvent.awayTeamLink);
+      setNewPropTeams(defaultTeams);
+    }
   };
   // Inline handler to update an existing prop (local only)
   const handleUpdateProp = (e) => {
@@ -284,6 +304,7 @@ export default function CreatePackPage() {
               propStatus: p.propStatus,
               packId: packRecordId,
               propOrder: p.propOrder,
+              teams: p.teams
             }),
           });
           const data = await res.json();
@@ -340,6 +361,7 @@ export default function CreatePackPage() {
               propStatus: p.propStatus,
               packId: packRecordId,
               propOrder: p.propOrder,
+              teams: p.teams
             }),
           });
           const data = await res.json();
@@ -687,6 +709,44 @@ export default function CreatePackPage() {
                 <option value="fact">Fact</option>
                 <option value="opinion">Opinion</option>
               </select>
+            </div>
+            {/* Teams selection UI */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Teams</label>
+              <div className="mt-1 flex space-x-2">
+                {selectedEvent?.homeTeamLink && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newPropTeams.includes(selectedEvent.homeTeamLink)) {
+                        setNewPropTeams(prev => prev.filter(id => id !== selectedEvent.homeTeamLink));
+                      } else {
+                        setNewPropTeams(prev => [...prev, selectedEvent.homeTeamLink]);
+                      }
+                    }}
+                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.homeTeamLink) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    {selectedEvent.homeTeamLogo && <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
+                    {selectedEvent.homeTeam}
+                  </button>
+                )}
+                {selectedEvent?.awayTeamLink && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newPropTeams.includes(selectedEvent.awayTeamLink)) {
+                        setNewPropTeams(prev => prev.filter(id => id !== selectedEvent.awayTeamLink));
+                      } else {
+                        setNewPropTeams(prev => [...prev, selectedEvent.awayTeamLink]);
+                      }
+                    }}
+                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.awayTeamLink) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  >
+                    {selectedEvent.awayTeamLogo && <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
+                    {selectedEvent.awayTeam}
+                  </button>
+                )}
+              </div>
             </div>
             {propsError && <p className="text-red-600">{propsError}</p>}
             <div className="flex space-x-2">

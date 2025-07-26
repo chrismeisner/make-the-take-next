@@ -4,12 +4,21 @@ import GlobalModal from "./GlobalModal";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 
-export default function PackCompletedModal({ isOpen, onClose, packTitle, receiptId, newTakeIDs = [] }) {
+export default function PackCompletedModal({ isOpen, onClose, packTitle, receiptId, newTakeIDs = [], selectedChoices = {}, packProps = [] }) {
   const { data: session } = useSession();
   const router = useRouter();
   const profileID = session?.user?.profileID;
   const [receiptUrl, setReceiptUrl] = useState("");
   const [challengeUrl, setChallengeUrl] = useState("");
+
+  // Prepare picks text for sharing
+  const picksText = packProps.map((p) => {
+    const side = selectedChoices[p.propID];
+    if (!side) return null;
+    const sideLabel = side === "A" ? (p.PropSideAShort || "A") : (p.PropSideBShort || "B");
+    const label = p.propShort || p.propTitle || p.propID;
+    return `${label}: ${sideLabel}`;
+  }).filter(Boolean).join(', ');
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
@@ -29,7 +38,9 @@ const handleShare = async () => {
 		try {
 			await navigator.share({
 				title: `Challenge a friend: ${packTitle}`,
-				text: `Can you beat my score on ${packTitle}?`,
+				text: picksText
+					? `My picks: ${picksText}. Can you beat my score on ${packTitle}?`
+					: `Can you beat my score on ${packTitle}?`,
 				url: challengeUrl,
 			});
 		} catch (error) {
@@ -37,8 +48,12 @@ const handleShare = async () => {
 		}
 	} else {
 		try {
-			await navigator.clipboard.writeText(challengeUrl);
-			alert("Link copied to clipboard");
+			await navigator.clipboard.writeText(
+				picksText
+					? `My picks: ${picksText}. ${challengeUrl}`
+					: challengeUrl
+			);
+			alert("Message copied to clipboard");
 		} catch (error) {
 			console.error("Failed to copy", error);
 		}

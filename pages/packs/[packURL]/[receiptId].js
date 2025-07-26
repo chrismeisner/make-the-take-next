@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Airtable from 'airtable';
 import { useModal } from '../../../contexts/ModalContext';
+import { useSession } from 'next-auth/react';
 
 export async function getServerSideProps(context) {
   const { packURL, receiptId } = context.params;
@@ -61,6 +62,17 @@ export async function getServerSideProps(context) {
 export default function PackReceiptPage({ packData, takes, receiptId, origin, profileData }) {
   // build share URL and setup copy state/handlers
   const shareUrl = `${origin}/packs/${packData.packURL}?ref=${receiptId}`;
+  
+  // Prepare picks text for copying
+  const picksText = takes.map((take) => {
+    const prop = packData.props.find((p) => p.propID === take.propID);
+    const label = prop?.propShort || prop?.propTitle || take.propID;
+    const sideLabel = take.propSide === "A"
+      ? (prop?.PropSideAShort || "A")
+      : (prop?.PropSideBShort || "B");
+    return `${label}: ${sideLabel}`;
+  }).filter(Boolean).join(', ');
+  const { data: session } = useSession();
   const [copied, setCopied] = useState(false);
   const { openModal } = useModal();
   const fallbackCopyTextToClipboard = (text) => {
@@ -82,13 +94,29 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
     document.body.removeChild(textArea);
   };
   const handleCopy = async () => {
+    // Build final message: include picks if available
+    const content = picksText
+      ? `My picks: ${picksText}. ${shareUrl}`
+      : shareUrl;
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      try { await navigator.clipboard.writeText(shareUrl); } catch { fallbackCopyTextToClipboard(shareUrl); }
+      try { 
+        await navigator.clipboard.writeText(content);
+      } catch {
+        fallbackCopyTextToClipboard(content);
+      }
     } else {
-      fallbackCopyTextToClipboard(shareUrl);
+      fallbackCopyTextToClipboard(content);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+  // Open challenge modal with picks and link
+  const handleChallenge = () => {
+    openModal('challengeShare', {
+      packTitle: packData.packTitle,
+      picksText,
+      challengeUrl: shareUrl,
+    });
   };
   return (
     <div className="p-4 max-w-lg mx-auto">
@@ -143,6 +171,15 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
         >
           {copied ? 'Copied!' : 'Copy Link'}
         </button>
+        {session && (
+          <button
+            type="button"
+            onClick={handleChallenge}
+            className="ml-2 px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+          >
+            Challenge
+          </button>
+        )}
         <button
           type="button"
           onClick={() => openModal('qrCode', { url: shareUrl })}

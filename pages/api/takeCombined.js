@@ -36,6 +36,9 @@ export default async function handler(req, res) {
 	  return res.status(404).json({ success: false, error: "Prop not found" });
 	}
 	const prop = propRecords[0].fields;
+	// Collect linked teams from the Prop record
+	const propRec = propRecords[0];
+	const teams = Array.isArray(propRec.fields.Teams) ? propRec.fields.Teams : [];
 	if (prop.propStatus !== "open") {
 	  return res.status(400).json({ success: false, error: `Prop is ${prop.propStatus}, no new takes allowed.` });
 	}
@@ -78,6 +81,8 @@ export default async function handler(req, res) {
 		  takeMobile: e164Phone,
 		  takeStatus: "latest",
 		  takeLivePopularity: takePopularity,
+		  // Link the same teams to the Take record
+		  Teams: teams,
 		},
 	  },
 	]);

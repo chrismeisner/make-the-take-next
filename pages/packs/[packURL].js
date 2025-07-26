@@ -6,6 +6,9 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../api/auth/[...nextauth]';
 import { PackContextProvider } from '../../contexts/PackContext';
 import { useModal } from '../../contexts/ModalContext';
+import { useSession } from 'next-auth/react';
+import { usePackContext } from '../../contexts/PackContext';
+import { useRouter } from 'next/router';
 import PackCarouselView from '../../components/PackCarouselView';
 import Head from 'next/head';
 
@@ -146,8 +149,53 @@ export async function getServerSideProps(context) {
   }
 }
 
+// Challenge button for sharing picks via new ChallengeShareModal
+function ChallengeButton({ receiptId }) {
+  const { openModal } = useModal();
+  const { selectedChoices, packData } = usePackContext();
+  const router = useRouter();
+  // Build challenge URL
+  const challengeUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`
+    : '';
+  // Build picks text from selectedChoices
+  const picksText = Object.entries(selectedChoices)
+    .map(([propID, side]) => {
+      const prop = packData.props.find(p => p.propID === propID);
+      if (!prop) return null;
+      const sideLabel = side === 'A'
+        ? (prop.PropSideAShort || 'A')
+        : (prop.PropSideBShort || 'B');
+      const label = prop.propShort || prop.propTitle || prop.propID;
+      return `${label}: ${sideLabel}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+  const handleClick = () => {
+    openModal('challengeShare', { packTitle: packData.packTitle, picksText, challengeUrl });
+  };
+  return (
+    <button
+      onClick={handleClick}
+      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+    >
+      Challenge
+    </button>
+  );
+}
+
 export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef }) {
   const { openModal } = useModal();
+  const { data: session } = useSession();
+  // Determine the latest receipt ID for this user
+  const latestReceiptObj = userReceipts.length
+    ? userReceipts.reduce((prev, curr) =>
+        new Date(curr.createdTime) > new Date(prev.createdTime) ? curr : prev,
+        userReceipts[0]
+      )
+    : null;
+  const latestReceiptId = latestReceiptObj?.receiptID;
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -182,7 +230,16 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
       </Head>
       {(!isRef || mounted) && (
         <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-          <PackCarouselView packData={packData} leaderboard={leaderboard} debugLogs={debugLogs} userReceipts={userReceipts} activity={activity} />
+          <PackCarouselView
+            packData={packData}
+            leaderboard={leaderboard}
+            debugLogs={debugLogs}
+            userReceipts={userReceipts}
+            activity={activity}
+          />
+          {session && latestReceiptId && (
+            <ChallengeButton receiptId={latestReceiptId} />
+          )}
         </PackContextProvider>
       )}
     </>

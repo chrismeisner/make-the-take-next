@@ -101,6 +101,20 @@ export default async function handler(req, res) {
       const fields = { packTitle, packSummary, packURL, packType };
       if (eventId) {
         fields.Event = [eventId];
+        try {
+          const eventRec = await base("Events").find(eventId);
+          const { homeTeamLink, awayTeamLink } = eventRec.fields;
+          const teams = [];
+          if (Array.isArray(homeTeamLink)) teams.push(...homeTeamLink);
+          else if (homeTeamLink) teams.push(homeTeamLink);
+          if (Array.isArray(awayTeamLink)) teams.push(...awayTeamLink);
+          else if (awayTeamLink) teams.push(awayTeamLink);
+          if (teams.length) {
+            fields.Teams = teams;
+          }
+        } catch (err) {
+          console.error("[api/packs POST] Error fetching event for teams:", err);
+        }
       }
       if (packCoverUrl) {
         // Attach cover image

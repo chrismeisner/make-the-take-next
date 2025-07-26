@@ -73,7 +73,7 @@ export default function InlineCardProgressFooter() {
       undefined,
       { shallow: true }
     );
-    openModal("packCompleted", { packTitle: packData.packTitle, receiptId, newTakeIDs });
+    openModal("packCompleted", { packTitle: packData.packTitle, receiptId, newTakeIDs, selectedChoices, packProps: packData.props });
     setIsSubmitting(false);
   }
 

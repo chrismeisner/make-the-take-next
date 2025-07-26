@@ -56,6 +56,8 @@ export default async function handler(req, res) {
 
 	const propRec = propsFound[0];
 	const propStatus = propRec.fields.propStatus || "open";
+	// Collect linked teams from the Prop record
+	const teams = Array.isArray(propRec.fields.Teams) ? propRec.fields.Teams : [];
 	if (propStatus !== "open") {
 	  return res.status(400).json({
 		success: false,
@@ -113,6 +115,8 @@ export default async function handler(req, res) {
 		  Profile: [profileRecId], // link to the user's Profile record
 		  receiptID: receiptId,
 		  takeLivePopularity: takePopularity,
+		  // Link the same teams to the Take record
+		  Teams: teams,
 		},
 	  },
 	]);

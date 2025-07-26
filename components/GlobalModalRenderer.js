@@ -13,6 +13,7 @@ import PackCompletedModal from "./modals/PackCompletedModal";
 import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
 import GradePacksModal from "./modals/GradePacksModal";
 import QRCodeModal from "./modals/QRCodeModal";
+import ChallengeShareModal from "./modals/ChallengeShareModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -93,6 +94,8 @@ export default function GlobalModalRenderer() {
 		  packTitle={modalConfig.modalProps.packTitle}
 		  receiptId={modalConfig.modalProps.receiptId}
 		  newTakeIDs={modalConfig.modalProps.newTakeIDs}
+		  selectedChoices={modalConfig.modalProps.selectedChoices}
+		  packProps={modalConfig.modalProps.packProps}
 		/>
 	  );
 	case "membersAccess": // <-- NEW case
@@ -140,6 +143,19 @@ export default function GlobalModalRenderer() {
 		  url={modalConfig.modalProps.url}
 		/>
 	  );
+	case "challengeShare":
+	  {
+        const { packTitle, picksText, challengeUrl } = modalConfig.modalProps;
+        return (
+          <ChallengeShareModal
+            isOpen={true}
+            onClose={closeModal}
+            packTitle={packTitle}
+            picksText={picksText}
+            challengeUrl={challengeUrl}
+          />
+        );
+      }
 	default:
 	  return null;
   }
