@@ -186,6 +186,7 @@ function ChallengeButton({ receiptId }) {
 
 export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef }) {
   const { openModal } = useModal();
+  const router = useRouter();
   const { data: session } = useSession();
   // Determine the latest receipt ID for this user
   const latestReceiptObj = userReceipts.length
@@ -206,9 +207,12 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         friendName: friendProfile.profileUsername || friendProfile.profileID,
         friendTakesByProp,
         packProps: packData.props,
+        packURL: packData.packURL,
+        initiatorReceiptId: router.query.ref,
+        challengerReceiptId: latestReceiptObj?.receiptID,
       });
     }
-  }, [friendProfile, openModal]);
+  }, [friendProfile, openModal, friendTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptObj]);
   return (
     <>
       <Head>

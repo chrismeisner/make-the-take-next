@@ -413,7 +413,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               ) : activeTab === 'prizes' ? (
                 <p className="text-gray-500">Prizes content coming soon.</p>
               ) : activeTab === 'challenges' ? (
-                loadingChallenges ? (
+                !hasReceipts ? (
+                  <p className="text-gray-500">Make your takes on this pack to challenge your friends.</p>
+                ) : loadingChallenges ? (
                   <p>Loading challenges…</p>
                 ) : errorChallenges ? (
                   <p className="text-red-500">Error: {errorChallenges}</p>
@@ -433,6 +435,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                         <div className="font-bold mb-2">
                           Challenge ID: {challenge.fields.challengeID || challenge.id}
                         </div>
+                        <Link
+                          href={`/challenges/${challenge.fields.challengeID || challenge.id}`}
+                          className="text-sm text-blue-600 underline mb-2 block"
+                        >
+                          View challenge details
+                        </Link>
                         <div className="mb-2">
                           <div className="font-semibold">Your takes:</div>
                           <ul className="pl-4 list-disc space-y-1">

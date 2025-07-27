@@ -107,9 +107,11 @@ export default function CreatePackPage() {
   // Initialize default teams when event changes
   useEffect(() => {
     if (selectedEvent) {
-      const defaults = [];
-      if (selectedEvent.homeTeamLink) defaults.push(selectedEvent.homeTeamLink);
-      if (selectedEvent.awayTeamLink) defaults.push(selectedEvent.awayTeamLink);
+      // Pre-select both teams (flatten arrays of IDs)
+      const defaults = [
+        ...(selectedEvent.homeTeamLink || []),
+        ...(selectedEvent.awayTeamLink || []),
+      ];
       setNewPropTeams(defaults);
     }
   }, [selectedEvent]);
@@ -162,10 +164,23 @@ export default function CreatePackPage() {
       }
     }
     try {
+      // Build teams array from selectedEvent (Airtable record IDs)
+      const teams = selectedEvent
+        ? [...(selectedEvent.homeTeamLink || []), ...(selectedEvent.awayTeamLink || [])]
+        : [];
       const res = await fetch("/api/packs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packTitle, packURL: slug, packSummary, packType, eventId: selectedEvent?.id, packCoverUrl }),
+        body: JSON.stringify({
+          packTitle,
+          packURL: slug,
+          packSummary,
+          packType,
+          // Include full event object for server-side upsert
+          event: selectedEvent,
+          teams,
+          packCoverUrl,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -238,11 +253,12 @@ export default function CreatePackPage() {
     // Clear new take fields
     setNewPropSideATake('');
     setNewPropSideBTake('');
-    // Reset teams to default for next prop
+    // Reset teams to default for next prop (flatten arrays into a single list)
     {
-      const defaultTeams = [];
-      if (selectedEvent?.homeTeamLink) defaultTeams.push(selectedEvent.homeTeamLink);
-      if (selectedEvent?.awayTeamLink) defaultTeams.push(selectedEvent.awayTeamLink);
+      const defaultTeams = [
+        ...(selectedEvent?.homeTeamLink || []),
+        ...(selectedEvent?.awayTeamLink || []),
+      ];
       setNewPropTeams(defaultTeams);
     }
   };
@@ -714,33 +730,35 @@ export default function CreatePackPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Teams</label>
               <div className="mt-1 flex space-x-2">
-                {selectedEvent?.homeTeamLink && (
+                {selectedEvent?.homeTeamLink?.[0] && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (newPropTeams.includes(selectedEvent.homeTeamLink)) {
-                        setNewPropTeams(prev => prev.filter(id => id !== selectedEvent.homeTeamLink));
+                      const id = selectedEvent.homeTeamLink[0];
+                      if (newPropTeams.includes(id)) {
+                        setNewPropTeams(prev => prev.filter(i => i !== id));
                       } else {
-                        setNewPropTeams(prev => [...prev, selectedEvent.homeTeamLink]);
+                        setNewPropTeams(prev => [...prev, id]);
                       }
                     }}
-                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.homeTeamLink) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.homeTeamLink[0]) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
                   >
                     {selectedEvent.homeTeamLogo && <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
                     {selectedEvent.homeTeam}
                   </button>
                 )}
-                {selectedEvent?.awayTeamLink && (
+                {selectedEvent?.awayTeamLink?.[0] && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (newPropTeams.includes(selectedEvent.awayTeamLink)) {
-                        setNewPropTeams(prev => prev.filter(id => id !== selectedEvent.awayTeamLink));
+                      const id = selectedEvent.awayTeamLink[0];
+                      if (newPropTeams.includes(id)) {
+                        setNewPropTeams(prev => prev.filter(i => i !== id));
                       } else {
-                        setNewPropTeams(prev => [...prev, selectedEvent.awayTeamLink]);
+                        setNewPropTeams(prev => [...prev, id]);
                       }
                     }}
-                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.awayTeamLink) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.awayTeamLink[0]) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
                   >
                     {selectedEvent.awayTeamLogo && <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
                     {selectedEvent.awayTeam}

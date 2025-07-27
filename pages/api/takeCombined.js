@@ -73,6 +73,8 @@ export default async function handler(req, res) {
 	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0.5;
 
 	// 4) Create new take
+	const packLinks = propRec.fields.Packs || [];
+	console.log("📦📝 [api/takeCombined] Submitting combined take:", { propID, propSide, phone: e164Phone, code, packLinks, teams, takePopularity });
 	const created = await base("Takes").create([
 	  {
 		fields: {
@@ -83,6 +85,7 @@ export default async function handler(req, res) {
 		  takeLivePopularity: takePopularity,
 		  // Link the same teams to the Take record
 		  Teams: teams,
+		  Pack: packLinks,
 		},
 	  },
 	]);

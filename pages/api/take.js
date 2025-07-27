@@ -103,7 +103,8 @@ export default async function handler(req, res) {
 	// 7) Create the new "latest" take
 	//    We'll link the "Profile" field to the user's profile record in Airtable
 	const profileRecId = token.airtableId; // e.g., "rec123..."
-
+	const packLinks = propRec.fields.Packs || [];
+	console.log("📦📝 [api/take] Submitting take:", { propID, propSide, phone: token.phone, receiptId, packLinks, teams, takePopularity });
 	const takeResp = await base("Takes").create([
 	  {
 		fields: {
@@ -117,6 +118,7 @@ export default async function handler(req, res) {
 		  takeLivePopularity: takePopularity,
 		  // Link the same teams to the Take record
 		  Teams: teams,
+		  Pack: packLinks,
 		},
 	  },
 	]);

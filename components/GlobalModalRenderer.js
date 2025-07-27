@@ -25,7 +25,21 @@ export default function GlobalModalRenderer() {
   switch (modalConfig.modalType) {
 	case "challenge":
 	  {
-        const { friendName, friendTakesByProp, packProps } = modalConfig.modalProps;
+        // Destructure props including for accepting the challenge
+        const { friendName, friendTakesByProp, packProps, packURL, initiatorReceiptId, challengerReceiptId } = modalConfig.modalProps;
+        // Handler to accept the challenge by creating/updating the challenge record
+        const handleAccept = async () => {
+          try {
+            await fetch('/api/challenges', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ packURL, initiatorReceiptId, challengerReceiptId }),
+            });
+            closeModal();
+          } catch (err) {
+            console.error('Error accepting challenge:', err);
+          }
+        };
         return (
           <GlobalModal isOpen={true} onClose={closeModal}>
             <h2 className="text-2xl font-bold mb-4">
@@ -45,12 +59,30 @@ export default function GlobalModalRenderer() {
                 );
               })}
             </ul>
-            <button
-              onClick={closeModal}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-            >
-              OK
-            </button>
+            {/* If user has made takes (challengerReceiptId), show Accept button */}
+            {challengerReceiptId ? (
+              <div className="mt-4 flex space-x-2">
+                <button
+                  onClick={handleAccept}
+                  className="px-4 py-2 bg-green-600 text-white rounded"
+                >
+                  Accept Challenge
+                </button>
+                <button
+                  onClick={closeModal}
+                  className="px-4 py-2 bg-gray-500 text-white rounded"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={closeModal}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+              >
+                OK
+              </button>
+            )}
           </GlobalModal>
         );
       }

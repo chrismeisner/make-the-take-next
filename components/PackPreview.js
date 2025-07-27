@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function PackPreview({ pack, userTakes }) {
   // Determine a common pack identifier
-  const packID = pack.id || pack.packID;
+  const packID = pack.airtableId || pack.id || pack.packID;
 
   // New method to count verified takes:
   // A take is considered verified if the take is linked to this pack (using packID)

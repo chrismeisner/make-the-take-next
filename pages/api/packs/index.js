@@ -93,28 +93,48 @@ export default async function handler(req, res) {
   }
   if (req.method === "POST") {
     try {
-      const { packTitle, packSummary, packURL, packType, eventId, packCoverUrl } = req.body;
+      const { packTitle, packSummary, packURL, packType, event, eventId, teams, packCoverUrl } = req.body;
       if (!packTitle || !packURL) {
         return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
       }
       // Prepare fields for Airtable record
       const fields = { packTitle, packSummary, packURL, packType };
-      if (eventId) {
-        fields.Event = [eventId];
-        try {
-          const eventRec = await base("Events").find(eventId);
-          const { homeTeamLink, awayTeamLink } = eventRec.fields;
-          const teams = [];
-          if (Array.isArray(homeTeamLink)) teams.push(...homeTeamLink);
-          else if (homeTeamLink) teams.push(homeTeamLink);
-          if (Array.isArray(awayTeamLink)) teams.push(...awayTeamLink);
-          else if (awayTeamLink) teams.push(awayTeamLink);
-          if (teams.length) {
-            fields.Teams = teams;
-          }
-        } catch (err) {
-          console.error("[api/packs POST] Error fetching event for teams:", err);
+      // If client passed the full event object, upsert it into Events and link
+      if (event && typeof event === 'object') {
+        let eventRecordId;
+        const espnGameID = event.id;
+        // Try to find existing Airtable Event record by espnGameID
+        const existing = await base('Events')
+          .select({ filterByFormula: `{espnGameID}="${espnGameID}"`, maxRecords: 1 })
+          .firstPage();
+        if (existing.length) {
+          eventRecordId = existing[0].id;
+          // Optionally update core event fields
+          await base('Events').update([{ id: eventRecordId, fields: {
+            eventTime: event.eventTime,
+            eventTitle: event.eventTitle
+          }}]);
+        } else {
+          // Create a new Event record
+          const [created] = await base('Events').create([{ fields: {
+            espnGameID: espnGameID,
+            eventTime: event.eventTime,
+            eventTitle: event.eventTitle,
+            homeTeam: event.homeTeam,
+            awayTeam: event.awayTeam,
+            homeTeamLink: event.homeTeamLink,
+            awayTeamLink: event.awayTeamLink,
+          }}]);
+          eventRecordId = created.id;
         }
+        fields.Event = [eventRecordId];
+      } else if (eventId && eventId.startsWith('rec')) {
+        // Legacy: link to an existing Airtable Event record
+        fields.Event = [eventId];
+      }
+      // Link selected Teams to this Pack
+      if (Array.isArray(teams) && teams.length > 0) {
+        fields.Teams = teams;
       }
       if (packCoverUrl) {
         // Attach cover image
