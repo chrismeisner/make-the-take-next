@@ -20,7 +20,8 @@ export default function EventSelector({ selectedEvent, onSelect }) {
   const loadEvents = () => {
     setLoading(true);
     setError(null);
-    fetch('/api/events')
+    // Pass filterDate to server so Airtable only returns events on that date
+    fetch(`/api/events?date=${filterDate}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {

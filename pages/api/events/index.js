@@ -4,62 +4,80 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
   try {
-    // Fetch events and enrich with team logo URLs
-    const records = await base("Events").select({ maxRecords: 100 }).all();
-    const events = await Promise.all(records.map(async (rec) => {
-      const f = rec.fields;
-      const homeLink = Array.isArray(f.homeTeamLink) ? f.homeTeamLink[0] : null;
-      const awayLink = Array.isArray(f.awayTeamLink) ? f.awayTeamLink[0] : null;
-      let homeTeamLogo = null;
-      let awayTeamLogo = null;
-      if (homeLink) {
-        try {
-          const teamRec = await base("Teams").find(homeLink);
-          const logoURL = teamRec.fields.teamLogoURL;
-          if (typeof logoURL === "string" && logoURL) {
-            homeTeamLogo = logoURL.startsWith("@")
-              ? logoURL.substring(1)
-              : logoURL;
+    // Fetch events directly from ESPN API for the given date (YYYY-MM-DD)
+    const { date } = req.query;
+    const dateStr = date
+      ? date.replace(/-/g, '')
+      : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error(`ESPN API status ${resp.status}`);
+    }
+    const data = await resp.json();
+    const events = await Promise.all((data.events || []).map(async (evt) => {
+      // Extract basic fields
+      const id = evt.id;
+      const eventTime = evt.date;
+      const eventTitle = evt.name;
+      // Determine home/away teams
+      let homeTeam = '', awayTeam = '', homeTeamId = null, awayTeamId = null;
+      const comp = evt.competitions?.[0];
+      if (comp && Array.isArray(comp.competitors)) {
+        for (const c of comp.competitors) {
+          if (c.homeAway === 'home') {
+            homeTeam = c.team.displayName;
+            homeTeamId = c.team.id?.toString();
+          } else if (c.homeAway === 'away') {
+            awayTeam = c.team.displayName;
+            awayTeamId = c.team.id?.toString();
           }
-        } catch {}
+        }
       }
-      if (awayLink) {
-        try {
-          const teamRec2 = await base("Teams").find(awayLink);
-          const logoURL2 = teamRec2.fields.teamLogoURL;
-          if (typeof logoURL2 === "string" && logoURL2) {
-            awayTeamLogo = logoURL2.startsWith("@")
-              ? logoURL2.substring(1)
-              : logoURL2;
-          }
-        } catch {}
+      // Link to Teams table in Airtable for logo and link id
+      let homeTeamLink = null, awayTeamLink = null, homeTeamLogo = null, awayTeamLogo = null;
+      if (homeTeamId) {
+        const recs = await base('Teams').select({
+          filterByFormula: `AND({teamID}="${homeTeamId}", {teamLeague}="MLB")`,
+          maxRecords: 1
+        }).firstPage();
+        if (recs.length) {
+          homeTeamLink = recs[0].id;
+          const logoURL = recs[0].fields.teamLogoURL;
+          if (typeof logoURL === 'string') homeTeamLogo = logoURL.startsWith('@') ? logoURL.slice(1) : logoURL;
+        }
       }
-      // Pull ESPN game ID or link field if present
-      let espnId = f.espnGameID || f.espnLink || null;
-      if (typeof espnId === "string" && espnId.startsWith("@")) {
-        espnId = espnId.substring(1);
+      if (awayTeamId) {
+        const recs = await base('Teams').select({
+          filterByFormula: `AND({teamID}="${awayTeamId}", {teamLeague}="MLB")`,
+          maxRecords: 1
+        }).firstPage();
+        if (recs.length) {
+          awayTeamLink = recs[0].id;
+          const logoURL = recs[0].fields.teamLogoURL;
+          if (typeof logoURL === 'string') awayTeamLogo = logoURL.startsWith('@') ? logoURL.slice(1) : logoURL;
+        }
       }
-
       return {
-        id: rec.id,
-        eventTime: f.eventTime || null,
-        eventTitle: f.eventTitle || "",
-        homeTeam: f.homeTeam || "",
-        awayTeam: f.awayTeam || "",
-        homeTeamLink: homeLink,
-        awayTeamLink: awayLink,
+        id,
+        eventTime,
+        eventTitle,
+        homeTeam,
+        awayTeam,
+        homeTeamLink: homeTeamLink ? [homeTeamLink] : [],
+        awayTeamLink: awayTeamLink ? [awayTeamLink] : [],
         homeTeamLogo,
         awayTeamLogo,
-        espnLink: espnId,
+        espnLink: id,
       };
     }));
     return res.status(200).json({ success: true, events });
   } catch (error) {
-    console.error("[api/events] Error =>", error);
-    return res.status(500).json({ success: false, error: "Failed to fetch events" });
+    console.error('[api/events] ESPN fetch error =>', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch events from ESPN' });
   }
 } 
