@@ -294,7 +294,7 @@ export default function LandingPage() {
 			  ) : sortedPacks.length > 0 ? (
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 				  {sortedPacks.map((pack) => (
-					<PackPreview key={pack.packID} pack={pack} userTakes={userTakes} />
+					<PackPreview key={pack.packID} pack={pack} />
 				  ))}
 				</div>
 			  ) : (

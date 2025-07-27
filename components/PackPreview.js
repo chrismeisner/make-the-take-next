@@ -1,25 +1,13 @@
 import Link from "next/link";
+import StatusPill from "./StatusPill";
 
-export default function PackPreview({ pack, userTakes }) {
+export default function PackPreview({ pack }) {
   // Determine a common pack identifier
   const packID = pack.airtableId || pack.id || pack.packID;
 
-  // New method to count verified takes:
-  // A take is considered verified if the take is linked to this pack (using packID)
-  // and its takeResult is either "Won" or "Lost".
-  const verifiedTakesCount = userTakes
-	? userTakes.reduce((count, take) => {
-		if (take.packs && take.packs.includes(packID)) {
-		  if (take.takeResult === "Won" || take.takeResult === "Lost") {
-			return count + 1;
-		  }
-		}
-		return count;
-	  }, 0)
-	: 0;
-
   // Number of props assumed to be provided by pack.propsCount
   const propsCount = pack.propsCount || 0;
+  const takeCount = pack.takeCount || 0;
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -59,12 +47,10 @@ export default function PackPreview({ pack, userTakes }) {
 			Event: {new Date(pack.eventTime).toLocaleString()}
 		  </p>
 		)}
-		{pack.packStatus && (
-		  <p className="text-xs text-gray-500">Status: {pack.packStatus}</p>
-		)}
+		<StatusPill status={pack.packStatus} eventTime={pack.eventTime} />
 		<div className="mt-2 text-sm text-gray-600">
 		  <p>Props: {propsCount}</p>
-		  <p>Verified Takes: {verifiedTakesCount}</p>
+		  <p>Takes: {takeCount}</p>
 		</div>
 	  </div>
 	</Link>

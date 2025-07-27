@@ -10,8 +10,12 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
 // Helper: Fetch all packs from Airtable and map to our data structure
 async function fetchAllPacks() {
   const packRecords = await base("Packs")
-	.select({ maxRecords: 100 })
-	.all();
+    .select({
+      maxRecords: 100,
+      // only include packs with status 'active' or 'graded'
+      filterByFormula: `OR({packStatus}='active', {packStatus}='graded')`
+    })
+    .all();
 
   const packsData = packRecords.map((record) => {
 	const fields = record.fields;
@@ -36,42 +40,55 @@ async function fetchAllPacks() {
 
 // Helper: If user is logged in, attach userTakeCount for each pack.
 async function attachUserTakeCount(packsData, token) {
-  // 1. Fetch all Props to map Prop IDs to their Pack IDs.
-  const propsRecords = await base("Props").select({ maxRecords: 5000 }).all();
-  const propIdToPackIds = {};
-  propsRecords.forEach((propRec) => {
-	const propFields = propRec.fields;
-	const linkedPackIds = propFields.Packs || [];
-	propIdToPackIds[propRec.id] = linkedPackIds;
-  });
-
-  // 2. Fetch the user's latest Takes.
+  // 1. Fetch the user's latest takes and count directly via the 'Packs' link field
   const filterByFormula = `AND({takeMobile} = "${token.phone}", {takeStatus} = "latest")`;
   const userTakeRecords = await base("Takes")
-	.select({ filterByFormula, maxRecords: 5000 })
-	.all();
+    .select({ filterByFormula, maxRecords: 5000 })
+    .all();
 
-  // 3. Aggregate counts: map pack record ID to number of takes.
-  const packIdToUserTakeCount = {};
+  // Count verified takes per pack
+  const packIdToVerifiedCount = {};
   userTakeRecords.forEach((takeRec) => {
-	const takeFields = takeRec.fields;
-	const propLinks = takeFields.Prop || [];
-	propLinks.forEach((propId) => {
-	  const packLinks = propIdToPackIds[propId] || [];
-	  packLinks.forEach((packRecId) => {
-		if (!packIdToUserTakeCount[packRecId]) {
-		  packIdToUserTakeCount[packRecId] = 0;
-		}
-		packIdToUserTakeCount[packRecId]++;
-	  });
-	});
+    const f = takeRec.fields;
+    // only count takes with result "Won" or "Lost"
+    if (f.takeResult !== "Won" && f.takeResult !== "Lost") return;
+    (f.Packs || []).forEach((packRecId) => {
+      packIdToVerifiedCount[packRecId] = (packIdToVerifiedCount[packRecId] || 0) + 1;
+    });
   });
 
-  return packsData.map((p) => {
-	const recId = p.airtableId;
-	const userCountForThisPack = packIdToUserTakeCount[recId] || 0;
-	return { ...p, userTakeCount: userCountForThisPack };
+  // 2. Map counts onto the packs data
+  return packsData.map((p) => ({
+    ...p,
+    verifiedTakesCount: packIdToVerifiedCount[p.airtableId] || 0,
+  }));
+}
+
+// Helper: Attach total take count for each pack.
+async function attachTotalTakeCount(packsData) {
+  // Fetch all latest takes.
+  const takeRecords = await base("Takes").select({
+    filterByFormula: '{takeStatus}="latest"',
+    maxRecords: 5000,
+  }).all();
+
+  const packIdToCount = {};
+  takeRecords.forEach((takeRec) => {
+    const packIDValue = takeRec.fields.packID;
+    if (!packIDValue) return;
+    if (Array.isArray(packIDValue)) {
+      packIDValue.forEach((pid) => {
+        packIdToCount[pid] = (packIdToCount[pid] || 0) + 1;
+      });
+    } else {
+      packIdToCount[packIDValue] = (packIdToCount[packIDValue] || 0) + 1;
+    }
   });
+
+  return packsData.map((p) => ({
+    ...p,
+    takeCount: packIdToCount[p.packID] || 0,
+  }));
 }
 
 export default async function handler(req, res) {
@@ -158,6 +175,9 @@ export default async function handler(req, res) {
 	const userIsLoggedIn = !!token;
 
 	let packsData = await fetchAllPacks();
+
+	// Attach total take count for each pack.
+	packsData = await attachTotalTakeCount(packsData);
 
 	if (userIsLoggedIn) {
 	  packsData = await attachUserTakeCount(packsData, token);

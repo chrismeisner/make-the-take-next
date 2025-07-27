@@ -118,7 +118,6 @@ export default async function handler(req, res) {
 		  takeLivePopularity: takePopularity,
 		  // Link the same teams to the Take record
 		  Teams: teams,
-		  Pack: packLinks,
 		},
 	  },
 	]);
