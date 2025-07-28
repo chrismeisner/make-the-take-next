@@ -156,8 +156,8 @@ export default async function handler(req, res) {
 		packEventTime = eventFields.eventTime || null;
 		espnGameID = eventFields.espnGameID || null;
 		eventLeague = eventFields.eventLeague || null;
-		homeTeam = eventFields.homeTeam || null;
-		awayTeam = eventFields.awayTeam || null;
+		homeTeam = eventFields.homeTeamLink || null;
+		awayTeam = eventFields.awayTeamLink || null;
 		homeTeamScore = eventFields.homeTeamScore ?? null;
 		awayTeamScore = eventFields.awayTeamScore ?? null;
 		console.log("[packURL] Found eventTime =>", packEventTime);
@@ -249,6 +249,49 @@ export default async function handler(req, res) {
 		packCreatorID = profileRecs[0].fields.profileID || profileRecs[0].id;
 	  }
 	}
+
+	// Fetch linked Teams for event
+	let homeTeamInfo = null;
+	let awayTeamInfo = null;
+	if (homeTeam) {
+	  const homeId = Array.isArray(homeTeam) ? homeTeam[0] : homeTeam;
+	  try {
+		const homeRec = await base("Teams").find(homeId);
+		// Determine slug from fields.teamSlug, fallback to fields.teamID or record id
+		const resolvedHomeSlug = homeRec.fields.teamSlug || homeRec.fields.teamID || homeRec.id;
+		homeTeamInfo = {
+		  recordId: homeRec.id,
+		  teamSlug: resolvedHomeSlug,
+		  teamName: homeRec.fields.teamName || "",
+		  teamNameFull: homeRec.fields.teamNameFull || homeRec.fields.teamName || "",
+		  teamLogo: Array.isArray(homeRec.fields.teamLogo)
+			? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+			: [],
+		};
+	  } catch (err) {
+		console.error("[packURL] Error fetching homeTeam =>", err);
+	  }
+	}
+	if (awayTeam) {
+	  const awayId = Array.isArray(awayTeam) ? awayTeam[0] : awayTeam;
+	  try {
+		const awayRec = await base("Teams").find(awayId);
+		// Determine slug from fields.teamSlug, fallback to fields.teamID or record id
+		const resolvedAwaySlug = awayRec.fields.teamSlug || awayRec.fields.teamID || awayRec.id;
+		awayTeamInfo = {
+		  recordId: awayRec.id,
+		  teamSlug: resolvedAwaySlug,
+		  teamName: awayRec.fields.teamName || "",
+		  teamNameFull: awayRec.fields.teamNameFull || awayRec.fields.teamName || "",
+		  teamLogo: Array.isArray(awayRec.fields.teamLogo)
+			? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+			: [],
+		};
+	  } catch (err) {
+		console.error("[packURL] Error fetching awayTeam =>", err);
+	  }
+	}
+
 	const packData = {
 	  packID: packFields.packID,
 	  packTitle: packFields.packTitle || "Untitled Pack",
@@ -265,8 +308,8 @@ export default async function handler(req, res) {
 	  eventTime: packEventTime,
 	  espnGameID,
 	  eventLeague,
-	  homeTeam,
-	  awayTeam,
+	  homeTeam: homeTeamInfo,
+	  awayTeam: awayTeamInfo,
 	  homeTeamScore,
 	  awayTeamScore,
 	  contentData,

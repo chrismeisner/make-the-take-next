@@ -24,17 +24,24 @@ export default async function handler(req, res) {
       const id = evt.id;
       const eventTime = evt.date;
       const eventTitle = evt.name;
-      // Determine home/away teams
+      // Determine home/away teams and extract ESPN API logos
       let homeTeam = '', awayTeam = '', homeTeamId = null, awayTeamId = null;
+      let homeTeamLogoEspn = null, awayTeamLogoEspn = null;
       const comp = evt.competitions?.[0];
       if (comp && Array.isArray(comp.competitors)) {
         for (const c of comp.competitors) {
+          const displayName = c.team.displayName;
+          const teamId = c.team.id?.toString();
+          // ESPN API may include a direct logo field or an array of logos
+          const espnLogo = c.team.logo || c.team.logos?.[0]?.href;
           if (c.homeAway === 'home') {
-            homeTeam = c.team.displayName;
-            homeTeamId = c.team.id?.toString();
+            homeTeam = displayName;
+            homeTeamId = teamId;
+            homeTeamLogoEspn = espnLogo;
           } else if (c.homeAway === 'away') {
-            awayTeam = c.team.displayName;
-            awayTeamId = c.team.id?.toString();
+            awayTeam = displayName;
+            awayTeamId = teamId;
+            awayTeamLogoEspn = espnLogo;
           }
         }
       }
@@ -62,6 +69,9 @@ export default async function handler(req, res) {
           if (typeof logoURL === 'string') awayTeamLogo = logoURL.startsWith('@') ? logoURL.slice(1) : logoURL;
         }
       }
+      // Prefer ESPN API logo if available (fallback to Airtable)
+      homeTeamLogo = homeTeamLogoEspn || homeTeamLogo;
+      awayTeamLogo = awayTeamLogoEspn || awayTeamLogo;
       return {
         id,
         eventTime,

@@ -7,6 +7,9 @@ export default function CreatePackPage() {
   const [packDetails, setPackDetails] = useState(null);
   const [step, setStep] = useState(1); // 1 = pack info, 2 = props builder
   const [selectedEvent, setSelectedEvent] = useState(null);
+  useEffect(() => {
+    console.log('selectedEvent changed:', selectedEvent);
+  }, [selectedEvent]);
   // Live countdown timer for the selected event
   const [countdown, setCountdown] = useState('');
   useEffect(() => {
@@ -102,19 +105,43 @@ export default function CreatePackPage() {
   // Add new state hooks for Side A and Side B takes
   const [newPropSideATake, setNewPropSideATake] = useState("");
   const [newPropSideBTake, setNewPropSideBTake] = useState("");
-  // State for selecting teams in new prop
-  const [newPropTeams, setNewPropTeams] = useState([]);
-  // Initialize default teams when event changes
-  useEffect(() => {
-    if (selectedEvent) {
-      // Pre-select both teams (flatten arrays of IDs)
-      const defaults = [
-        ...(selectedEvent.homeTeamLink || []),
-        ...(selectedEvent.awayTeamLink || []),
-      ];
-      setNewPropTeams(defaults);
-    }
+  const teamOptions = useMemo(() => {
+    if (!selectedEvent) return [];
+    return [
+      ...(selectedEvent.homeTeamLink || []).map(id => ({
+        id,
+        name: selectedEvent.homeTeam,
+        logo: selectedEvent.homeTeamLogo,
+      })),
+      ...(selectedEvent.awayTeamLink || []).map(id => ({
+        id,
+        name: selectedEvent.awayTeam,
+        logo: selectedEvent.awayTeamLogo,
+      })),
+    ];
   }, [selectedEvent]);
+  // Derive the default set of team IDs for this pack
+  const packTeams = useMemo(() => {
+    if (!selectedEvent) return [];
+    return [
+      ...(selectedEvent.homeTeamLink || []),
+      ...(selectedEvent.awayTeamLink || []),
+    ];
+  }, [selectedEvent]);
+  // State to track which teams are selected for a new prop
+  const [newPropTeams, setNewPropTeams] = useState([]);
+  // Whenever the pack's teams change, reset the selection for new props
+  useEffect(() => {
+    setNewPropTeams(packTeams);
+  }, [packTeams]);
+  // State for selecting teams in new prop
+  // Removed newPropTeams state
+
+  // Log teams when entering the props builder (step 2)
+  // Removed useEffect for logging teams
+
+  // Initialize default teams when event changes
+  // Removed useEffect for initializing teams
   // Track which prop is being edited (Airtable ID)
   const [editingPropId, setEditingPropId] = useState(null);
   const [loadingPropCreate, setLoadingPropCreate] = useState(false);
@@ -187,6 +214,9 @@ export default function CreatePackPage() {
         // Store created pack details and advance to props builder
         setPackDetails(data.record.fields);
         setPackRecordId(data.record.id);
+        // Log teams when clicking Next: Create Props
+        console.log('Next clicked - available teams for props:', teamOptions);
+        console.log('Next clicked - selected teams (newPropTeams):', []); // Removed newPropTeams
         setStep(2);
       } else {
         setError(data.error);
@@ -200,13 +230,16 @@ export default function CreatePackPage() {
   
   // Fetch linked props when we have a packRecordId
   const fetchPackProps = useCallback(async () => {
+    console.log('fetchPackProps: packRecordId =', packRecordId);
     setLoadingPackProps(true);
     setPropsError(null);
     try {
       const res = await fetch(`/api/props?limit=100`);
       const data = await res.json();
+      console.log('fetchPackProps: data.props =', data.props);
       if (data.success) {
         const filtered = data.props.filter((p) => p.linkedPacks.includes(packRecordId));
+        console.log('fetchPackProps: filtered props =', filtered);
         filtered.sort((a, b) => (a.propOrder || 0) - (b.propOrder || 0));
         // Map Airtable props to include a localId for editing
         setPackProps(filtered.map(p => ({ ...p, localId: p.airtableId })));
@@ -240,7 +273,7 @@ export default function CreatePackPage() {
       propType: newPropType,
       propStatus: 'open',
       propOrder: packProps.length,
-      // Teams linked to this prop
+      // Use selected subset of teams for this prop
       teams: newPropTeams,
     };
     setPackProps(prev => [...prev, newProp]);
@@ -253,14 +286,8 @@ export default function CreatePackPage() {
     // Clear new take fields
     setNewPropSideATake('');
     setNewPropSideBTake('');
-    // Reset teams to default for next prop (flatten arrays into a single list)
-    {
-      const defaultTeams = [
-        ...(selectedEvent?.homeTeamLink || []),
-        ...(selectedEvent?.awayTeamLink || []),
-      ];
-      setNewPropTeams(defaultTeams);
-    }
+    // Reset team selection for next prop
+    setNewPropTeams(packTeams);
   };
   // Inline handler to update an existing prop (local only)
   const handleUpdateProp = (e) => {
@@ -302,54 +329,63 @@ export default function CreatePackPage() {
   // Batch persist all props and then finalize pack
   const [savingAll, setSavingAll] = useState(false);
   const handlePublish = async () => {
+    console.log('Publish clicked for packRecordId:', packRecordId);
+    console.log('Props to publish:', packProps);
     setSavingAll(true);
     try {
       for (const p of packProps) {
         if (!p.airtableId) {
+          const payload = {
+            propShort: p.propShort,
+            propSummary: p.propSummary,
+            PropSideAShort: p.PropSideAShort,
+            PropSideBShort: p.PropSideBShort,
+            PropSideATake: p.PropSideATake,
+            PropSideBTake: p.PropSideBTake,
+            propType: p.propType,
+            propStatus: p.propStatus,
+            packId: packRecordId,
+            propOrder: p.propOrder,
+            teams: p.teams,
+          };
+          console.log('handlePublish - creating prop with payload:', payload);
           const res = await fetch('/api/props', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              propShort: p.propShort,
-              propSummary: p.propSummary,
-              PropSideAShort: p.PropSideAShort,
-              PropSideBShort: p.PropSideBShort,
-              PropSideATake: p.PropSideATake,
-              PropSideBTake: p.PropSideBTake,
-              propType: p.propType,
-              propStatus: p.propStatus,
-              packId: packRecordId,
-              propOrder: p.propOrder,
-              teams: p.teams
-            }),
+            body: JSON.stringify(payload),
           });
           const data = await res.json();
           if (!data.success) throw new Error(data.error);
         } else {
+          const payload = {
+            propId: p.airtableId,
+            propShort: p.propShort,
+            propSummary: p.propSummary,
+            PropSideAShort: p.PropSideAShort,
+            PropSideBShort: p.PropSideBShort,
+            PropSideATake: p.PropSideATake,
+            PropSideBTake: p.PropSideBTake,
+            propType: p.propType,
+            propStatus: p.propStatus,
+            propOrder: p.propOrder,
+            teams: p.teams,
+          };
+          console.log('handlePublish - updating prop with payload:', payload);
           const res = await fetch('/api/props', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              propId: p.airtableId,
-              propShort: p.propShort,
-              propSummary: p.propSummary,
-              PropSideAShort: p.PropSideAShort,
-              PropSideBShort: p.PropSideBShort,
-              PropSideATake: p.PropSideATake,
-              PropSideBTake: p.PropSideBTake,
-              propType: p.propType,
-              propStatus: p.propStatus,
-              propOrder: p.propOrder,
-            }),
+            body: JSON.stringify(payload),
           });
           const data = await res.json();
           if (!data.success) throw new Error(data.error);
         }
       }
+      const packPayload = { packId: packRecordId, packStatus: 'active' };
+      console.log('handlePublish - updating pack status with payload:', packPayload);
       await fetch('/api/packs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId: packRecordId, packStatus: 'active' }),
+        body: JSON.stringify(packPayload),
       });
       router.push('/admin');
     } catch (err) {
@@ -397,6 +433,7 @@ export default function CreatePackPage() {
               propType: p.propType,
               propStatus: p.propStatus,
               propOrder: p.propOrder,
+              teams: p.teams,
             }),
           });
           const data = await res.json();
@@ -556,6 +593,9 @@ export default function CreatePackPage() {
               {packDetails.packType === 'event' && selectedEvent && (
                 <p><strong>Event:</strong> {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}</p>
               )}
+              {teamOptions.length > 0 && (
+                <p><strong>Teams:</strong> {teamOptions.map(team => team.name).join(', ')}</p>
+              )}
               {packDetails.packCover?.[0]?.url && (
                 <img src={packDetails.packCover[0].url} alt="Pack Cover" className="mt-2 max-h-40 object-contain" />
               )}
@@ -571,6 +611,8 @@ export default function CreatePackPage() {
           </button>
           {/* Dynamic props table */}
           <div className={`transition-opacity duration-200 ${loadingPackProps ? 'opacity-50' : 'opacity-100'}`}>
+            {console.log('rendering packProps in table:', packProps)}
+            {console.log('rendering selectedEvent in table:', selectedEvent)}
             <table className="min-w-full divide-y divide-gray-200 mb-6">
               <thead>
                 <tr>
@@ -582,6 +624,7 @@ export default function CreatePackPage() {
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side 2</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side A Take</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Side B Take</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Teams</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
                   <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Edit</th>
                 </tr>
@@ -613,6 +656,14 @@ export default function CreatePackPage() {
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideATake}</td>
                     <td className="px-4 py-2 text-sm text-gray-900">{p.PropSideBTake}</td>
                     <td className="px-4 py-2">
+                      {teamOptions.filter(team => p.teams.includes(team.id)).map(team => (
+                        <span key={team.id} className="inline-block bg-gray-100 text-gray-800 px-2 py-1 mr-1 rounded text-xs">
+                          {team.name}
+                        </span>
+                      ))}
+                    </td>
+                    {/* Status toggle column */}
+                    <td className="px-4 py-2">
                       <button
                         type="button"
                         onClick={() =>
@@ -629,7 +680,7 @@ export default function CreatePackPage() {
                         {p.propStatus === 'open' ? 'Open' : 'Draft'}
                       </button>
                     </td>
-                    <td className="px-4 py-2 text-sm text-gray-900">
+                    <td className="px-4 py-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -641,6 +692,8 @@ export default function CreatePackPage() {
                           setNewPropType(p.propType);
                           setNewPropSideATake(p.PropSideATake);
                           setNewPropSideBTake(p.PropSideBTake);
+                          // Pre-populate team selection
+                          setNewPropTeams(p.teams || []);
                         }}
                         className="text-blue-600 underline"
                       >
@@ -654,6 +707,35 @@ export default function CreatePackPage() {
           </div>
           {/* Inline new Prop form */}
           <form onSubmit={handleCreateProp} className="space-y-4">
+            {/* Teams selection chips */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Teams</label>
+              <div className="mt-1 flex flex-wrap">
+                {teamOptions.map((team) => {
+                  const active = newPropTeams.includes(team.id);
+                  return (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => {
+                        if (active) {
+                          setNewPropTeams(prev => prev.filter(id => id !== team.id));
+                        } else {
+                          setNewPropTeams(prev => [...prev, team.id]);
+                        }
+                      }}
+                      className={`inline-flex items-center px-3 py-1 mr-2 mb-2 text-sm font-medium rounded-full focus:outline-none ${
+                        active
+                          ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                          : 'bg-gray-200 text-gray-500 border border-gray-300'
+                      }`}
+                    >
+                      {team.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div>
               <label htmlFor="newPropShort" className="block text-sm font-medium text-gray-700">New Prop Short Label</label>
               <input
@@ -725,46 +807,6 @@ export default function CreatePackPage() {
                 <option value="fact">Fact</option>
                 <option value="opinion">Opinion</option>
               </select>
-            </div>
-            {/* Teams selection UI */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Teams</label>
-              <div className="mt-1 flex space-x-2">
-                {selectedEvent?.homeTeamLink?.[0] && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const id = selectedEvent.homeTeamLink[0];
-                      if (newPropTeams.includes(id)) {
-                        setNewPropTeams(prev => prev.filter(i => i !== id));
-                      } else {
-                        setNewPropTeams(prev => [...prev, id]);
-                      }
-                    }}
-                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.homeTeamLink[0]) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    {selectedEvent.homeTeamLogo && <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
-                    {selectedEvent.homeTeam}
-                  </button>
-                )}
-                {selectedEvent?.awayTeamLink?.[0] && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const id = selectedEvent.awayTeamLink[0];
-                      if (newPropTeams.includes(id)) {
-                        setNewPropTeams(prev => prev.filter(i => i !== id));
-                      } else {
-                        setNewPropTeams(prev => [...prev, id]);
-                      }
-                    }}
-                    className={`px-3 py-1 rounded ${newPropTeams.includes(selectedEvent.awayTeamLink[0]) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                  >
-                    {selectedEvent.awayTeamLogo && <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-6 h-6 object-contain inline-block mr-1" />}
-                    {selectedEvent.awayTeam}
-                  </button>
-                )}
-              </div>
             </div>
             {propsError && <p className="text-red-600">{propsError}</p>}
             <div className="flex space-x-2">

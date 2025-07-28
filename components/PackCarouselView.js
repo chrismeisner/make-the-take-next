@@ -246,6 +246,20 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     document.body.removeChild(textArea);
   };
 
+  // Add console logs for team URLs
+  useEffect(() => {
+    if (packData.homeTeam?.teamSlug) {
+      console.log('Home team URL:', `/teams/${packData.homeTeam.teamSlug}`);
+    } else {
+      console.log('No home team slug available');
+    }
+    if (packData.awayTeam?.teamSlug) {
+      console.log('Away team URL:', `/teams/${packData.awayTeam.teamSlug}`);
+    } else {
+      console.log('No away team slug available');
+    }
+  }, [packData.homeTeam?.teamSlug, packData.awayTeam?.teamSlug]);
+
   if (props.length === 0) {
     return (
       <p className="text-gray-600">
@@ -268,7 +282,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 <span>Type: {packData.packType}</span>
                 {packData.packType === 'event' && packData.eventTime && (
                   <span className="inline-flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span>Event: {new Date(packData.eventTime).toLocaleString()}</span>
+                    <span>
+                      Event: {packData.homeTeam?.teamNameFull} vs {packData.awayTeam?.teamNameFull} on {new Date(packData.eventTime).toLocaleString()}
+                    </span>
                     {isClient && (
                       <span>
                         {timeLeft > 0
@@ -281,6 +297,21 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 {packData.packCreatorID && <span>Creator: {packData.packCreatorID}</span>}
               </div>
             </div>
+            {packData.homeTeam?.teamSlug && packData.awayTeam?.teamSlug && (
+              <p className="mt-2 text-sm px-4 sm:px-0">
+                Teams: {packData.homeTeam.teamNameFull} vs {packData.awayTeam.teamNameFull}
+              </p>
+            )}
+            {packData.homeTeam?.teamSlug && packData.awayTeam?.teamSlug && (
+              <div className="mt-2 text-sm px-4 sm:px-0 flex space-x-4">
+                <Link href={`/teams/${packData.homeTeam.teamSlug}`} className="text-blue-600 hover:underline">
+                  View {packData.homeTeam.teamNameFull} details
+                </Link>
+                <Link href={`/teams/${packData.awayTeam.teamSlug}`} className="text-blue-600 hover:underline">
+                  View {packData.awayTeam.teamNameFull} details
+                </Link>
+              </div>
+            )}
             {session?.user && allReceipts.length > 0 && (
               <div className="px-4 sm:px-0 mt-4">
                 <span className="font-semibold">Your receipts:</span>

@@ -26,8 +26,10 @@ export default function GradePackPage() {
   const [toastMessage, setToastMessage] = useState("");
 
   // Derive team nicknames (last word of full name)
-  const homeNick = homeTeam ? homeTeam.split(' ').slice(-1)[0] : '';
-  const awayNick = awayTeam ? awayTeam.split(' ').slice(-1)[0] : '';
+  const homeName = homeTeam?.teamNameFull || homeTeam?.teamName || '';
+  const awayName = awayTeam?.teamNameFull || awayTeam?.teamName || '';
+  const homeNick = homeName.split(' ').slice(-1)[0] || '';
+  const awayNick = awayName.split(' ').slice(-1)[0] || '';
 
   useEffect(() => {
     if (!packURL) return;
@@ -106,7 +108,14 @@ export default function GradePackPage() {
       if (!result.success) {
         setSaveError(result.error || "Save failed");
       } else {
-        setToastMessage("Grades saved successfully!");
+        {
+          const baseMsg = "Grades saved successfully!";
+          if (typeof result.smsCount === 'number') {
+            setToastMessage(`${baseMsg} SMS notifications sent to ${result.smsCount} user${result.smsCount === 1 ? '' : 's'}.`);
+          } else {
+            setToastMessage(baseMsg);
+          }
+        }
       }
     } catch (err) {
       setSaveError(err.message);

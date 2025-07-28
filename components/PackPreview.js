@@ -1,5 +1,6 @@
 import Link from "next/link";
 import StatusPill from "./StatusPill";
+import useLeaderboard from "../hooks/useLeaderboard";
 
 export default function PackPreview({ pack }) {
   // Determine a common pack identifier
@@ -8,6 +9,9 @@ export default function PackPreview({ pack }) {
   // Number of props assumed to be provided by pack.propsCount
   const propsCount = pack.propsCount || 0;
   const takeCount = pack.takeCount || 0;
+  // Fetch the pack-specific leaderboard for graded packs
+  const { leaderboard, loading } = useLeaderboard({ packURL: pack.packURL });
+  const winnerID = !loading && leaderboard.length > 0 ? leaderboard[0].profileID : null;
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -51,6 +55,9 @@ export default function PackPreview({ pack }) {
 		<div className="mt-2 text-sm text-gray-600">
 		  <p>Props: {propsCount}</p>
 		  <p>Takes: {takeCount}</p>
+          {pack.packStatus === "graded" && winnerID && (
+            <p>Winner: @{winnerID}</p>
+          )}
 		</div>
 	  </div>
 	</Link>

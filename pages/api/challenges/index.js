@@ -1,5 +1,9 @@
 // File: pages/api/challenges/index.js
 import { upsertChallenge, getChallengesByPack } from '../../../lib/airtableService';
+import Airtable from 'airtable';
+import { sendSMS } from '../../../lib/twilioService';
+// Airtable client for querying Profiles
+const profileBase = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -30,6 +34,26 @@ export default async function handler(req, res) {
       console.log('[challenges][POST] Calling upsertChallenge with:', { packURL, initiatorReceiptId, challengerReceiptId });
       const rec = await upsertChallenge({ packURL, initiatorReceiptID: initiatorReceiptId, challengerReceiptID: challengerReceiptId });
       console.log('[challenges][POST] upsertChallenge result:', { id: rec.id, fields: rec.fields });
+      // --- SMS notifications: initiator and challenger ---
+      const initiatorProfiles = rec.fields.initiatorProfile || [];
+      const challengerProfiles = rec.fields.challengerProfile || [];
+      const recipientIds = [...new Set([...initiatorProfiles, ...challengerProfiles])];
+      console.log('[challenges][POST] SMS recipients (profile IDs):', recipientIds);
+      for (const profileId of recipientIds) {
+        try {
+          const profileRec = await profileBase('Profiles').find(profileId);
+          const phone = profileRec.fields.profileMobile;
+          if (phone) {
+            const challengeUrl = `${process.env.SITE_URL}/challenges/${rec.id}`;
+            console.log(`[challenges][POST] Sending SMS to ${phone}: ${challengeUrl}`);
+            await sendSMS({ to: phone, message: `📣 You've been challenged! View it here: ${challengeUrl}` });
+          } else {
+            console.warn(`[challenges][POST] No phone for profile ${profileId}`);
+          }
+        } catch (smsErr) {
+          console.error(`[challenges][POST] SMS error for profile ${profileId}:`, smsErr);
+        }
+      }
       return res.status(200).json({
         success: true,
         challenge: {

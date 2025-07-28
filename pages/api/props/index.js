@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   }
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
-    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType } = req.body;
+    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams } = req.body;
     if (!propId) {
       return res.status(400).json({ success: false, error: "Missing propId" });
     }
@@ -76,6 +76,7 @@ export default async function handler(req, res) {
       if (PropSideATake  !== undefined) fieldsToUpdate.PropSideATake  = PropSideATake;
       if (PropSideBTake  !== undefined) fieldsToUpdate.PropSideBTake  = PropSideBTake;
       if (propType       !== undefined) fieldsToUpdate.propType       = propType;
+      if (teams          !== undefined) fieldsToUpdate.Teams          = teams;
       const updated = await base("Props").update([
         { id: propId, fields: fieldsToUpdate }
       ]);
@@ -145,6 +146,7 @@ export default async function handler(req, res) {
 		  ? f.contentImage.map((img) => img.url)
 		  : [],
 		linkedPacks: Array.isArray(f.Packs) ? f.Packs : [],
+		teams: Array.isArray(f.Teams) ? f.Teams : [],
 
 		// If you previously had "linkedPacks" logic, you can add it here
 		// linkedPacks: ...

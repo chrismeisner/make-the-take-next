@@ -1,6 +1,7 @@
 // pages/api/takeCombined.js
 import twilio from "twilio";
 import Airtable from "airtable";
+import { sendSMS } from "../../lib/twilioService";
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -89,6 +90,21 @@ export default async function handler(req, res) {
 	  },
 	]);
 	const newTakeID = created[0].id;
+	// Send confirmation SMS
+	try {
+	  const packLinksArr = propRec.fields.Packs || [];
+	  if (packLinksArr.length > 0) {
+		const packRecLink = await base("Packs").find(packLinksArr[0]);
+		const packURLLink = packRecLink.fields.packURL;
+		const proto = req.headers['x-forwarded-proto'] || 'http';
+		const host = req.headers['x-forwarded-host'] || req.headers.host;
+		const siteUrl = process.env.SITE_URL || `${proto}://${host}`;
+		const message = `✅ Your submission for pack "${packRecLink.fields.packTitle}" is received! View your pack here: ${siteUrl}/packs/${packURLLink}`;
+		await sendSMS({ to: e164Phone, message });
+	  }
+	} catch (smsErr) {
+	  console.error("[api/takeCombined] Error sending confirmation SMS:", smsErr);
+	}
 
 	// 5) Recount side A/B
 	const allActiveTakes = await base("Takes")
