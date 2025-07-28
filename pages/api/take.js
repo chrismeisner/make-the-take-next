@@ -2,7 +2,6 @@
 
 import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
-import { sendSMS } from "../../lib/twilioService";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -124,21 +123,6 @@ export default async function handler(req, res) {
 	]);
 	const newTake = takeResp[0];
 	const newTakeID = newTake.fields.takeID || newTake.id;
-	// Send confirmation SMS
-	try {
-	  const packLinks = propRec.fields.Packs || [];
-	  if (packLinks.length > 0) {
-		const packRec2 = await base("Packs").find(packLinks[0]);
-		const packURL2 = packRec2.fields.packURL;
-		const proto = req.headers['x-forwarded-proto'] || 'http';
-		const host = req.headers['x-forwarded-host'] || req.headers.host;
-		const siteUrl = process.env.SITE_URL || `${proto}://${host}`;
-		const message = `✅ Your submission for pack "${packRec2.fields.packTitle}" is received! View your pack here: ${siteUrl}/packs/${packURL2}`;
-		await sendSMS({ to: token.phone, message });
-	  }
-	} catch (smsErr) {
-	  console.error("[/api/take] Error sending confirmation SMS:", smsErr);
-	}
 
 	// 8) Compute dynamic side counts for this prop
 	const takesRecords = await base("Takes")
