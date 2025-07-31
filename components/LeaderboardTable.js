@@ -1,6 +1,7 @@
 // File: /components/LeaderboardTable.js
 
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 /**
  * Reusable scoreboard table.
@@ -16,6 +17,8 @@ import Link from "next/link";
  * }
  */
 export default function LeaderboardTable({ leaderboard }) {
+  const { data: session } = useSession();
+  const currentProfileID = session?.user?.profileID;
   if (!leaderboard || leaderboard.length === 0) {
 	return <p>No participants yet.</p>;
   }
@@ -34,6 +37,7 @@ export default function LeaderboardTable({ leaderboard }) {
 	  <thead>
 		<tr className="border-b">
 		  <th className="text-left py-2 px-3">Phone</th>
+		  <th className="text-left py-2 px-3">Username</th>
 		  <th className="text-left py-2 px-3">Takes</th>
 		  <th className="text-left py-2 px-3">Record (W-L-T)</th>
 		  <th className="text-left py-2 px-3">Points</th>
@@ -44,13 +48,24 @@ export default function LeaderboardTable({ leaderboard }) {
 		  <tr key={idx} className="border-b">
 			<td className="py-2 px-3">
 			  {item.profileID ? (
-				<Link href={`/profile/${item.profileID}`}>
+				<Link href={"/profile/" + item.profileID}>
 				  <span className="text-blue-600 underline">
 					{obscurePhone(item.phone)}
 				  </span>
 				</Link>
 			  ) : (
 				obscurePhone(item.phone)
+			  )}
+			</td>
+			<td className="py-2 px-3">
+			  {item.profileID ? (
+				<Link href={"/profile/" + item.profileID}>
+				  <span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
+					{item.profileID}
+				  </span>
+				</Link>
+			  ) : (
+				'Unknown'
 			  )}
 			</td>
 			<td className="py-2 px-3">{item.takes}</td>

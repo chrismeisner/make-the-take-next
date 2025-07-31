@@ -37,21 +37,49 @@ export default async function handler(req, res) {
       // --- SMS notifications: initiator and challenger ---
       const initiatorProfiles = rec.fields.initiatorProfile || [];
       const challengerProfiles = rec.fields.challengerProfile || [];
-      const recipientIds = [...new Set([...initiatorProfiles, ...challengerProfiles])];
-      console.log('[challenges][POST] SMS recipients (profile IDs):', recipientIds);
-      for (const profileId of recipientIds) {
+      const challengeUrl = `${process.env.SITE_URL}/challenges/${rec.id}`;
+
+      // Fetch profile records for personalization
+      let initiatorProfileRec = null;
+      let challengerProfileRec = null;
+      if (initiatorProfiles[0]) {
         try {
-          const profileRec = await profileBase('Profiles').find(profileId);
-          const phone = profileRec.fields.profileMobile;
-          if (phone) {
-            const challengeUrl = `${process.env.SITE_URL}/challenges/${rec.id}`;
-            console.log(`[challenges][POST] Sending SMS to ${phone}: ${challengeUrl}`);
-            await sendSMS({ to: phone, message: `📣 You've been challenged! View it here: ${challengeUrl}` });
-          } else {
-            console.warn(`[challenges][POST] No phone for profile ${profileId}`);
-          }
-        } catch (smsErr) {
-          console.error(`[challenges][POST] SMS error for profile ${profileId}:`, smsErr);
+          initiatorProfileRec = await profileBase('Profiles').find(initiatorProfiles[0]);
+        } catch (err) {
+          console.error('[challenges][POST] Error fetching initiator profile:', err);
+        }
+      }
+      if (challengerProfiles[0]) {
+        try {
+          challengerProfileRec = await profileBase('Profiles').find(challengerProfiles[0]);
+        } catch (err) {
+          console.error('[challenges][POST] Error fetching challenger profile:', err);
+        }
+      }
+
+      // Notify initiator
+      if (initiatorProfileRec) {
+        const phone = initiatorProfileRec.fields.profileMobile;
+        const challengerName = challengerProfileRec?.fields.profileID || '';
+        if (phone) {
+          const message = `${challengerName} has accepted your challenge! Check out their takes here: ${challengeUrl}`;
+          console.log(`[challenges][POST] Sending SMS to initiator ${phone}: ${message}`);
+          await sendSMS({ to: phone, message });
+        } else {
+          console.warn(`[challenges][POST] No phone for initiator profile ${initiatorProfiles[0]}`);
+        }
+      }
+
+      // Notify challenger
+      if (challengerProfileRec) {
+        const phone = challengerProfileRec.fields.profileMobile;
+        const initiatorName = initiatorProfileRec?.fields.profileID || '';
+        if (phone) {
+          const message = `You've accepted ${initiatorName}'s challenge! Track how your takes match up vs theirs: ${challengeUrl}`;
+          console.log(`[challenges][POST] Sending SMS to challenger ${phone}: ${message}`);
+          await sendSMS({ to: phone, message });
+        } else {
+          console.warn(`[challenges][POST] No phone for challenger profile ${challengerProfiles[0]}`);
         }
       }
       return res.status(200).json({

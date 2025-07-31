@@ -11,6 +11,8 @@ import { usePackContext } from '../../contexts/PackContext';
 import { useRouter } from 'next/router';
 import PackCarouselView from '../../components/PackCarouselView';
 import Head from 'next/head';
+import PropDetailPage from '../props/[propID]';
+import InlineCardProgressFooter from '../../components/InlineCardProgressFooter';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -105,6 +107,31 @@ export async function getServerSideProps(context) {
         console.log('[getServerSideProps] final userReceipts:', userReceipts);
       }
     }
+    // Determine latest receipt ID for challenge acceptance check
+    let latestReceiptId = null;
+    if (userReceipts.length > 0) {
+      latestReceiptId = userReceipts.reduce((prev, curr) =>
+        new Date(curr.createdTime) > new Date(prev.createdTime) ? curr : prev,
+        userReceipts[0]
+      ).receiptID;
+    }
+    // Check if a challenge record already exists for this pack/ref and user
+    let hasAcceptedChallenge = false;
+    if (ref && latestReceiptId) {
+      try {
+        const chRes = await fetch(
+          `${origin}/api/challenges?packURL=${encodeURIComponent(packURL)}`
+        );
+        const chData = await chRes.json();
+        if (chRes.ok && chData.success) {
+          hasAcceptedChallenge = chData.challenges.some(c =>
+            c.fields.initiatorReceiptID === ref && c.fields.challengerReceiptID === latestReceiptId
+          );
+        }
+      } catch (err) {
+        console.error('[getServerSideProps] Error checking challenge acceptance:', err);
+      }
+    }
     // Fetch recent activity for this pack (errors here should not break the page)
     let activity = [];
     try {
@@ -140,8 +167,10 @@ export async function getServerSideProps(context) {
         friendTakesByProp,
         friendProfile,
         userReceipts,
+        latestReceiptId,
         activity,
         isRef,
+        hasAcceptedChallenge,
       },
     };
   } catch {
@@ -184,7 +213,7 @@ function ChallengeButton({ receiptId }) {
   );
 }
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef, latestReceiptId, hasAcceptedChallenge }) {
   const { openModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
@@ -195,24 +224,44 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         userReceipts[0]
       )
     : null;
-  const latestReceiptId = latestReceiptObj?.receiptID;
-
+  const latestReceiptIdForChallenge = latestReceiptObj?.receiptID;
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
+  // Show challenge modal on page load when ref= present
   useEffect(() => {
-    if (friendProfile) {
+    if (friendProfile && !hasAcceptedChallenge) {
+      // Determine which prop index (first for superprop)
+      const propIndex = 0;
       openModal('challenge', {
         friendName: friendProfile.profileUsername || friendProfile.profileID,
         friendTakesByProp,
         packProps: packData.props,
         packURL: packData.packURL,
         initiatorReceiptId: router.query.ref,
-        challengerReceiptId: latestReceiptObj?.receiptID,
+        challengerReceiptId: latestReceiptIdForChallenge,
+        propIndex,
       });
     }
-  }, [friendProfile, openModal, friendTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptObj]);
+  }, [friendProfile, hasAcceptedChallenge, openModal, friendTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptIdForChallenge]);
+  // If this is a superprop pack, render the prop detail view instead of carousel
+  if (packData.packType === 'superprop') {
+    const superProp = Array.isArray(packData.props) && packData.props[0];
+    const coverUrl = Array.isArray(packData.packCover) && packData.packCover[0]?.url;
+    const pageUrl = `${debugLogs.origin}/packs/${packData.packURL}`;
+    return (
+      <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+        <PropDetailPage
+          propData={superProp}
+          coverImageUrl={coverUrl}
+          pageUrl={pageUrl}
+          associatedPacks={[]}
+        />
+        <InlineCardProgressFooter />
+      </PackContextProvider>
+    );
+  }
   return (
     <>
       <Head>
@@ -241,8 +290,8 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             userReceipts={userReceipts}
             activity={activity}
           />
-          {session && latestReceiptId && (
-            <ChallengeButton receiptId={latestReceiptId} />
+          {session && latestReceiptIdForChallenge && (
+            <ChallengeButton receiptId={latestReceiptIdForChallenge} />
           )}
         </PackContextProvider>
       )}

@@ -128,6 +128,20 @@ export default async function handler(req, res) {
 	  profileTeamData, // Contains favorite team info
 	  createdTime: profRec._rawJson.createdTime,
 	};
+	// Fetch Exchange records for this profile by matching the 'profileID' lookup field in Exchanges
+	const exchangeFilter = `{profileID}="${profileID}"`;
+	console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
+	let userExchanges = [];
+	const exchRecs = await base('Exchanges')
+	  .select({ filterByFormula: exchangeFilter, maxRecords: 5000 })
+	  .all();
+	console.log(`[profile] Retrieved ${exchRecs.length} Exchanges rows for profileID ${profileID}`);
+	userExchanges = exchRecs.map((r) => ({
+	  exchangeID: r.id,
+	  exchangeTokens: r.fields.exchangeTokens || 0,
+	  exchangeItem: r.fields.exchangeItem || [],
+	  createdTime: r._rawJson.createdTime,
+	}));
 
 	// 6) Return the aggregated data
 	return res.status(200).json({
@@ -136,6 +150,7 @@ export default async function handler(req, res) {
 	  totalTakes: userTakes.length,
 	  userTakes,
 	  userPacks: validPacks,
+	  userExchanges,
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);

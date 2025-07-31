@@ -11,6 +11,7 @@ import PrizeModal from "./modals/PrizeModal";
 import FeaturedPackModal from "./modals/FeaturedPackModal";
 import PackCompletedModal from "./modals/PackCompletedModal";
 import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
+import SuperPropCreatedModal from "./modals/SuperPropCreatedModal";
 import GradePacksModal from "./modals/GradePacksModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
@@ -26,7 +27,10 @@ export default function GlobalModalRenderer() {
 	case "challenge":
 	  {
         // Destructure props including for accepting the challenge
-        const { friendName, friendTakesByProp, packProps, packURL, initiatorReceiptId, challengerReceiptId } = modalConfig.modalProps;
+        const { friendName, friendTakesByProp, packProps, packURL, initiatorReceiptId, challengerReceiptId, propIndex } = modalConfig.modalProps;
+        const propsToShow = (typeof propIndex === 'number' && propIndex >= 0 && propIndex < packProps.length)
+          ? [packProps[propIndex]]
+          : packProps;
         // Handler to accept the challenge by creating/updating the challenge record
         const handleAccept = async () => {
           try {
@@ -46,7 +50,7 @@ export default function GlobalModalRenderer() {
               You've been challenged by {friendName}!
             </h2>
             <ul className="space-y-2">
-              {packProps.map((p) => {
+              {propsToShow.map((p) => {
                 const take = friendTakesByProp[p.propID];
                 if (!take) return null;
                 const label = p.propShort || p.propTitle || p.propID;
@@ -138,6 +142,17 @@ export default function GlobalModalRenderer() {
 		  {...modalConfig.modalProps}
 		/>
 	  );
+	case "superPropCreated": {
+	  const { url, onDone } = modalConfig.modalProps;
+	  return (
+		<SuperPropCreatedModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  url={url}
+		  onDone={onDone}
+		/>
+	  );
+	}
 	case "loginRequired":
 	  return (
 		<LoginRequiredModal

@@ -21,13 +21,13 @@ export default async function handler(req, res) {
 	return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
-  // 2) Extract propID and propSide from request body
+  // 2) Extract propID and propSide (receiptId optional) from request body
   const { propID, propSide, receiptId } = req.body;
-  if (!propID || !propSide || !receiptId) {
-	return res.status(400).json({
-	  success: false,
-	  error: "Missing propID, propSide, or receiptId",
-	});
+  if (!propID || !propSide) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing propID or propSide",
+    });
   }
 
   // Determine if this take is part of a challenge by inspecting the referer URL
@@ -105,21 +105,21 @@ export default async function handler(req, res) {
 	const profileRecId = token.airtableId; // e.g., "rec123..."
 	const packLinks = propRec.fields.Packs || [];
 	console.log("📦📝 [api/take] Submitting take:", { propID, propSide, phone: token.phone, receiptId, packLinks, teams, takePopularity });
+	const takeFields = {
+	  propID,
+	  propSide,
+	  takeMobile: token.phone,
+	  takeStatus: "latest",
+	  Prop: [propRec.id],    // link to the Prop record
+	  Profile: [profileRecId], // link to the user's Profile record
+	  takeLivePopularity: takePopularity,
+	  // Link the same teams to the Take record
+	  Teams: teams,
+	};
+	// Include receiptID if provided
+	if (receiptId) takeFields.receiptID = receiptId;
 	const takeResp = await base("Takes").create([
-	  {
-		fields: {
-		  propID,
-		  propSide,
-		  takeMobile: token.phone,
-		  takeStatus: "latest",
-		  Prop: [propRec.id],    // link to the Prop record
-		  Profile: [profileRecId], // link to the user's Profile record
-		  receiptID: receiptId,
-		  takeLivePopularity: takePopularity,
-		  // Link the same teams to the Take record
-		  Teams: teams,
-		},
-	  },
+	  { fields: takeFields }
 	]);
 	const newTake = takeResp[0];
 	const newTakeID = newTake.fields.takeID || newTake.id;

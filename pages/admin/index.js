@@ -125,13 +125,23 @@ export default function AdminPage({ superAdminSecret }) {
         Switch to Super Admin
       </button>
 
-	  <div className="mt-4">
-		<Link href="/admin/create-pack">
-		  <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-			Create New Pack
-		  </button>
-		</Link>
-	  </div>
+	  <div className="mt-4 space-x-2">
+        <Link href="/admin/create-pack">
+          <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+            Create New Pack
+          </button>
+        </Link>
+        <Link href="/admin/create-event">
+          <button className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Create New Event
+          </button>
+        </Link>
+        <Link href="/admin/create-super-prop">
+          <button className="px-3 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
+            Create Super Prop
+          </button>
+        </Link>
+      </div>
 
 	  <button
 		onClick={handleForceLogout}

@@ -1,28 +1,35 @@
 import React from "react";
 import Head from "next/head";
 import Link from "next/link";
+import { useModal } from "../../contexts/ModalContext";
 import VerificationWidget from "../../components/VerificationWidget";
+import { useState } from "react";
 
-import Airtable from "airtable";
-import { createCanvas, loadImage } from "canvas";
-import { storageBucket } from "../../lib/firebaseAdmin";
+// import Airtable from "airtable";
+// import { createCanvas, loadImage } from "canvas";
+// import { storageBucket } from "../../lib/firebaseAdmin";
 
 // 1) Initialize Airtable base
+/* TEMP DISABLE: top-level Airtable initialization
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
+*/
 
 export default function PropDetailPage({
   propData,
   coverImageUrl,
   pageUrl,
   associatedPacks,
+  eventDetails = null,
+  activity = [],
 }) {
   if (!propData) {
 	return <div style={{ color: "red" }}>No prop data found.</div>;
   }
 
   const {
-	propTitle = "Untitled Proposition",
+	propTitle: rawPropTitle,
+	propShort = "",
 	propSummary = "No summary provided",
 	subjectLogoUrls = [],
 	subjectTitles = [],
@@ -30,16 +37,20 @@ export default function PropDetailPage({
 	createdAt,
 	propID,
   } = propData;
-
+  const displayTitle = rawPropTitle || propShort || "Untitled Proposition";
   const formattedDate = createdAt
 	? new Date(createdAt).toLocaleDateString()
 	: "Unknown date";
 
+  const { openModal } = useModal();
+  // Track the user's take ID to include as ?ref in challenge URL
+  const [lastTakeId, setLastTakeId] = useState(null);
+
   return (
 	<>
 	  <Head>
-		<title>{propTitle} | Make The Take</title>
-		<meta property="og:title" content={propTitle} />
+		<title>{displayTitle} | Make The Take</title>
+		<meta property="og:title" content={displayTitle} />
 		<meta property="og:description" content={propSummary} />
 		<meta property="og:image" content={coverImageUrl} />
 		<meta property="og:type" content="article" />
@@ -47,97 +58,124 @@ export default function PropDetailPage({
 		<link rel="canonical" href={pageUrl} />
 
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content={propTitle} />
+		<meta name="twitter:title" content={displayTitle} />
 		<meta name="twitter:description" content={propSummary} />
 		<meta name="twitter:image" content={coverImageUrl} />
 	  </Head>
 
-	  <div style={{ padding: "1rem", maxWidth: "800px", margin: "0 auto" }}>
-		{/* Optionally display the cover image */}
-		{coverImageUrl && (
-		  <div style={{ marginBottom: "1rem", textAlign: "center" }}>
-			<img
-			  src={coverImageUrl}
-			  alt="Prop Cover"
-			  style={{ width: "100%", maxWidth: "600px", objectFit: "cover" }}
-			/>
-		  </div>
-		)}
-
-		<h1 className="text-3xl font-bold mb-3">{propTitle}</h1>
-
-		{/* Subject Logos */}
-		{subjectLogoUrls.length > 0 && (
-		  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-			{subjectLogoUrls.map((logoUrl, index) => (
-			  <div
-				key={index}
-				style={{
-				  width: "80px",
-				  height: "80px",
-				  borderRadius: "4px",
-				  overflow: "hidden",
-				}}
-			  >
-				<img
-				  src={logoUrl}
-				  alt={subjectTitles[index] || "Subject Logo"}
-				  style={{
-					width: "100%",
-					height: "100%",
-					objectFit: "cover",
-				  }}
-				/>
-			  </div>
-			))}
-		  </div>
-		)}
-
-		{/* Content Image */}
-		{contentImageUrl && (
-		  <div style={{ margin: "1rem 0" }}>
-			<img
-			  src={contentImageUrl}
-			  alt="Prop Content"
-			  style={{ width: "100%", maxWidth: "600px", objectFit: "cover" }}
-			/>
-		  </div>
-		)}
-
-		{/* Additional info */}
-		<div style={{ color: "#555", marginBottom: "1rem" }}>
-		  {subjectTitles.length > 0 && <p>Subjects: {subjectTitles.join(", ")}</p>}
-		  <p>Created: {formattedDate}</p>
-		</div>
-
-		<p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>{propSummary}</p>
-
-		{/* Verification Widget */}
-		<section style={{ marginBottom: "1rem" }}>
-		  <h3>Vote on This Prop</h3>
-		  <VerificationWidget embeddedPropID={propID} />
-		</section>
-
-		{/* Available Packs Section */}
-		<section style={{ marginTop: "2rem" }}>
-		  <h3 className="text-xl font-semibold mb-2">Available Packs</h3>
-		  {(!associatedPacks || associatedPacks.length === 0) ? (
-			<p className="text-sm text-gray-600">
-			  This proposition is not currently in any packs.
-			</p>
-		  ) : (
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-			  {associatedPacks.map((pack) => (
-				<PackPreviewCard key={pack.airtableId} pack={pack} />
-			  ))}
-			</div>
-		  )}
-		</section>
-
-		<p style={{ marginTop: "1rem" }}>
-		  <Link href="/">Back to Home</Link>
-		</p>
-	  </div>
+  <div style={{ padding: "1rem", maxWidth: "1024px", margin: "0 auto" }}>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      {/* Left Column: Content & Related Packs */}
+      <div>
+        {/* TEMP DISABLE: cover image display
+        {coverImageUrl && (
+          <div style={{ marginBottom: "1rem", textAlign: "center" }}>
+            <img
+              src={coverImageUrl}
+              alt="Prop Cover"
+              style={{ width: "100%", maxWidth: "600px", objectFit: "cover" }}
+            />
+          </div>
+        )}
+        */}
+        <h1 className="text-3xl font-bold mb-3">{displayTitle}</h1>
+        {/* Subject Logos */}
+        {subjectLogoUrls.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {subjectLogoUrls.map((logoUrl, index) => (
+              <div
+                key={index}
+                style={{ width: "80px", height: "80px", borderRadius: "4px", overflow: "hidden" }}
+              >
+                <img
+                  src={logoUrl}
+                  alt={subjectTitles[index] || "Subject Logo"}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Content Image */}
+        {contentImageUrl && (
+          <div style={{ margin: "1rem 0" }}>
+            <img
+              src={contentImageUrl}
+              alt="Prop Content"
+              style={{ width: "100%", maxWidth: "600px", objectFit: "cover" }}
+            />
+          </div>
+        )}
+        {/* Additional info */}
+        <div style={{ color: "#555", marginBottom: "1rem" }}>
+          {subjectTitles.length > 0 && <p>Subjects: {subjectTitles.join(", ")}</p>}
+          <p>Created: {formattedDate}</p>
+        </div>
+        {/* Linked Event Details */}
+        {eventDetails && (
+          <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
+            <h3 className="text-lg font-semibold mb-1">Event</h3>
+            <p className="text-sm text-gray-700">
+              {eventDetails.eventTitle} — {new Date(eventDetails.eventTime).toLocaleString()}
+            </p>
+          </div>
+        )}
+        <p style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>{propSummary}</p>
+        {/* Related Packs */}
+        <section className="mt-8">
+          <h3 className="text-xl font-semibold mb-2">Related Packs</h3>
+          {(!associatedPacks || associatedPacks.length === 0) ? (
+            <p className="text-sm text-gray-600">This proposition is not currently in any packs.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {associatedPacks.map((pack) => (
+                <PackPreviewCard key={pack.airtableId} pack={pack} />
+              ))}
+            </div>
+          )}
+        </section>
+        {/* Activity Log */}
+        <section className="mt-8">
+          <h3 className="text-xl font-semibold mb-2">Activity</h3>
+          {activity.length === 0 ? (
+            <p className="text-sm text-gray-600">No activity yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {activity.map(act => (
+                <li key={act.id} className="text-sm text-gray-700">
+                  <span className="font-medium">{act.profileID}</span> made a take – {new Date(act.createdTime).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <p style={{ marginTop: "1rem" }}>
+          <Link href="/">Back to Home</Link>
+          <button
+            onClick={() => {
+              const base = pageUrl.split("?")[0];
+              const ref = lastTakeId || new URL(window.location.href).searchParams.get("ref");
+              const challengeUrl = ref ? `${base}?ref=${ref}` : base;
+              openModal("challengeShare", { packTitle: displayTitle, picksText: "", challengeUrl });
+            }}
+            className="text-blue-600 underline ml-4"
+          >
+            Challenge
+          </button>
+        </p>
+      </div>
+      {/* Right Column: Voting Widget */}
+      <div>
+        <section style={{ marginBottom: "1rem" }}>
+          <h3>Vote on This Prop</h3>
+          <VerificationWidget
+            embeddedPropID={propID}
+            onVerificationComplete={(newTakeID) => setLastTakeId(newTakeID)}
+          />
+        </section>
+      </div>
+    </div>
+  </div>
 	</>
   );
 }
@@ -174,10 +212,15 @@ function PackPreviewCard({ pack }) {
  * 3) Because "Packs" is a linked record field on "Props," we read the array of IDs from propRecord.fields.Packs,
  *    then query those pack IDs to get the details.
  */
-export async function getServerSideProps({ params }) {
+export async function getServerSideProps({ params, query }) {
+  // Initialize Airtable base server-side only
+  const Airtable = require('airtable');
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
+    .base(process.env.AIRTABLE_BASE_ID);
   const { propID } = params;
   const baseUrl = process.env.SITE_URL || "http://localhost:3000";
-  const pageUrl = `${baseUrl}/props/${propID}`;
+  // Include ref query param if present for challenge tracking
+  const pageUrl = `${baseUrl}/props/${propID}${query.ref ? `?ref=${query.ref}` : ''}`;
 
   console.log(`[PropDetailPage] getServerSideProps => propID="${propID}"`);
   console.log(`[PropDetailPage] Using baseUrl="${baseUrl}" => will fetch prop data`);
@@ -222,26 +265,21 @@ export async function getServerSideProps({ params }) {
 
 	// 2) Possibly generate cover if missing
 	let finalCoverImageUrl = propData.propCoverURL;
-	if (propData.propCoverStatus !== "generated" || !finalCoverImageUrl) {
-	  console.log("[PropDetailPage] Generating new cover for propID:", propID);
-	  try {
-		finalCoverImageUrl = await generateAndUploadCover({ propID, fields: f });
-		// Update Airtable
-		await base("Props").update([
-		  {
-			id: propRecord.id,
-			fields: {
-			  propCoverURL: finalCoverImageUrl,
-			  propCoverStatus: "generated",
-			},
-		  },
-		]);
-	  } catch (err) {
-		console.error("[PropDetailPage] Error generating cover =>", err);
-		finalCoverImageUrl = `${baseUrl}/fallback.png`;
-	  }
-	}
-
+/* TEMP DISABLE: auto-generate prop cover
+if (propData.propCoverStatus !== "generated" || !finalCoverImageUrl) {
+  console.log("[PropDetailPage] Generating new cover for propID:", propID);
+  try {
+    finalCoverImageUrl = await generateAndUploadCover({ propID, fields: f });
+    // Update Airtable
+    await base("Props").update([
+      { id: propRecord.id, fields: { propCoverURL: finalCoverImageUrl, propCoverStatus: "generated" } },
+    ]);
+  } catch (err) {
+    console.error("[PropDetailPage] Error generating cover =>", err);
+    finalCoverImageUrl = `${baseUrl}/fallback.png`;
+  }
+}
+*/
 	// 3) Because the "Props" table has a linked-record field "Packs," we read that array of IDs
 	let associatedPacks = [];
 	const linkedPackIDs = f.Packs || [];
@@ -285,7 +323,29 @@ export async function getServerSideProps({ params }) {
 	  }
 	}
 
-	// 4) Return everything to the page
+	// Fetch linked event details if any
+	const linkedEventIDs = f.Event || [];
+	let eventDetails = null;
+	if (linkedEventIDs.length > 0) {
+	  const [eventRec] = await base("Events").select({
+		filterByFormula: `RECORD_ID()="${linkedEventIDs[0]}"`,
+		maxRecords: 1
+	  }).firstPage();
+	  if (eventRec) {
+		eventDetails = eventRec.fields;
+	  }
+	}
+	// Fetch activity (takes) for this prop
+	const takeRecords = await base("Takes").select({
+	  filterByFormula: `{propID} = "${propID}"`,
+	  maxRecords: 1000
+	}).all();
+	const activity = takeRecords.map(rec => ({
+	  id: rec.id,
+	  profileID: rec.fields.profileID || rec.fields.takeMobile || '',
+	  createdTime: rec._rawJson.createdTime,
+	}));
+	// Return everything to the page
 	return {
 	  props: {
 		propData: {
@@ -295,6 +355,8 @@ export async function getServerSideProps({ params }) {
 		coverImageUrl: finalCoverImageUrl,
 		pageUrl,
 		associatedPacks,
+		eventDetails,
+		activity,
 	  },
 	};
   } catch (error) {

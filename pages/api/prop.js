@@ -34,24 +34,35 @@ export default async function handler(req, res) {
 
 	// 2) Enumerate the Takes table to count records for this Prop by matching the propID field
 	// Only count active takes (exclude overwritten)
-	const takeRecords = await base("Takes").select({
-	  filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`
-	}).all();
-	let sideACount = 0;
-	let sideBCount = 0;
+	const sideCount = Number(data.sideCount) || 2;
+	const takeRecords = await base("Takes")
+	  .select({
+		filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`,
+	  })
+	  .all();
+	// Build a map of counts per side value
+	const countsMap = {};
 	takeRecords.forEach((t) => {
-	  if (t.fields.propSide === "A") {
-		sideACount++;
-	  } else if (t.fields.propSide === "B") {
-		sideBCount++;
-	  }
+	  const side = t.fields.propSide;
+	  countsMap[side] = (countsMap[side] || 0) + 1;
 	});
-	// Print debug logs for counts and percentage calculations
-	console.log(`[API /prop] propID=${propID} counts: sideACount=${sideACount}, sideBCount=${sideBCount}, total=${sideACount + sideBCount}`);
-	const totalTakes = sideACount + sideBCount;
-	const sideAPct = totalTakes === 0 ? 50 : Math.round((sideACount / totalTakes) * 100);
-	const sideBPct = totalTakes === 0 ? 50 : Math.round((sideBCount / totalTakes) * 100);
-	console.log(`[API /prop] computed percentages: sideAPct=${sideAPct}%, sideBPct=${sideBPct}%`);
+	const totalTakes = takeRecords.length;
+	// Build choices array for each side based on sideCount
+	const choices = [];
+	for (let i = 0; i < sideCount; i++) {
+	  const letter = String.fromCharCode(65 + i); // 'A' code is 65
+	  const count = countsMap[letter] || 0;
+	  const percentage =
+		totalTakes === 0
+		  ? Math.round(100 / sideCount)
+		  : Math.round((count / totalTakes) * 100);
+	  choices.push({
+		value: letter,
+		label: data[`PropSide${letter}Short`] || `Side ${letter}`,
+		count,
+		percentage,
+	  });
+	}
 
 	// 3) Optionally parse subject logos & content images
 	let subjectLogoUrls = [];
@@ -83,8 +94,11 @@ export default async function handler(req, res) {
 	  contentImageUrl,
 	  content: contentList,
 	  // The key new fields for your widget:
-	  sideACount,
-	  sideBCount,
+	  sideCount,
+	  choices,
+	  // legacy counts for backward compatibility
+	  sideACount: countsMap['A'] || 0,
+	  sideBCount: countsMap['B'] || 0,
 	});
   } catch (error) {
 	console.error("[API /prop] Error:", error);

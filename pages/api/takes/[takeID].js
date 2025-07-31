@@ -12,38 +12,40 @@ export default async function handler(req, res) {
   }
 
   const { takeID } = req.query;
-  
+
   try {
-    // Query the "Takes" table for all records matching the receiptID field
-	const filterFormula = `{receiptID} = "${takeID}"`;
-	console.log('[API Takes] filterFormula for receiptID fetch:', filterFormula);
-	const records = await base("Takes")
-	  .select({
-		filterByFormula: filterFormula,
-		maxRecords: 1000,
-	  })
-	  .all();
-	console.log('[API Takes] Retrieved', records.length, 'records for receiptID:', takeID);
-	if (records.length === 0) {
-	  console.log('[API Takes] No takes found for receiptID:', takeID);
-	  return res.status(404).json({ success: false, error: "Take not found" });
-	}
+    // Fetch the single take record by record ID or TakeID field
+    const filterFormula = `OR(RECORD_ID() = "${takeID}", {TakeID} = "${takeID}")`;
+    const records = await base("Takes")
+      .select({ filterByFormula, maxRecords: 1 })
+      .all();
+    if (records.length === 0) {
+      return res.status(404).json({ success: false, error: "Take not found" });
+    }
+    const record = records[0];
+    const take = {
+      takeID: record.fields.TakeID || record.id,
+      propID: record.fields.propID,
+      propSide: record.fields.propSide,
+      createdTime: record._rawJson.createdTime,
+    };
 
-	// Map each record to a simpler take object
-	const takes = records.map((r) => ({
-	  id: r.id,
-	  receiptID: r.fields.receiptID || r.id,
-	  propID: r.fields.propID,
-	  propSide: r.fields.propSide,
-	  // include short labels for each side
-	  propSideAShort: r.fields.propSideAShort || "",
-	  propSideBShort: r.fields.propSideBShort || "",
-	  propTitle: r.fields.propTitle || "",
-	  createdTime: r._rawJson.createdTime,
-	}));
+    // Fetch prop details for this take
+    const propRecords = await base("Props")
+      .select({ filterByFormula: `{propID} = "${take.propID}"`, maxRecords: 1 })
+      .all();
+    let prop = null;
+    if (propRecords.length > 0) {
+      const f = propRecords[0].fields;
+      prop = {
+        propID: f.propID || null,
+        propShort: f.propShort || f.PropShort || "",
+        propSummary: f.propSummary || "",
+        propStatus: f.propStatus || "open",
+      };
+    }
 
-	// Return all takes for this receipt
-	return res.status(200).json({ success: true, takes });
+    return res.status(200).json({ success: true, take, prop });
   } catch (error) {
 	console.error("[API Takes] Error fetching takes for receiptID:", error);
 	return res.status(500).json({ success: false, error: "Server error fetching takes" });

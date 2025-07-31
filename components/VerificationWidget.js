@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession, signIn } from "next-auth/react";
 import Link from "next/link";
+import { usePackContext } from "../contexts/PackContext";
 import InputMask from "react-input-mask";
 
 /**
@@ -140,8 +141,12 @@ function Choice({
 		  {/* If showResults => also show the percentage, plus the "pirate" 🏴‍☠️ if isVerified */}
 		  {showResults && (
 			<>
-			  <span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
-			  {isVerified && <span className="ml-2">🏴‍☠️</span>}
+			  {isSelected ? (
+				<span className="ml-2 text-sm text-gray-700">({percentage}% Fans Agree)</span>
+			  ) : (
+				<span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
+			  )}
+			  {isVerified && <span className="ml-2">��‍☠️</span>}
 			</>
 		  )}
 		</span>
@@ -158,50 +163,44 @@ function PropChoices({
   selectedChoice,
   resultsRevealed,
   onSelectChoice,
-  sideAPct,
-  sideBPct,
-  sideALabel,
-  sideBLabel,
+  choices,
   alreadyTookSide,
 }) {
-  // If prop is "gradedA" => side A is correct
+  // Determine the winning side if graded (e.g. "gradedA", "gradedB", etc.) or a push
   let winningSide = null;
-  if (propStatus === "gradedA") {
-	winningSide = "A";
-  } else if (propStatus === "gradedB") {
-	winningSide = "B";
+  if (propStatus === "push") {
+    winningSide = "push";
+  } else if (propStatus.startsWith("graded")) {
+    winningSide = propStatus.slice(6);
   }
 
   // Only reveal results (bars + percentages) once the user has taken (or already had taken)
   const shouldShowResults = resultsRevealed && (!!alreadyTookSide || !!selectedChoice);
 
-  const choices = [
-	{ value: "A", label: sideALabel, percentage: sideAPct },
-	{ value: "B", label: sideBLabel, percentage: sideBPct },
-  ];
+  // Use the dynamic choices array passed in (each { value, label, percentage })
 
   return (
-	<div className="mb-4">
-	  {choices.map((choice) => {
-		const isSelected = selectedChoice === choice.value;
-		const isVerified = alreadyTookSide === choice.value;
+    <div className="mb-4">
+      {choices.map((choice) => {
+        const isSelected = selectedChoice === choice.value;
+        const isVerified = alreadyTookSide === choice.value;
 
-		return (
-		  <Choice
-			key={choice.value}
-			label={choice.label}
-			percentage={choice.percentage}
-			isSelected={isSelected}
-			isVerified={isVerified}
-			showResults={shouldShowResults}
-			propStatus={propStatus}
-			sideValue={choice.value}
-			onSelect={() => onSelectChoice(choice.value)}
-			winningSide={winningSide} // pass which side is correct if graded
-		  />
-		);
-	  })}
-	</div>
+        return (
+          <Choice
+            key={choice.value}
+            label={choice.label}
+            percentage={choice.percentage}
+            isSelected={isSelected}
+            isVerified={isVerified}
+            showResults={shouldShowResults}
+            propStatus={propStatus}
+            sideValue={choice.value}
+            onSelect={() => onSelectChoice(choice.value)}
+            winningSide={winningSide}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -430,6 +429,7 @@ export default function VerificationWidget({
   embeddedPropID,
   onVerificationComplete,
 }) {
+  const packCtx = usePackContext();
   const { data: session } = useSession();
   const [propData, setPropData] = useState(null);
   const [selectedChoice, setSelectedChoice] = useState("");
@@ -631,9 +631,17 @@ export default function VerificationWidget({
     if (selectedChoice === sideValue) {
       setSelectedChoice("");
       setResultsRevealed(false);
+      // propagate to pack context
+      if (packCtx?.handleChoiceSelect) {
+        packCtx.handleChoiceSelect(embeddedPropID, sideValue);
+      }
     } else {
       setSelectedChoice(sideValue);
       setResultsRevealed(true);
+      // propagate to pack context
+      if (packCtx?.handleChoiceSelect) {
+        packCtx.handleChoiceSelect(embeddedPropID, sideValue);
+      }
     }
   }
 
@@ -663,22 +671,32 @@ export default function VerificationWidget({
   const propStatus = propData.propStatus || "open";
   const readOnly = propStatus !== "open";
   const showResults = resultsRevealed;
-
-  // Add an initial 'house' vote on each side (philosophical buffer)
-  const rawSideACount = propData.sideACount || 0;
-  const rawSideBCount = propData.sideBCount || 0;
-  const sideACount = rawSideACount + 1;
-  const sideBCount = rawSideBCount + 1;
-  const total = sideACount + sideBCount;
-  const sideAPct = Math.round((sideACount / total) * 100);
-  const sideBPct = Math.round((sideBCount / total) * 100);
+  // Compute dynamic choices: for super-prop (more than 2 options), use raw counts; otherwise add a 'house' vote buffer
+  const choicesRaw = propData.choices || [];
+  let dynamicChoices;
+  if (choicesRaw.length > 2) {
+    const totalRaw = choicesRaw.reduce((sum, c) => sum + (c.count || 0), 0);
+    dynamicChoices = choicesRaw.map((c) => ({
+      value: c.value,
+      label: c.label,
+      percentage: totalRaw === 0 ? 0 : Math.round((c.count / totalRaw) * 100),
+    }));
+  } else {
+    const houseIncremented = choicesRaw.map((c) => ({ ...c, count: c.count + 1 }));
+    const totalHouse = houseIncremented.reduce((sum, c) => sum + c.count, 0);
+    dynamicChoices = houseIncremented.map((c) => ({
+      value: c.value,
+      label: c.label,
+      percentage: Math.round((c.count / totalHouse) * 100),
+    }));
+  }
 
   const hasVerifiedTake = !!alreadyTookSide;
   const buttonLabel = hasVerifiedTake ? "Update Take" : "Make This Take";
 
   let buttonDisabled = !selectedChoice;
   if (hasVerifiedTake && selectedChoice === alreadyTookSide) {
-	buttonDisabled = true;
+    buttonDisabled = true;
   }
 
   return (
@@ -699,16 +717,13 @@ export default function VerificationWidget({
 		<div className="mb-2 text-sm text-gray-700">Not logged in</div>
 	  )}
 
-	  {/* Render choice A/B with new grading icons if prop is graded */}
+	  {/* Render dynamic choices with new grading icons if prop is graded */}
 	  <PropChoices
 		propStatus={propStatus}
 		selectedChoice={selectedChoice}
 		resultsRevealed={showResults}
 		onSelectChoice={readOnly ? () => {} : handleSelectChoice}
-		sideAPct={sideAPct}
-		sideBPct={sideBPct}
-		sideALabel={propData.PropSideAShort || "Side A"}
-		sideBLabel={propData.PropSideBShort || "Side B"}
+		choices={dynamicChoices}
 		alreadyTookSide={alreadyTookSide}
 	  />
 	  <p className="text-xs text-gray-500">

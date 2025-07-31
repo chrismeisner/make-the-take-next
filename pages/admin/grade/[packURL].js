@@ -24,6 +24,7 @@ export default function GradePackPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
+  const [packType, setPackType] = useState(null);
 
   // Derive team nicknames (last word of full name)
   const homeName = homeTeam?.teamNameFull || homeTeam?.teamName || '';
@@ -38,6 +39,7 @@ export default function GradePackPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
+          setPackType(data.pack.packType || null);
           const propsData = data.pack.props || [];
           setPropsList(propsData);
           const init = {};
@@ -162,18 +164,36 @@ export default function GradePackPage() {
                   <div className="text-sm text-gray-600">{prop.propSummary}</div>
                 </div>
                 <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleStatusChange(prop.airtableId, 'gradedA')}
-                    className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedA' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    {prop.sideALabel}
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange(prop.airtableId, 'gradedB')}
-                    className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedB' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    {prop.sideBLabel}
-                  </button>
+                  {packType === 'superprop' ? (
+                    prop.sideLabels.map((label, i) => {
+                      const letter = String.fromCharCode(65 + i);
+                      const statusKey = `graded${letter}`;
+                      return (
+                        <button
+                          key={letter}
+                          onClick={() => handleStatusChange(prop.airtableId, statusKey)}
+                          className={`px-3 py-1 rounded ${statuses[prop.airtableId] === statusKey ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleStatusChange(prop.airtableId, 'gradedA')}
+                        className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedA' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        {prop.sideALabel}
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(prop.airtableId, 'gradedB')}
+                        className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedB' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        {prop.sideBLabel}
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={() => handleStatusChange(prop.airtableId, 'push')}
                     className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'push' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}

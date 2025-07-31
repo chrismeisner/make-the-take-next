@@ -140,6 +140,10 @@ export default function PacksIndexPage({ packsData }) {
 				  <p className="text-xs text-gray-500">
 					{pack.propsCount} propositions
 				  </p>
+				  {/* Indicate when a pack includes a super prop */}
+				  <span className={`inline-block px-2 py-1 mt-1 text-xs font-semibold ${pack.packType === "superprop" ? "text-red-600" : "text-gray-600"}`}>
+					{pack.packType === "superprop" ? "Super Prop" : "Prop Pack"}
+				  </span>
 				  <span
 					className={`inline-block px-2 py-1 rounded text-xs font-semibold mt-1 ${statusClasses}`}
 				  >

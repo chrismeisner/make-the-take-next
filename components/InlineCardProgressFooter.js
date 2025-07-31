@@ -14,13 +14,13 @@ export default function InlineCardProgressFooter() {
   const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
   const selectedCount = Object.keys(selectedChoices).length;
   const progressPercentage = totalProps === 0 ? 0 : Math.round((selectedCount / totalProps) * 100);
-  const allSelected = selectedCount === totalProps;
+  // Determine if selections differ from previous submission
   const hasChanges = previousSubmissions
     ? Object.entries(selectedChoices).some(
         ([propID, side]) => userTakesByProp[propID]?.side !== side
       )
     : true;
-  const canSubmit = allSelected && hasChanges;
+  const canSubmit = selectedCount > 0 && hasChanges;
 
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
@@ -84,13 +84,7 @@ export default function InlineCardProgressFooter() {
           <div className="text-white text-lg">Submitting...</div>
         </div>
       )}
-      <footer
-        style={{
-          backgroundColor: "#ffffff",
-          padding: "0.5rem",
-          paddingTop: "2rem", // extra space above the progress bar
-        }}
-      >
+      <footer className="fixed bottom-0 inset-x-0 bg-white p-2 pt-8 pb-[calc(0.5rem+env(safe-area-inset-bottom))] border-t border-gray-200 z-50 md:static md:bg-transparent md:p-0 md:pt-0 md:pb-0 md:border-t-0">
         <div
           style={{
             backgroundColor: "#e0e0e0",
@@ -118,7 +112,7 @@ export default function InlineCardProgressFooter() {
               textAlign: "left",
             }}
           >
-            {selectedCount} / {totalProps} selected
+            {selectedCount} / {totalProps} Takes Made
           </p>
           <button
             onClick={handleSubmit}

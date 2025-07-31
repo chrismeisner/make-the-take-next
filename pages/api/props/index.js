@@ -16,11 +16,21 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, packId, propOrder, propStatus, teams } = req.body;
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, packId, propOrder, propStatus, teams,
+            // Event linkage fields
+            eventTitle, eventTime, eventLeague } = req.body;
     if (!propShort || !packId) {
       return res.status(400).json({ success: false, error: "Missing propShort or packId" });
     }
     try {
+      // Optionally create a linked Event record
+      let eventRecordId;
+      if (eventTitle && eventTime && eventLeague) {
+        const [createdEvent] = await base("Events").create([{
+          fields: { eventTitle, eventTime, eventLeague }
+        }]);
+        eventRecordId = createdEvent.id;
+      }
       const created = await base("Props").create([
         {
           fields: {
@@ -36,6 +46,8 @@ export default async function handler(req, res) {
             // Link selected teams to this prop
             ...(teams && teams.length ? { Teams: teams } : {}),
             ...(propOrder !== undefined ? { propOrder } : {}),
+            // Link to Event record if created
+            ...(eventRecordId ? { Event: [eventRecordId] } : {}),
           },
         },
       ]);

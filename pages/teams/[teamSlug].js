@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Airtable from 'airtable';
 import Layout from '../../components/Layout';
+import LeaderboardTable from '../../components/LeaderboardTable';
 import Link from 'next/link';
 import { aggregateTakeStats } from '../../lib/leaderboard';
 
@@ -102,10 +103,29 @@ export async function getServerSideProps({ params }) {
   // Decorative end of leaderboard logging
   console.log(`🎉🎉🎉 [teams] Team Leaderboard COMPLETE for ${team.teamNameFull} 🎉🎉🎉`);
 
-  return { props: { team, packs, takeCount, teamStats } };
+  // Fetch profiles to map phone -> profileID for usernames
+  const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
+  const phoneToProfileID = new Map();
+  allProfiles.forEach(profile => {
+    const { profileMobile, profileID } = profile.fields;
+    if (profileMobile && profileID) {
+      phoneToProfileID.set(profileMobile, profileID);
+    }
+  });
+  // Build unified leaderboard data
+  const leaderboard = teamStats.map(s => ({
+    phone: s.phone,
+    takes: s.takes,
+    points: s.points,
+    won: s.won,
+    lost: s.lost,
+    pushed: s.pushed,
+    profileID: phoneToProfileID.get(s.phone) || null,
+  }));
+  return { props: { team, packs, takeCount, leaderboard } };
 }
 
-export default function TeamPage({ team, packs, takeCount, teamStats }) {
+export default function TeamPage({ team, packs, takeCount, leaderboard }) {
   // State for selected sort option
   const [sortOption, setSortOption] = useState('recent');
   // Memoized sorted packs based on sortOption
@@ -148,27 +168,8 @@ export default function TeamPage({ team, packs, takeCount, teamStats }) {
         <section>
           <h2 className="text-2xl font-semibold">Team Leaderboard</h2>
           <p className="mt-2 text-lg">Total takes: {takeCount}</p>
-          {teamStats.length > 0 ? (
-            <table className="mt-4 w-full table-auto">
-              <thead>
-                <tr>
-                  <th className="text-left px-2 py-1">Phone</th>
-                  <th className="text-left px-2 py-1">Takes</th>
-                  <th className="text-left px-2 py-1">Points</th>
-                  <th className="text-left px-2 py-1">Record (W-L-P)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teamStats.map(s => (
-                  <tr key={s.phone} className="border-t">
-                    <td className="px-2 py-1">{s.phone}</td>
-                    <td className="px-2 py-1">{s.takes}</td>
-                    <td className="px-2 py-1">{s.points}</td>
-                    <td className="px-2 py-1">{`${s.won}-${s.lost}-${s.pushed}`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {leaderboard.length > 0 ? (
+            <LeaderboardTable leaderboard={leaderboard} />
           ) : (
             <p className="text-gray-600 mt-2">No takes for this team yet.</p>
           )}

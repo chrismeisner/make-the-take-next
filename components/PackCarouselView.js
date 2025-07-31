@@ -18,7 +18,7 @@ import { useRouter } from "next/router";
 import { useModal } from "../contexts/ModalContext";
 
 // Add a swipeable cover card as the first slide
-function PackCoverCard({ packCover, packTitle, onImgLoad }) {
+function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
   return (
     <div className="w-full max-w-[600px] aspect-square mx-auto border border-gray-300 rounded-lg shadow-lg overflow-hidden">
       {packCover && packCover.length > 0 ? (
@@ -26,7 +26,8 @@ function PackCoverCard({ packCover, packTitle, onImgLoad }) {
           src={packCover[0].url}
           alt={packTitle}
           onLoad={onImgLoad}
-          className="w-full h-full object-cover rounded-lg"
+          onClick={onClick}
+          className="w-full h-full object-cover rounded-lg cursor-pointer"
         />
       ) : (
         <div className="bg-gray-200 w-full h-full flex items-center justify-center">
@@ -52,6 +53,14 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   const { props } = packData;
   const swiperRef = useRef(null);
   const router = useRouter();
+  // Read 'prop' param from URL to set initial carousel slide (0 = cover, 1 = first prop, etc.)
+  const propParam = router.query.prop;
+  const initialSlide = (() => {
+    if (!propParam) return 0;
+    const val = Array.isArray(propParam) ? propParam[0] : propParam;
+    const idx = parseInt(val, 10);
+    return isNaN(idx) || idx < 0 ? 0 : idx;
+  })();
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
@@ -260,6 +269,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     }
   }, [packData.homeTeam?.teamSlug, packData.awayTeam?.teamSlug]);
 
+  const handleCoverClick = () => {
+    if (swiperRef.current) {
+      swiperRef.current.slideNext();
+    }
+  };
+
   if (props.length === 0) {
     return (
       <p className="text-gray-600">
@@ -363,6 +378,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               {/* Narrower wrapper for the card stack */}
               <div className="mx-auto max-w-[420px] overflow-visible">
                 <Swiper
+                  initialSlide={initialSlide}
                   onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); }}
                   style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
                   className="pb-20 sm:pb-8"
@@ -374,11 +390,11 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 >
                   {/* First slide: Pack Cover */}
                   <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
-                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} />
+                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} onClick={handleCoverClick} />
                   </SwiperSlide>
                   {props.map((prop) => (
                     <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
-                      <CardViewCard prop={prop} />
+                      <CardViewCard prop={prop} currentReceiptId={currentReceiptId} />
                     </SwiperSlide>
                   ))}
                 </Swiper>

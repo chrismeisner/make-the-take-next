@@ -57,6 +57,23 @@ export default function EventSelector({ selectedEvent, onSelect }) {
     }
   };
 
+  // Add handler to fetch custom events from Airtable
+  const handleCheckAirtable = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/eventsByDate?date=${filterDate}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      const sorted = data.events.slice().sort((a, b) => new Date(a.eventTime) - new Date(b.eventTime));
+      setEvents(sorted);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       loadEvents();
@@ -113,6 +130,14 @@ export default function EventSelector({ selectedEvent, onSelect }) {
                     className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                   >
                     {fetchingEvents ? 'Refreshing...' : 'Get Events'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCheckAirtable}
+                    disabled={loading}
+                    className="ml-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Checking...' : 'Check Airtable'}
                   </button>
                 </div>
                 <ul className="max-h-64 overflow-y-auto space-y-2">

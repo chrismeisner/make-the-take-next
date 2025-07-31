@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const [userTakes, setUserTakes] = useState([]);
   const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0 });
   const [userPacks, setUserPacks] = useState([]);
+  const [userExchanges, setUserExchanges] = useState([]);
   const [prizes, setPrizes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,6 +35,7 @@ export default function ProfilePage() {
 			calculateUserStats(sortedTakes);
 		  }
 		  setUserPacks(data.userPacks || []);
+		  setUserExchanges(data.userExchanges || []);
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
@@ -78,10 +80,18 @@ export default function ProfilePage() {
 	setUserStats({ points: Math.round(points), wins, losses, pending });
   }
 
+  // Compute token balance including exchanges spent and log for debugging (unconditional hook)
+  const tokensEarned = Math.floor(userStats.points / 1000);
+  const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
+  const tokenBalance = tokensEarned - tokensSpent;
+  useEffect(() => {
+    console.log('[ProfilePage] Points:', userStats.points);
+    console.log('[ProfilePage] Exchanges:', userExchanges);
+    console.log('[ProfilePage] Tokens Earned:', tokensEarned, 'Tokens Spent:', tokensSpent, 'Token Balance:', tokenBalance);
+  }, [userStats.points, userExchanges, tokensEarned, tokensSpent, tokenBalance]);
   if (loading) return <div className="p-4">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
   if (!profile) return <div className="p-4">Profile not found.</div>;
-
   const isOwnProfile = session?.user && session.user.profileID === profile.profileID;
 
   return (
@@ -142,10 +152,14 @@ export default function ProfilePage() {
 
 	  {/* User Stats */}
 	  <h3 className="text-xl font-bold mt-6 mb-2">Your Stats</h3>
-	  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+	  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
 		<div>
 		  <strong className="block">Total Points</strong>
 		  {userStats.points}
+		</div>
+		<div>
+		  <strong className="block">Tokens</strong>
+		  {tokenBalance}
 		</div>
 		<div>
 		  <strong className="block">Wins</strong>
@@ -219,6 +233,19 @@ export default function ProfilePage() {
 		  ))}
 		</div>
 	  )}
+  {/* Exchanges Section */}
+  <h3 className="text-xl font-bold mt-6 mb-2">Exchanges</h3>
+  {userExchanges.length === 0 ? (
+    <p className="text-center">No exchanges yet.</p>
+  ) : (
+    <ul className="list-disc list-inside text-sm">
+      {userExchanges.map((ex) => (
+        <li key={ex.exchangeID}>
+          Spent {ex.exchangeTokens} tokens on {ex.exchangeItem.join(', ')} on {new Date(ex.createdTime).toLocaleString()}
+        </li>
+      ))}
+    </ul>
+  )}
 
 	  <p className="mt-4">
 		<Link href="/" className="underline text-blue-600">

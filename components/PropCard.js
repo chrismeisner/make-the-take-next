@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePackContext } from "../contexts/PackContext";
 import VerificationWidget from "./VerificationWidget";
+import Link from "next/link";
 
 export default function PropCard({ prop }) {
   const context = usePackContext();
@@ -53,9 +54,16 @@ export default function PropCard({ prop }) {
 
 	  {/* Show user's take if already taken */}
 	  {userTake && (
-		<p className="text-sm text-purple-600 mb-2">
-		  Your take: {userTake.side}
-		</p>
+		<>
+		  <p className="text-sm text-purple-600 mb-2">
+			Your take: {userTake.side}
+		  </p>
+		  <p className="text-sm mb-2">
+			<Link href={`/takes/${userTake.takeID}`} className="text-blue-600 underline">
+			  Take Link
+			</Link>
+		  </p>
+		</>
 	  )}
 
 	  {/* VerificationWidget */}

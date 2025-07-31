@@ -72,6 +72,12 @@ export default async function handler(req, res) {
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
+		// support dynamic sides for superprops
+		const sideCount = f.sideCount || 2;
+		const sideLabels = Array.from({ length: sideCount }, (_, i) => {
+		  const letter = String.fromCharCode(65 + i);
+		  return f[`PropSide${letter}Short`] || f[`propSide${letter}Short`] || "";
+		});
 
 		let contentImageUrls = [];
 		if (Array.isArray(f.contentImage)) {
@@ -100,10 +106,12 @@ export default async function handler(req, res) {
 		  propShort: f.propShort || f.PropShort || "",
 		  propStatus: f.propStatus || "open",
 		  propResult: f.propResult || "",
-		  // static side counts removed; will compute dynamically below
-		  // Include short labels for sides
-		  sideALabel: f.PropSideAShort || f.propSideAShort || "Side A",
-		  sideBLabel: f.PropSideBShort || f.propSideBShort || "Side B",
+		  // dynamic side info
+		  sideCount,
+		  sideLabels,
+		  // backward compatibility for two sides
+		  sideALabel: sideLabels[0] || "",
+		  sideBLabel: sideLabels[1] || "",
 		  contentImageUrls,
 		  contentLinks,
 		  propOrder: f.propOrder || 0,
@@ -317,6 +325,15 @@ export default async function handler(req, res) {
 	};
 
 	console.log("[packURL] packData =>", packData);
+	// Fetch all profiles to map phone -> profileID
+	const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
+	const phoneToProfileID = new Map();
+	allProfiles.forEach((profile) => {
+	  const { profileMobile, profileID } = profile.fields;
+	  if (profileMobile && profileID) {
+		phoneToProfileID.set(profileMobile, profileID);
+	  }
+	});
 
 	// ---------------------------------------------
 	// 6. Build leaderboard
@@ -333,16 +350,6 @@ export default async function handler(req, res) {
 
 	  // Aggregate stats using shared helper
 	  const statsList = aggregateTakeStats(takesRecords);
-
-	  // Map phone to profileID if available
-	  const phoneToProfileID = new Map();
-	  takesRecords.forEach((take) => {
-		const tf = take.fields;
-		const phoneKey = tf.takeMobile || "Unknown";
-		if (tf.Profile && Array.isArray(tf.Profile) && tf.Profile.length > 0 && tf.profileID) {
-		  phoneToProfileID.set(phoneKey, tf.profileID);
-		}
-	  });
 
 	  leaderboard = statsList.map((s) => ({
 		phone: s.phone,

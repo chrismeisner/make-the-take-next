@@ -228,8 +228,8 @@ export default function ContestDetailPage({ contestData, error }) {
 					  <td className="py-2 px-3">
 						{profileID ? (
 						  <Link
-							href={`/profile/${profileID}`}
-							className="text-blue-600 underline"
+							href={'/profile/' + profileID}
+							className={"text-blue-600 underline " + (profileID === session?.user?.profileID ? "font-bold" : "")}
 						  >
 							{profileID}
 						  </Link>

@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 export default function LeaderboardPage() {
+  const { data: session } = useSession();
+  const currentProfileID = session?.user?.profileID;
   const [subjectIDs, setSubjectIDs] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [leaderboard, setLeaderboard] = useState([]);
@@ -101,6 +104,7 @@ export default function LeaderboardPage() {
 		  <thead>
 			<tr style={{ borderBottom: '1px solid #ccc' }}>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Phone</th>
+			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Username</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Takes</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Points</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Record</th>
@@ -111,11 +115,20 @@ export default function LeaderboardPage() {
 			  <tr key={item.phone} style={{ borderBottom: '1px solid #eee' }}>
 				<td style={{ padding: '0.5rem' }}>
 				  {item.profileID ? (
-					<Link href={`/profile/${item.profileID}`}>
+					<Link href={'/profile/' + item.profileID}>
 					  {obscurePhone(item.phone)}
 					</Link>
 				  ) : (
 					obscurePhone(item.phone)
+				  )}
+				</td>
+				<td style={{ padding: '0.5rem', fontWeight: item.profileID === currentProfileID ? 'bold' : 'normal' }}>
+				  {item.profileID ? (
+					<Link href={'/profile/' + item.profileID}>
+					  {item.profileID}
+					</Link>
+				  ) : (
+					"Unknown"
 				  )}
 				</td>
 				<td style={{ padding: '0.5rem' }}>{item.count}</td>

@@ -15,14 +15,13 @@ export default function CardProgressFooter() {
   const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
   const selectedCount = Object.keys(selectedChoices).length;
   const progressPercentage = totalProps === 0 ? 0 : Math.round((selectedCount / totalProps) * 100);
-  const allSelected = selectedCount === totalProps;
   // Determine if selections differ from previous submission
   const hasChanges = previousSubmissions
     ? Object.entries(selectedChoices).some(
         ([propID, side]) => userTakesByProp[propID]?.side !== side
       )
     : true;
-  const canSubmit = allSelected && hasChanges;
+  const canSubmit = selectedCount > 0 && hasChanges;
 
   // Handle click: submit takes then show confirmation modal
   async function handleSubmit() {
@@ -50,19 +49,7 @@ export default function CardProgressFooter() {
           <div className="text-white text-lg">Submitting...</div>
         </div>
       )}
-      <footer
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: "#ffffff",
-        padding: "0.5rem",
-        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
-        borderTop: "1px solid #eee",
-        zIndex: 999,
-      }}
-    >
+      <footer className="fixed bottom-0 inset-x-0 bg-white p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] border-t border-gray-200 z-50 md:static md:border-t-0 md:p-0 md:bg-transparent">
       <div
         style={{
           backgroundColor: "#e0e0e0",
@@ -90,7 +77,7 @@ export default function CardProgressFooter() {
           textAlign: "left",
         }}
       >
-        {selectedCount} / {totalProps} selected
+        {selectedCount} / {totalProps} Takes Made
         </p>
         <button
           onClick={handleSubmit}

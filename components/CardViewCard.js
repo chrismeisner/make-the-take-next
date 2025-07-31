@@ -1,15 +1,22 @@
 import Link from "next/link";
 import { usePackContext } from "../contexts/PackContext";
+import { useModal } from "../contexts/ModalContext";
 import { PropChoices } from "./VerificationWidget";
 import { useState, useEffect } from "react";
 
-export default function CardViewCard({ prop }) {
+export default function CardViewCard({ prop, currentReceiptId }) {
   const {
     selectedChoices,
     handleChoiceSelect,
     userTakesByProp,
     friendTakesByProp,
+    packData,
   } = usePackContext();
+  const { openModal } = useModal();
+
+  // Determine this prop's slide index for sharing (cover is index 0)
+  const propIndex = packData.props.findIndex((p) => p.propID === prop.propID);
+  const slideIndex = propIndex >= 0 ? propIndex + 1 : 0;
   // Map propStatus values to display labels
   const statusLabels = { open: 'Open', closed: 'Closed', gradedA: 'Graded', gradedB: 'Graded' };
   const statusLabel = statusLabels[prop.propStatus] || prop.propStatus;
@@ -65,6 +72,14 @@ export default function CardViewCard({ prop }) {
     ? propResult
     : propSummary;
 
+  function handleShare() {
+    let challengeUrl = `${window.location.origin}/packs/${packData.packURL}?prop=${slideIndex}`;
+    if (currentReceiptId) {
+      challengeUrl += `&ref=${currentReceiptId}`;
+    }
+    openModal("challengeShare", { packTitle: packData.packTitle, picksText: "", challengeUrl });
+  }
+
   return (
     <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">
       {/* HEADER_HEIGHT: adjust this value (160px) to tweak status/title/overview block height */}
@@ -82,10 +97,10 @@ export default function CardViewCard({ prop }) {
         selectedChoice={selected}
         resultsRevealed={resultsRevealed}
         onSelectChoice={readOnly ? () => {} : (side) => handleChoiceSelect(prop.propID, side)}
-        sideAPct={sideAPct}
-        sideBPct={sideBPct}
-        sideALabel={prop.sideALabel}
-        sideBLabel={prop.sideBLabel}
+        choices={[
+          { value: "A", label: prop.sideALabel, percentage: sideAPct },
+          { value: "B", label: prop.sideBLabel, percentage: sideBPct },
+        ]}
         alreadyTookSide={alreadyTookSide}
       />
       {friendTake?.side && (
@@ -103,10 +118,13 @@ export default function CardViewCard({ prop }) {
         {totalTakes} {totalTakes === 1 ? "Take" : "Takes"} Made
       </p>
 
-      <div className="mt-1 text-sm">
+      <div className="mt-1 text-sm flex items-center space-x-4">
         <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
           See prop detail
         </Link>
+        <button onClick={handleShare} className="text-blue-600 underline">
+          Challenge
+        </button>
       </div>
     </div>
   );
