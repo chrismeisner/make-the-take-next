@@ -28,10 +28,10 @@ export default function PackPreview({ pack }) {
   return (
 	<Link
 	  href={pack.hasSuperProp ? `/props/${pack.superProps[0]}` : `/packs/${pack.packURL}`}
-	  className="border rounded shadow-md bg-white overflow-visible p-2 block text-black"
+	  className="w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black"
 	>
 	  <div
-		className="aspect-square relative bg-blue-600 bg-cover bg-center"
+		className="aspect-square w-full relative bg-blue-600 bg-cover bg-center"
 		style={{
 		  backgroundImage: coverUrl ? `url(${coverUrl})` : undefined,
 		}}

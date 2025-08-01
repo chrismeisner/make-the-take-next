@@ -115,6 +115,20 @@ export async function getServerSideProps(context) {
         userReceipts[0]
       ).receiptID;
     }
+
+    // Fetch the logged-in user's takes for their latest receipt
+    let challengerTakesByProp = {};
+    if (ref && latestReceiptId) {
+      const challengerTakeRecords = await base('Takes').select({
+        filterByFormula: `{receiptID} = "${latestReceiptId}"`,
+        maxRecords: 1000,
+      }).all();
+      challengerTakesByProp = challengerTakeRecords.reduce((acc, rec) => {
+        const { propID, propSide } = rec.fields;
+        if (propID) acc[propID] = { side: propSide };
+        return acc;
+      }, {});
+    }
     // Check if a challenge record already exists for this pack/ref and user
     let hasAcceptedChallenge = false;
     if (ref && latestReceiptId) {
@@ -168,6 +182,7 @@ export async function getServerSideProps(context) {
         friendProfile,
         userReceipts,
         latestReceiptId,
+        challengerTakesByProp,
         activity,
         isRef,
         hasAcceptedChallenge,
@@ -213,7 +228,7 @@ function ChallengeButton({ receiptId }) {
   );
 }
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, friendProfile, userReceipts, activity, isRef, latestReceiptId, hasAcceptedChallenge }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, challengerTakesByProp, friendProfile, userReceipts, activity, isRef, latestReceiptId, hasAcceptedChallenge }) {
   const { openModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
@@ -237,6 +252,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
       openModal('challenge', {
         friendName: friendProfile.profileUsername || friendProfile.profileID,
         friendTakesByProp,
+        challengerTakesByProp,
         packProps: packData.props,
         packURL: packData.packURL,
         initiatorReceiptId: router.query.ref,
@@ -244,7 +260,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         propIndex,
       });
     }
-  }, [friendProfile, hasAcceptedChallenge, openModal, friendTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptIdForChallenge]);
+  }, [friendProfile, hasAcceptedChallenge, openModal, friendTakesByProp, challengerTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptIdForChallenge]);
   // If this is a superprop pack, render the prop detail view instead of carousel
   if (packData.packType === 'superprop') {
     const superProp = Array.isArray(packData.props) && packData.props[0];
@@ -290,9 +306,6 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             userReceipts={userReceipts}
             activity={activity}
           />
-          {session && latestReceiptIdForChallenge && (
-            <ChallengeButton receiptId={latestReceiptIdForChallenge} />
-          )}
         </PackContextProvider>
       )}
     </>

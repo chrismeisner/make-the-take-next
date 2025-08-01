@@ -9,21 +9,26 @@ import Layout from "../components/Layout";
 import { ModalProvider } from "../contexts/ModalContext";
 import { WireframeProvider } from "../contexts/WireframeContext";
 import GlobalModalRenderer from "../components/GlobalModalRenderer";
+import Head from "next/head";
 
 export default function MyApp({ Component, pageProps: { session, ...pageProps } }) {
   console.log("[_app] Starting with session =>", session);
 
   return (
-    // Keep session fresh every 5 minutes and on window focus
-    <SessionProvider session={session} refetchInterval={300} refetchOnWindowFocus={true}>
-   	<ModalProvider>
-      <WireframeProvider>
-		<Layout>
-		  <Component {...pageProps} />
-		  <GlobalModalRenderer />
-		</Layout>
-      </WireframeProvider>
-	  </ModalProvider>
-	</SessionProvider>
+    <>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </Head>
+      <SessionProvider session={session}>
+        <ModalProvider>
+          <WireframeProvider>
+            <Layout>
+              <Component {...pageProps} />
+              <GlobalModalRenderer />
+            </Layout>
+          </WireframeProvider>
+        </ModalProvider>
+      </SessionProvider>
+    </>
   );
 }

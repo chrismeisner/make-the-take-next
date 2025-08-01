@@ -9,6 +9,8 @@ export default function MyDocument() {
   return (
 	<Html lang="en">
 	  <Head>
+		{/* Ensure proper responsive scaling on mobile devices */}
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		{/* Global meta tags (if any) should not conflict with page-level meta tags */}
 	  </Head>
 	  <body>

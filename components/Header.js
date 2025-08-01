@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { signOut, useSession } from "next-auth/react";
-import { useWireframe } from "../contexts/WireframeContext";
+import { useSession } from "next-auth/react";
 
 // Minimal link style for header links (non-pill)
 const linkBaseStyles = "text-sm text-gray-200 hover:text-gray-300 transition-colors";
@@ -16,12 +15,12 @@ const pillLinkStyles = `
   text-gray-200 transition-colors
 `;
 
-export default function Header() {
+export default function Header({ collapsed, setCollapsed }) {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { enabled: wireframeMode, setEnabled: setWireframeMode } = useWireframe();
   const [userPoints, setUserPoints] = useState(null);
-  const [timezone, setTimezone] = useState("");
+  const [tokenBalance, setTokenBalance] = useState(null);
+  // timezone detection removed; now only in admin page
 
   useEffect(() => {
 	console.log("[Header] Session status:", status);
@@ -54,14 +53,33 @@ export default function Header() {
 	  setUserPoints(null);
 	}
   }, [session, status]);
-
-  // Detect and store user's time zone on client
+  
+  // Compute token balance based on points and exchanges
   useEffect(() => {
-	if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
-	  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	  setTimezone(tz);
-	}
-  }, []);
+    if (userPoints == null || !session?.user?.profileID) {
+      setTokenBalance(null);
+      return;
+    }
+    async function fetchTokenBalance() {
+      try {
+        const res = await fetch(
+          `/api/profile/${encodeURIComponent(session.user.profileID)}`
+        );
+        const data = await res.json();
+        const tokensEarned = Math.floor(userPoints / 1000);
+        const tokensSpent = data.success
+          ? data.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
+          : 0;
+        setTokenBalance(tokensEarned - tokensSpent);
+      } catch (err) {
+        console.error("[Header] Error fetching token balance:", err);
+        setTokenBalance(null);
+      }
+    }
+    fetchTokenBalance();
+  }, [userPoints, session]);
+
+  // timezone detection removed; now only in admin page
 
   // Logged out => simple login button
   function LoginButton() {
@@ -83,41 +101,37 @@ export default function Header() {
 
 	return (
 	  <div className="flex items-center space-x-3">
+		<span className="text-sm text-gray-200">
+		  {userPoints != null ? `${userPoints} pts` : ""}
+		</span>
+		<span className="text-sm text-gray-200">
+		  {tokenBalance != null ? `${tokenBalance} tokens` : ""}
+		</span>
 		{/* ProfileID => link to /profile/[profileID] */}
 		<Link href={`/profile/${profileID}`} className={pillLinkStyles}>
 		  💀 {profileID}
 		</Link>
-		<button onClick={() => signOut()} className={pillLinkStyles}>
-		  Sign Out
-		</button>
+		{/* Sign out moved to sidebar */}
 	  </div>
 	);
   }
 
   return (
-	<header className="fixed inset-x-0 top-0 z-50 bg-gray-800 text-white shadow-md border-b border-gray-700">
+	<header className="bg-gray-800 text-white shadow-md border-b border-gray-700">
 	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		{/* Single row: brand on left, nav on right */}
 		<div className="flex items-center justify-between h-12">
 		  {/* Brand and timezone */}
 		  <div className="flex items-center">
+			<button onClick={() => setCollapsed(!collapsed)} className="text-gray-200 hover:text-gray-300 transition-colors mr-4">
+			  {collapsed ? '>>' : '<<'}
+			</button>
 			<Link href="/" className={linkBaseStyles}>
 			  🏴‍☠️ Make The Take
 			</Link>
-			{timezone && (
-			  <span className="ml-4 text-xs text-gray-300">{timezone}</span>
-			)}
+			{/* timezone display removed; moved to admin page */}
 		  </div>
 		  <nav className="flex items-center space-x-4">
-			<label className="flex items-center space-x-1">
-			  <input
-				type="checkbox"
-				checked={wireframeMode}
-				onChange={() => setWireframeMode(!wireframeMode)}
-				className="form-checkbox h-4 w-4 text-red-500 bg-gray-800 border-gray-300 rounded"
-			  />
-			  <span className="text-sm text-gray-200">Wireframe</span>
-			</label>
 			{session?.user && session.user.profileID ? (
 			  <LoggedInLinks />
 			) : (

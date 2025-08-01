@@ -286,7 +286,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   return (
     <>
       {/* Removed sticky footer; using inline footer below pagination */}
-      <div className="p-4 overflow-visible pb-16">
+      <div className="p-4 overflow-x-visible pb-32 md:pb-24">
         <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-2">
           <div className="space-y-6">
             {/* Pack details header */}

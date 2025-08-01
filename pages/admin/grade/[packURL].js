@@ -134,7 +134,7 @@ export default function GradePackPage() {
   }
 
   return (
-    <div className="p-4">
+    <div className="space-y-4">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage("")} />}
       <h1 className="text-2xl font-bold mb-4">Grade Pack: {packURL}</h1>
       {homeTeam && awayTeam && homeTeamScore !== null && awayTeamScore !== null && eventLeague && espnGameID && (

@@ -26,8 +26,8 @@ export default function GlobalModalRenderer() {
   switch (modalConfig.modalType) {
 	case "challenge":
 	  {
-        // Destructure props including for accepting the challenge
-        const { friendName, friendTakesByProp, packProps, packURL, initiatorReceiptId, challengerReceiptId, propIndex } = modalConfig.modalProps;
+        // Include the logged-in user's takes
+        const { friendName, friendTakesByProp, challengerTakesByProp, packProps, packURL, initiatorReceiptId, challengerReceiptId, propIndex } = modalConfig.modalProps;
         const propsToShow = (typeof propIndex === 'number' && propIndex >= 0 && propIndex < packProps.length)
           ? [packProps[propIndex]]
           : packProps;
@@ -53,12 +53,20 @@ export default function GlobalModalRenderer() {
               {propsToShow.map((p) => {
                 const take = friendTakesByProp[p.propID];
                 if (!take) return null;
-                const label = p.propShort || p.propTitle || p.propID;
-                const sideLabel = take.side === 'A' ? p.sideALabel : p.sideBLabel;
+                // Show full question text from the prop
+                const question = p.propSummary || p.propTitle || p.propShort || p.propID;
+                // Friend's chosen statement
+                const chosenStatement = take.side === 'A' ? p.sideALabel : p.sideBLabel;
+                // Logged-in user's own statement
+                const userTake = challengerTakesByProp?.[p.propID];
+                const yourStatement = userTake ? (userTake.side === 'A' ? p.sideALabel : p.sideBLabel) : null;
                 return (
-                  <li key={p.propID} className="flex justify-between">
-                    <span>{label}</span>
-                    <span className="font-semibold">{sideLabel}</span>
+                  <li key={p.propID} className="mb-4">
+                    <p className="text-base mb-1">{question}</p>
+                    <p className="font-semibold mb-1">{chosenStatement}</p>
+                    {yourStatement && (
+                      <p className="text-sm text-gray-600">Your take: {yourStatement}</p>
+                    )}
                   </li>
                 );
               })}
@@ -192,7 +200,7 @@ export default function GlobalModalRenderer() {
 	  );
 	case "challengeShare":
 	  {
-        const { packTitle, picksText, challengeUrl } = modalConfig.modalProps;
+        const { packTitle, picksText, challengeUrl, propQuestion, sideTake } = modalConfig.modalProps;
         return (
           <ChallengeShareModal
             isOpen={true}
@@ -200,6 +208,8 @@ export default function GlobalModalRenderer() {
             packTitle={packTitle}
             picksText={picksText}
             challengeUrl={challengeUrl}
+            propQuestion={propQuestion}
+            sideTake={sideTake}
           />
         );
       }

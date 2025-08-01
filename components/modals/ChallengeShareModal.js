@@ -1,15 +1,17 @@
 import React from "react";
 import GlobalModal from "./GlobalModal";
 
-export default function ChallengeShareModal({ isOpen, onClose, packTitle, picksText, challengeUrl }) {
+export default function ChallengeShareModal({ isOpen, onClose, packTitle, picksText, challengeUrl, propQuestion, sideTake }) {
   // Split picksText into individual lines for display
   const picksList = picksText ? picksText.split(/,\s*/) : [];
 
   // Share handler: native or fallback
   const handleShare = async () => {
-    const message = picksText
-      ? `My picks: ${picksText}. Can you beat my score on ${packTitle}? ${challengeUrl}`
-      : `Can you beat my score on ${packTitle}? ${challengeUrl}`;
+    const message = sideTake
+      ? `I just made the take: ${sideTake}. Think you know better? ${challengeUrl}`
+      : picksText
+        ? `I just made these picks: ${picksText}. Think you know better? ${challengeUrl}`
+        : `Think you know better? ${challengeUrl}`;
 
     if (navigator.share) {
       try {
@@ -35,6 +37,9 @@ export default function ChallengeShareModal({ isOpen, onClose, packTitle, picksT
     <GlobalModal isOpen={isOpen} onClose={onClose}>
       <div className="p-4">
         <h2 className="text-2xl font-bold mb-4">Challenge a friend!</h2>
+        {propQuestion && (
+          <p className="mb-2 font-medium">Question: {propQuestion}</p>
+        )}
         {picksList.length > 0 && (
           <>
             <p className="mb-2 font-medium">My picks:</p>
@@ -45,7 +50,9 @@ export default function ChallengeShareModal({ isOpen, onClose, packTitle, picksT
             </ul>
           </>
         )}
-        <p className="mb-4">Can you beat my score on <strong>{packTitle}</strong>?</p>
+        {sideTake && (
+          <p className="mb-2 font-medium">Take: {sideTake}</p>
+        )}
         <p className="break-all text-blue-600 underline mb-4">{challengeUrl}</p>
         <div className="flex justify-end">
           <button

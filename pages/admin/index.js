@@ -1,12 +1,21 @@
 // File: /pages/admin/index.js
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useModal } from "../../contexts/ModalContext";
 
 export default function AdminPage({ superAdminSecret }) {
   const { data: session } = useSession();
   const { openModal } = useModal();
+  const [timezone, setTimezone] = useState("");
+
+  useEffect(() => {
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setTimezone(tz);
+    }
+  }, []);
+
   async function handleSwitchSuperAdmin() {
     await signOut({ redirect: false });
     signIn("super-admin", {
@@ -117,6 +126,9 @@ export default function AdminPage({ superAdminSecret }) {
   return (
 	<div className="p-4">
 	  <h1 className="text-2xl font-bold mb-4">Admin Tools</h1>
+	  {timezone && (
+          <p className="text-xs text-gray-500 mb-4">Timezone: {timezone}</p>
+        )}
 	  <p>Welcome, Admin.</p>
 	  <button
         onClick={handleSwitchSuperAdmin}

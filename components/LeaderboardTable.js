@@ -33,47 +33,49 @@ export default function LeaderboardTable({ leaderboard }) {
   }
 
   return (
-	<table className="w-full border-collapse">
-	  <thead>
-		<tr className="border-b">
-		  <th className="text-left py-2 px-3">Phone</th>
-		  <th className="text-left py-2 px-3">Username</th>
-		  <th className="text-left py-2 px-3">Takes</th>
-		  <th className="text-left py-2 px-3">Record (W-L-T)</th>
-		  <th className="text-left py-2 px-3">Points</th>
-		</tr>
-	  </thead>
-	  <tbody>
-		{leaderboard.map((item, idx) => (
-		  <tr key={idx} className="border-b">
-			<td className="py-2 px-3">
-			  {item.profileID ? (
-				<Link href={"/profile/" + item.profileID}>
-				  <span className="text-blue-600 underline">
-					{obscurePhone(item.phone)}
-				  </span>
-				</Link>
-			  ) : (
-				obscurePhone(item.phone)
-			  )}
-			</td>
-			<td className="py-2 px-3">
-			  {item.profileID ? (
-				<Link href={"/profile/" + item.profileID}>
-				  <span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
-					{item.profileID}
-				  </span>
-				</Link>
-			  ) : (
-				'Unknown'
-			  )}
-			</td>
-			<td className="py-2 px-3">{item.takes}</td>
-			<td className="py-2 px-3">{item.won || 0}-{item.lost || 0}-{item.pushed || 0}</td>
-			<td className="py-2 px-3">{Math.round(item.points)}</td>
+	<div className="overflow-x-auto w-full">
+	  <table className="min-w-full border-collapse">
+		<thead>
+		  <tr className="border-b">
+			<th className="text-left py-2 px-3">Phone</th>
+			<th className="text-left py-2 px-3">Username</th>
+			<th className="text-left py-2 px-3">Takes</th>
+			<th className="text-left py-2 px-3">Record (W-L-T)</th>
+			<th className="text-left py-2 px-3">Points</th>
 		  </tr>
-		))}
-	  </tbody>
-	</table>
+		</thead>
+		<tbody>
+		  {leaderboard.map((item, idx) => (
+			<tr key={idx} className="border-b">
+			  <td className="py-2 px-3">
+				{item.profileID ? (
+				  <Link href={"/profile/" + item.profileID}>
+					<span className="text-blue-600 underline">
+					  {obscurePhone(item.phone)}
+					</span>
+				  </Link>
+				) : (
+				  obscurePhone(item.phone)
+				)}
+			  </td>
+			  <td className="py-2 px-3">
+				{item.profileID ? (
+				  <Link href={"/profile/" + item.profileID}>
+					<span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
+					  {item.profileID}
+					</span>
+				  </Link>
+				) : (
+				  'Unknown'
+				)}
+			  </td>
+			  <td className="py-2 px-3">{item.takes}</td>
+			  <td className="py-2 px-3">{item.won || 0}-{item.lost || 0}-{item.pushed || 0}</td>
+			  <td className="py-2 px-3">{Math.round(item.points)}</td>
+			</tr>
+		  ))}
+		</tbody>
+	  </table>
+	</div>
   );
 }

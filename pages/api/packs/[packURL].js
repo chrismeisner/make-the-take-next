@@ -112,6 +112,9 @@ export default async function handler(req, res) {
 		  // backward compatibility for two sides
 		  sideALabel: sideLabels[0] || "",
 		  sideBLabel: sideLabels[1] || "",
+		  // expose the actual take text for each side
+		  propSideATake: f.PropSideATake || "",
+		  propSideBTake: f.PropSideBTake || "",
 		  contentImageUrls,
 		  contentLinks,
 		  propOrder: f.propOrder || 0,

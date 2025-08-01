@@ -77,7 +77,10 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     if (currentReceiptId) {
       challengeUrl += `&ref=${currentReceiptId}`;
     }
-    openModal("challengeShare", { packTitle: packData.packTitle, picksText: "", challengeUrl });
+    const sideLabel = selected === "A" ? prop.sideALabel : prop.sideBLabel;
+    const sideTake = selected === "A" ? prop.propSideATake : prop.propSideBTake;
+    const propQuestion = prop.propShort;
+    openModal("challengeShare", { packTitle: packData.packTitle, picksText: sideLabel, challengeUrl, propQuestion, sideTake });
   }
 
   return (
@@ -122,9 +125,13 @@ export default function CardViewCard({ prop, currentReceiptId }) {
         <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
           See prop detail
         </Link>
-        <button onClick={handleShare} className="text-blue-600 underline">
-          Challenge
-        </button>
+        {alreadyTookSide ? (
+          <button onClick={handleShare} className="text-blue-600 underline">
+            Challenge
+          </button>
+        ) : (
+          <span className="text-gray-600">Make The Take</span>
+        )}
       </div>
     </div>
   );

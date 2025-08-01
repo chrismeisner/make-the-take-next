@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
-import Header from "../components/Header";
 import LeaderboardTable from "../components/LeaderboardTable";
 import useLeaderboard from "../hooks/useLeaderboard";
 import Link from "next/link";
@@ -266,9 +265,8 @@ export default function LandingPage() {
 	: "Yes, sign me up for SMS updates";
 
   return (
-	<div className="min-h-screen w-screen bg-black text-white">
-	  <Header />
-	  <div className="p-4 max-w-4xl mx-auto">
+	<div className="bg-white text-gray-900">
+	  <div className="p-4 w-full max-w-4xl mx-auto">
 		{session?.user ? (
 		  <>
 			{/* Active Packs Section */}
@@ -292,7 +290,7 @@ export default function LandingPage() {
 			  {loadingPacks ? (
 				<p className="text-center">Loading packs...</p>
 			  ) : sortedPacks.length > 0 ? (
-				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+				<div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 				  {sortedPacks.map((pack) => (
 					<PackPreview key={pack.packID} pack={pack} />
 				  ))}
