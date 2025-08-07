@@ -59,12 +59,9 @@ export default async function handler(req, res) {
 	  }
 	}
 
-	// 3) Fetch Takes (excluding overwritten)
+	// 3) Fetch Takes (using the “All” view to exclude hidden/overwritten)
 	let allTakes = await base('Takes')
-	  .select({
-		maxRecords: 5000,
-		filterByFormula: '{takeStatus} != "overwritten"',
-	  })
+	  .select({ maxRecords: 5000 })
 	  .all();
 
 	// 4) If we have a packURL => filter out any takes that do NOT match those pack propIDs
@@ -91,6 +88,9 @@ export default async function handler(req, res) {
 	  const propStatus = take.fields.propStatus || 'open';
 	  return propStatus !== 'archived' && propStatus !== 'draft';
 	});
+
+	// Exclude hidden takes based on takeHide field
+	allTakes = allTakes.filter((take) => !Boolean(take.fields.takeHide));
 
 	// Aggregate stats using shared helper
 	const statsList = aggregateTakeStats(allTakes);

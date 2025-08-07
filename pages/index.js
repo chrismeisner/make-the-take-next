@@ -3,8 +3,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
-import LeaderboardTable from "../components/LeaderboardTable";
-import useLeaderboard from "../hooks/useLeaderboard";
 import Link from "next/link";
 import PackPreview from "../components/PackPreview";
 
@@ -27,25 +25,64 @@ export default function LandingPage() {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
 
-  // Unified leaderboard hook
-  const { leaderboard, loading: loadingLeaderboard, error: leaderboardError } = useLeaderboard({});
-
   // State for active packs (for logged-in users)
   const [activePacks, setActivePacks] = useState([]);
   const [loadingPacks, setLoadingPacks] = useState(true);
 
   // State for user takes (for logged-in users)
   const [userTakes, setUserTakes] = useState([]);
-  // State and memo for sorting active packs by event time
+  // State and memo for sorting active packs by the earliest event time
   const [sortOption, setSortOption] = useState("eventTimeDesc");
+  // Add state to hide graded packs by default
+  const [hideGraded, setHideGraded] = useState(false);
+  // Add state to filter by event time, default to all time
+  const [timeFilter, setTimeFilter] = useState("thisWeek");
+  // Helper to compute the earliest event time from propEventRollup or fallback
+  const getMinEventTime = pack => {
+    const times = Array.isArray(pack.propEventRollup) ? pack.propEventRollup : [];
+    if (times.length > 0) {
+      return Math.min(...times.map(t => new Date(t).getTime()));
+    }
+    return new Date(pack.eventTime).getTime();
+  };
+
   const sortedPacks = useMemo(() => {
     if (sortOption === "eventTimeAsc") {
-      return [...activePacks].sort((a, b) => new Date(a.eventTime) - new Date(b.eventTime));
+      return [...activePacks].sort((a, b) => getMinEventTime(a) - getMinEventTime(b));
     } else if (sortOption === "eventTimeDesc") {
-      return [...activePacks].sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime));
+      return [...activePacks].sort((a, b) => getMinEventTime(b) - getMinEventTime(a));
     }
     return activePacks;
   }, [activePacks, sortOption]);
+
+  // Derived list of packs excluding graded ones when hideGraded is true
+  const displayedPacks = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).getTime();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+
+    return sortedPacks.filter(pack => {
+      // Hide graded packs if requested
+      if (hideGraded && String(pack.packStatus).toLowerCase() === "graded") {
+        return false;
+      }
+      // Filter by event time
+      const eventTime = getMinEventTime(pack);
+      if (timeFilter === "today") {
+        return eventTime >= startOfToday && eventTime < startOfToday + 24 * 60 * 60 * 1000;
+      }
+      if (timeFilter === "thisWeek") {
+        return eventTime >= startOfWeek && eventTime < startOfWeek + 7 * 24 * 60 * 60 * 1000;
+      }
+      if (timeFilter === "thisMonth") {
+        return eventTime >= startOfMonth && eventTime < startOfNextMonth;
+      }
+      // 'allTime'
+      return true;
+    });
+  }, [sortedPacks, hideGraded, timeFilter]);
 
   // Fetch teams on mount (for login flow)
   useEffect(() => {
@@ -272,26 +309,53 @@ export default function LandingPage() {
 			{/* Active Packs Section */}
 			<div className="mb-8">
 			  <h2 className="text-2xl font-bold mb-4 text-center">Active Pack Drops</h2>
-			  {/* Sort control for active packs */}
-			  {!loadingPacks && activePacks.length > 0 && (
-				<div className="flex justify-center mb-4">
-				  <label htmlFor="sortOption" className="mr-2 text-sm font-medium text-gray-200">Sort by:</label>
+			  {/* Combined Controls: Sort, Hide Graded, Show */}
+			  {!loadingPacks && (
+				<div className="flex items-center justify-center mb-4 space-x-6">
+				  <label htmlFor="sortOption" className="text-sm font-medium text-gray-700">
+					Sort by:
+				  </label>
 				  <select
 					id="sortOption"
 					value={sortOption}
 					onChange={(e) => setSortOption(e.target.value)}
-					className="border rounded px-2 py-1 bg-black text-white"
+					className="border rounded px-2 py-1"
 				  >
-					<option value="eventTimeDesc">Latest</option>
 					<option value="eventTimeAsc">Coming Up Soonest</option>
+					<option value="eventTimeDesc">Latest</option>
+				  </select>
+
+				  <label className="inline-flex items-center">
+					<input
+					  type="checkbox"
+					  className="mr-2"
+					  checked={hideGraded}
+					  onChange={() => setHideGraded(prev => !prev)}
+					/>
+					<span className="text-gray-700">Hide graded packs</span>
+				  </label>
+
+				  <label htmlFor="timeFilter" className="text-sm font-medium text-gray-700">
+					Show:
+				  </label>
+				  <select
+					id="timeFilter"
+					value={timeFilter}
+					onChange={(e) => setTimeFilter(e.target.value)}
+					className="border rounded px-2 py-1"
+				  >
+					<option value="today">Today</option>
+					<option value="thisWeek">This Week</option>
+					<option value="thisMonth">This Month</option>
+					<option value="allTime">All Time</option>
 				  </select>
 				</div>
 			  )}
 			  {loadingPacks ? (
 				<p className="text-center">Loading packs...</p>
-			  ) : sortedPacks.length > 0 ? (
+			  ) : displayedPacks.length > 0 ? (
 				<div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-				  {sortedPacks.map((pack) => (
+				  {displayedPacks.map((pack) => (
 					<PackPreview key={pack.packID} pack={pack} />
 				  ))}
 				</div>
@@ -299,20 +363,7 @@ export default function LandingPage() {
 				<p className="text-center">No active packs</p>
 			  )}
 			</div>
-			{/* Leaderboard Section */}
-			<div>
-			  <h2 className="text-2xl font-bold mb-4 text-center">Leaderboard</h2>
-			  {loadingLeaderboard ? (
-				<p className="text-center">Loading leaderboard...</p>
-			  ) : leaderboardError ? (
-				<p className="text-center text-red-500">Error: {leaderboardError}</p>
-			  ) : leaderboard && leaderboard.length > 0 ? (
-				<LeaderboardTable leaderboard={leaderboard} />
-			  ) : (
-				<p className="text-center">No participants yet.</p>
-			  )}
-			</div>
-		  </>
+          </>
 		) : (
 		  <>
 			<p className="text-base font-medium mb-4 text-center">{entryTitle}</p>

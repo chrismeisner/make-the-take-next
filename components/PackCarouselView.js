@@ -294,19 +294,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
               <div className="mt-2 flex flex-wrap text-sm text-gray-500 gap-4">
-                <span>Type: {packData.packType}</span>
                 {packData.packType === 'event' && packData.eventTime && (
-                  <span className="inline-flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span>
-                      Event: {packData.homeTeam?.teamNameFull} vs {packData.awayTeam?.teamNameFull} on {new Date(packData.eventTime).toLocaleString()}
-                    </span>
-                    {isClient && (
-                      <span>
-                        {timeLeft > 0
-                          ? `Starts in ${formatTime(timeLeft)}`
-                          : 'The event has started'}
-                      </span>
-                    )}
+                  <span>
+                    Event: {packData.homeTeam?.teamNameFull} vs {packData.awayTeam?.teamNameFull} on {new Date(packData.eventTime).toLocaleString()}
                   </span>
                 )}
                 {packData.packCreatorID && <span>Creator: {packData.packCreatorID}</span>}

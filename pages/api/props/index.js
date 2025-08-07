@@ -16,41 +16,77 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, packId, propOrder, propStatus, teams,
+    // Destructure core prop fields, including value model and moneylines
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, propStatus, packId, propOrder, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCover,
+            propCloseTime,
             // Event linkage fields
-            eventTitle, eventTime, eventLeague } = req.body;
-    if (!propShort || !packId) {
-      return res.status(400).json({ success: false, error: "Missing propShort or packId" });
+            eventId, eventTitle, eventTime, eventLeague } = req.body;
+    // Parse moneyline inputs to numbers for Airtable numeric fields
+    const moneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
+      ? parseFloat(PropSideAMoneyline)
+      : null;
+    const moneylineB = (PropSideBMoneyline !== undefined && PropSideBMoneyline !== "")
+      ? parseFloat(PropSideBMoneyline)
+      : null;
+    if (!propShort || (!packId && !eventId)) {
+      return res.status(400).json({ success: false, error: "Missing propShort or packId/eventId" });
     }
     try {
-      // Optionally create a linked Event record
+      // Log incoming payload for debugging
+      console.log('[api/props POST] req.body:', req.body);
+      // Build fields object for Airtable
+      const fieldsToCreate = {
+        propShort,
+        propSummary,
+        PropSideAShort,
+        PropSideBShort,
+        PropSideATake,
+        PropSideBTake,
+        propType,
+        propStatus: propStatus ?? "open",
+        ...(packId ? { Packs: [packId] } : {}),
+        ...(teams && teams.length ? { Teams: teams } : {}),
+        ...(propOrder !== undefined ? { propOrder } : {}),
+        ...(propValueModel ? { propValueModel } : {}),
+        ...(moneylineA !== null && !isNaN(moneylineA) ? { PropSideAMoneyline: moneylineA } : {}),
+        ...(moneylineB !== null && !isNaN(moneylineB) ? { PropSideBMoneyline: moneylineB } : {}),
+        ...(propCover ? { propCover: [{ url: propCover }] } : {}),
+      };
+      console.log('[api/props POST] fieldsToCreate:', fieldsToCreate);
+      // Determine eventRecordId: explicit, new, or pack's existing event
       let eventRecordId;
-      if (eventTitle && eventTime && eventLeague) {
-        const [createdEvent] = await base("Events").create([{
-          fields: { eventTitle, eventTime, eventLeague }
-        }]);
+      if (eventId && typeof eventId === 'string' && eventId.startsWith('rec')) {
+        eventRecordId = eventId;
+      } else if (eventTitle && eventTime && eventLeague) {
+        const [createdEvent] = await base("Events").create([{ fields: { eventTitle, eventTime, eventLeague } }]);
         eventRecordId = createdEvent.id;
+      } else {
+        const packRec = await base("Packs").find(packId);
+        const packEventLink = packRec.fields.Event || [];
+        if (Array.isArray(packEventLink) && packEventLink.length) {
+          eventRecordId = packEventLink[0];
+        }
       }
+      // Parse and convert propCloseTime to ISO date string
+      let closeTimeIso = null;
+      if (propCloseTime) {
+        closeTimeIso = new Date(propCloseTime).toISOString();
+      }
+      // Now that eventRecordId and closeTimeIso are defined, add them
+      if (eventRecordId) {
+        fieldsToCreate.Event = [eventRecordId];
+        console.log('[api/props POST] fieldsToCreate.Event set to', eventRecordId);
+      }
+      if (closeTimeIso) {
+        fieldsToCreate.propCloseTime = closeTimeIso;
+        console.log('[api/props POST] fieldsToCreate.propCloseTime set to', closeTimeIso);
+      }
+      // Create the Prop record
       const created = await base("Props").create([
         {
-          fields: {
-            propShort,
-            propSummary,
-            PropSideAShort,
-            PropSideBShort,
-            PropSideATake,
-            PropSideBTake,
-            propType,
-            propStatus: propStatus ?? "open",
-            Packs: [packId],
-            // Link selected teams to this prop
-            ...(teams && teams.length ? { Teams: teams } : {}),
-            ...(propOrder !== undefined ? { propOrder } : {}),
-            // Link to Event record if created
-            ...(eventRecordId ? { Event: [eventRecordId] } : {}),
-          },
+          fields: fieldsToCreate,
         },
-      ]);
+      ], { typecast: true });
       return res.status(200).json({ success: true, record: created[0] });
     } catch (err) {
       console.error("[api/props POST] Error =>", err);
@@ -59,7 +95,17 @@ export default async function handler(req, res) {
   }
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
-    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams } = req.body;
+    // Destructure updatable fields, including new ones
+    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime } = req.body;
+    // Parse moneyline inputs for updates
+    const updMoneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
+      ? parseFloat(PropSideAMoneyline)
+      : null;
+    const updMoneylineB = (PropSideBMoneyline !== undefined && PropSideBMoneyline !== "")
+      ? parseFloat(PropSideBMoneyline)
+      : null;
+    // Parse and convert propCloseTime to ISO for updates
+    const updCloseTimeIso = propCloseTime ? new Date(propCloseTime).toISOString() : null;
     if (!propId) {
       return res.status(400).json({ success: false, error: "Missing propId" });
     }
@@ -89,9 +135,13 @@ export default async function handler(req, res) {
       if (PropSideBTake  !== undefined) fieldsToUpdate.PropSideBTake  = PropSideBTake;
       if (propType       !== undefined) fieldsToUpdate.propType       = propType;
       if (teams          !== undefined) fieldsToUpdate.Teams          = teams;
+      if (propValueModel !== undefined) fieldsToUpdate.propValueModel        = propValueModel;
+      if (updMoneylineA !== null && !isNaN(updMoneylineA)) fieldsToUpdate.PropSideAMoneyline = updMoneylineA;
+      if (updMoneylineB !== null && !isNaN(updMoneylineB)) fieldsToUpdate.PropSideBMoneyline = updMoneylineB;
+      if (propCloseTime !== undefined) fieldsToUpdate.propCloseTime = updCloseTimeIso;
       const updated = await base("Props").update([
         { id: propId, fields: fieldsToUpdate }
-      ]);
+      ], { typecast: true });
       return res.status(200).json({ success: true, record: updated[0] });
     } catch (err) {
       console.error("[api/props PATCH] Error =>", err);
@@ -102,20 +152,20 @@ export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
-
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+  
   try {
 	// 1) Parse limit + offset from query
 	const limit = parseInt(req.query.limit || "10", 10); // default to 10
 	const offset = req.query.offset || ""; // if provided, use it; otherwise blank
 
-	// 2) Build Airtable REST API URL
-	const baseID = process.env.AIRTABLE_BASE_ID; // e.g. "appAbcd123"
+	// 2) Build Airtable REST API URL, optionally using a specific view
+	const baseID = process.env.AIRTABLE_BASE_ID;
 	const apiKey = process.env.AIRTABLE_API_KEY;
 	const tableName = "Props";
-
-	// We'll set pageSize = limit
-	// If you want to filter out archived props, you can add &filterByFormula=NOT({propStatus}="archived")
-	let url = `https://api.airtable.com/v0/${baseID}/${encodeURIComponent(tableName)}?pageSize=${limit}&view=Grid%20view`;
+	// Determine view: use query param or default "Grid view"
+	const viewParam = req.query.view || "Grid view";
+	let url = `https://api.airtable.com/v0/${baseID}/${encodeURIComponent(tableName)}?pageSize=${limit}&view=${encodeURIComponent(viewParam)}`;
 	if (offset) {
 	  url += `&offset=${offset}`;
 	}
@@ -135,38 +185,50 @@ export default async function handler(req, res) {
 	// data => { records: [...], offset?: string }
 
 	// 4) Convert each record to the shape we want
-	const propsData = data.records.map((rec) => {
-	  const f = rec.fields;
-	  return {
-		airtableId: rec.id,
-		propID: f.propID || null,
-		propTitle: f.propTitle || "Untitled",
-		propSummary: f.propSummary || "",
-		propStatus: f.propStatus || "open",
-
-		// Important for custom short labels:
-		PropSideAShort: f.PropSideAShort || "",
-		PropSideBShort: f.PropSideBShort || "",
-
-		propShort: f.propShort || "",
-
-		// Example: subjectLogo, contentImage, etc.
-		subjectLogoUrls: Array.isArray(f.subjectLogo)
-		  ? f.subjectLogo.map((img) => img.url)
-		  : [],
-		contentImageUrls: Array.isArray(f.contentImage)
-		  ? f.contentImage.map((img) => img.url)
-		  : [],
-		linkedPacks: Array.isArray(f.Packs) ? f.Packs : [],
-		teams: Array.isArray(f.Teams) ? f.Teams : [],
-
-		// If you previously had "linkedPacks" logic, you can add it here
-		// linkedPacks: ...
-
-		propOrder: f.propOrder || 0,
-		createdAt: rec.createdTime,
-	  };
-	});
+	// Fetch and map props, including linked Event title
+	const propsData = await Promise.all(data.records.map(async (rec) => {
+      const f = rec.fields;
+      // Resolve linked Event title if available
+      let eventTitle = null;
+      let eventTime = null;
+      let eventLeague = null;
+      const eventLinks = Array.isArray(f.Event) ? f.Event : [];
+      if (eventLinks.length) {
+        try {
+          const evRec = await base('Events').find(eventLinks[0]);
+          eventTitle = evRec.fields.eventTitle || null;
+          eventTime = evRec.fields.eventTime || null;
+          eventLeague = evRec.fields.eventLeague || null;
+        } catch {}
+      }
+      return {
+        airtableId: rec.id,
+        propID: f.propID || null,
+        propTitle: f.propTitle || "Untitled",
+        propSummary: f.propSummary || "",
+        propStatus: f.propStatus || "open",
+        // Important for custom short labels:
+        PropSideAShort: f.PropSideAShort || "",
+        PropSideBShort: f.PropSideBShort || "",
+        propShort: f.propShort || "",
+        // Provide linked Event title and time
+        eventTitle,
+        eventTime,
+        eventLeague,
+        propCloseTime: f.propCloseTime || null,
+        // Example: subjectLogo, contentImage, etc.
+        subjectLogoUrls: Array.isArray(f.subjectLogo)
+          ? f.subjectLogo.map((img) => img.url)
+          : [],
+        contentImageUrls: Array.isArray(f.contentImage)
+          ? f.contentImage.map((img) => img.url)
+          : [],
+        linkedPacks: Array.isArray(f.Packs) ? f.Packs : [],
+        teams: Array.isArray(f.Teams) ? f.Teams : [],
+        propOrder: f.propOrder || 0,
+        createdAt: rec.createdTime,
+      };
+    }));
 
 	// 5) If there's an offset in the response, that's for the next page
 	const nextOffset = data.offset || null;

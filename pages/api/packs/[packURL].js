@@ -45,7 +45,22 @@ export default async function handler(req, res) {
 
 	const packRecord = packRecords[0];
 	const packFields = packRecord.fields;
-
+  // Fetch linked Event record early so we can attach espnGameID and eventLeague to props
+  const eventIDs = packFields.Event || [];
+  let espnGameID = null;
+  let eventLeague = null;
+  if (eventIDs.length > 0) {
+    const firstEventID = eventIDs[0];
+    try {
+      const eventRec = await base("Events").find(firstEventID);
+      const ef = eventRec.fields;
+      espnGameID = ef.espnGameID || null;
+      eventLeague = ef.eventLeague || null;
+      console.log(`[api/packs/[packURL]] Found Event ${firstEventID}: espnGameID=${espnGameID}, eventLeague=${eventLeague}`);
+    } catch (err) {
+      console.error(`[api/packs/[packURL]] Error fetching Event ${firstEventID}:`, err);
+    }
+  }
 	// ---------------------------------------------
 	// 2. Fetch linked Props (existing logic)
 	// ---------------------------------------------
@@ -72,6 +87,7 @@ export default async function handler(req, res) {
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;
+		console.log(`[api/packs/[packURL]] Building prop ${record.id}: espnGameID=${espnGameID}, eventLeague=${eventLeague}`);
 		// support dynamic sides for superprops
 		const sideCount = f.sideCount || 2;
 		const sideLabels = Array.from({ length: sideCount }, (_, i) => {
@@ -97,6 +113,14 @@ export default async function handler(req, res) {
 		  const url = contentURLs[i] || "#";
 		  return { title, url };
 		});
+      // Map propCover field from Airtable
+      let propCover = [];
+      if (Array.isArray(f.propCover)) {
+        propCover = f.propCover.map((img) => ({
+          url: img.url,
+          filename: img.filename,
+        }));
+      }
 
 		return {
 		  airtableId: record.id,
@@ -115,9 +139,23 @@ export default async function handler(req, res) {
 		  // expose the actual take text for each side
 		  propSideATake: f.PropSideATake || "",
 		  propSideBTake: f.PropSideBTake || "",
+		  // Add value-model fields for Vegas valueModel
+		  propValueModel: f.propValueModel || null,
+		  propSideAValue: f.propSideAValue || null,
+		  propSideBValue: f.propSideBValue || null,
 		  contentImageUrls,
 		  contentLinks,
+		  propCover,
 		  propOrder: f.propOrder || 0,
+		  // new per-prop ESPN lookup fields
+		  propESPNLookup: f.propESPNLookup || null,
+		  propLeagueLookup: f.propLeagueLookup || null,
+		  espnGameID,
+		  eventLeague,
+		  // Event time lookup on the prop record
+		  propEventTimeLookup: f.propEventTimeLookup || null,
+		  propEventTitleLookup: f.propEventTitleLookup || null,
+		  propEventMatchup: f.propEventMatchup || null,
 		};
 	  });
 	}
@@ -142,12 +180,10 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4a. Linked Event record => eventTime
+	// 4a. Linked Event record => eventTime (pack-level only)
 	// ---------------------------------------------
 	const linkedEventIDs = packFields.Event || [];
 	let packEventTime = null;
-	let espnGameID = null;
-	let eventLeague = null;
 	let homeTeam = null;
 	let awayTeam = null;
 	let homeTeamScore = null;
@@ -165,8 +201,6 @@ export default async function handler(req, res) {
 	  if (eventRecords.length > 0) {
 		const eventFields = eventRecords[0].fields;
 		packEventTime = eventFields.eventTime || null;
-		espnGameID = eventFields.espnGameID || null;
-		eventLeague = eventFields.eventLeague || null;
 		homeTeam = eventFields.homeTeamLink || null;
 		awayTeam = eventFields.awayTeamLink || null;
 		homeTeamScore = eventFields.homeTeamScore ?? null;
@@ -308,6 +342,7 @@ export default async function handler(req, res) {
 	  packTitle: packFields.packTitle || "Untitled Pack",
 	  packSummary: packFields.packSummary || "",
 	  packType: packFields.packType || "",
+	  packLeague: packFields.packLeague || null,
 	  packCreatorID,
 	  packURL: packFields.packURL,
 	  props: propsData,

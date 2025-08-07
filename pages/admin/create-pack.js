@@ -74,12 +74,47 @@ export default function CreatePackPage() {
     return base ? `${base}-${slugTimestamp}` : "";
   }, [packTitle, slugTimestamp, slugOverride]);
   const [packSummary, setPackSummary] = useState("");
+  const [packLeague, setPackLeague] = useState("");
+  const [leagueOptions, setLeagueOptions] = useState([]);
+  useEffect(() => {
+    fetch("/api/admin/leagues")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setLeagueOptions(data.leagues);
+      })
+      .catch(err => console.error("Failed to load leagues", err));
+  }, []);
   // Options: 'event' or 'content'
   const [packType, setPackType] = useState("event");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const router = useRouter();
-  const { packId: initialPackId } = router.query;
+  // Add handler to redirect to Super Prop flow
+  const handlePackTypeChange = (e) => {
+    const newType = e.target.value;
+    if (newType === 'superprop') {
+      const queryParts = [];
+      if (packLeague) queryParts.push(`packLeague=${encodeURIComponent(packLeague)}`);
+      if (packTitle) queryParts.push(`packTitle=${encodeURIComponent(packTitle)}`);
+      if (selectedEvent) {
+        queryParts.push(`eventId=${encodeURIComponent(selectedEvent.id)}`);
+        queryParts.push(`eventTitle=${encodeURIComponent(selectedEvent.eventTitle)}`);
+        queryParts.push(`eventTime=${encodeURIComponent(selectedEvent.eventTime)}`);
+        queryParts.push(`eventLeague=${encodeURIComponent(selectedEvent.eventLeague)}`);
+      }
+      const qs = queryParts.length ? `?${queryParts.join('&')}` : '';
+      router.push(`/admin/create-super-prop${qs}`);
+    } else {
+      setPackType(newType);
+    }
+  };
+  const { packId: initialPackId, packType: initialPackType } = router.query;
+  // If loaded from a ?packType query param, default to that type
+  useEffect(() => {
+    if (initialPackType) {
+      setPackType(initialPackType);
+    }
+  }, [initialPackType]);
   const [packRecordId, setPackRecordId] = useState(initialPackId || null);
   const [packProps, setPackProps] = useState([]);
   // Assign a localId to each prop and buffer new ones until publish
@@ -101,10 +136,14 @@ export default function CreatePackPage() {
   const [newPropSummary, setNewPropSummary] = useState("");
   const [newPropSideAShort, setNewPropSideAShort] = useState("");
   const [newPropSideBShort, setNewPropSideBShort] = useState("");
-  const [newPropType, setNewPropType] = useState("fact");
   // Add new state hooks for Side A and Side B takes
   const [newPropSideATake, setNewPropSideATake] = useState("");
   const [newPropSideBTake, setNewPropSideBTake] = useState("");
+  // Add prop value model and moneyline states
+  const [newPropValueModel, setNewPropValueModel] = useState("popular");
+  const [newPropSideAMoneyline, setNewPropSideAMoneyline] = useState("");
+  const [newPropSideBMoneyline, setNewPropSideBMoneyline] = useState("");
+  const [newPropType, setNewPropType] = useState("fact");
   const teamOptions = useMemo(() => {
     if (!selectedEvent) return [];
     return [
@@ -203,6 +242,7 @@ export default function CreatePackPage() {
           packURL: slug,
           packSummary,
           packType,
+          packLeague,
           // Include full event object for server-side upsert
           event: selectedEvent,
           teams,
@@ -273,8 +313,10 @@ export default function CreatePackPage() {
       propType: newPropType,
       propStatus: 'open',
       propOrder: packProps.length,
-      // Use selected subset of teams for this prop
       teams: newPropTeams,
+      propValueModel: newPropValueModel,
+      PropSideAMoneyline: newPropSideAMoneyline,
+      PropSideBMoneyline: newPropSideBMoneyline,
     };
     setPackProps(prev => [...prev, newProp]);
     setNextLocalId(prev => prev + 1);
@@ -286,6 +328,10 @@ export default function CreatePackPage() {
     // Clear new take fields
     setNewPropSideATake('');
     setNewPropSideBTake('');
+    // Reset prop value model and moneylines
+    setNewPropValueModel('popular');
+    setNewPropSideAMoneyline('');
+    setNewPropSideBMoneyline('');
     // Reset team selection for next prop
     setNewPropTeams(packTeams);
   };
@@ -296,7 +342,18 @@ export default function CreatePackPage() {
     setPackProps(prev =>
       prev.map(p =>
         p.localId === editingPropId
-          ? { ...p, propShort: newPropShort, propSummary: newPropSummary, PropSideAShort: newPropSideAShort, PropSideBShort: newPropSideBShort, PropSideATake: newPropSideATake, PropSideBTake: newPropSideBTake, propType: newPropType }
+          ? { ...p,
+              propShort: newPropShort,
+              propSummary: newPropSummary,
+              PropSideAShort: newPropSideAShort,
+              PropSideBShort: newPropSideBShort,
+              PropSideATake: newPropSideATake,
+              PropSideBTake: newPropSideBTake,
+              propType: newPropType,
+              propValueModel: newPropValueModel,
+              PropSideAMoneyline: newPropSideAMoneyline,
+              PropSideBMoneyline: newPropSideBMoneyline,
+            }
           : p
       )
     );
@@ -309,6 +366,10 @@ export default function CreatePackPage() {
     // Clear take fields
     setNewPropSideATake('');
     setNewPropSideBTake('');
+    // Reset prop value model and moneylines
+    setNewPropValueModel('popular');
+    setNewPropSideAMoneyline('');
+    setNewPropSideBMoneyline('');
   };
 
   // Cancel confirm handler
@@ -347,6 +408,9 @@ export default function CreatePackPage() {
             packId: packRecordId,
             propOrder: p.propOrder,
             teams: p.teams,
+            propValueModel: p.propValueModel,
+            ...(p.PropSideAMoneyline ? { PropSideAMoneyline: p.PropSideAMoneyline } : {}),
+            ...(p.PropSideBMoneyline ? { PropSideBMoneyline: p.PropSideBMoneyline } : {}),
           };
           console.log('handlePublish - creating prop with payload:', payload);
           const res = await fetch('/api/props', {
@@ -369,6 +433,9 @@ export default function CreatePackPage() {
             propStatus: p.propStatus,
             propOrder: p.propOrder,
             teams: p.teams,
+            propValueModel: p.propValueModel,
+            ...(p.PropSideAMoneyline !== undefined ? { PropSideAMoneyline: p.PropSideAMoneyline } : {}),
+            ...(p.PropSideBMoneyline !== undefined ? { PropSideBMoneyline: p.PropSideBMoneyline } : {}),
           };
           console.log('handlePublish - updating prop with payload:', payload);
           const res = await fetch('/api/props', {
@@ -410,6 +477,9 @@ export default function CreatePackPage() {
               PropSideATake: p.PropSideATake,
               PropSideBTake: p.PropSideBTake,
               propType: p.propType,
+              propValueModel: p.propValueModel,
+              PropSideAMoneyline: p.PropSideAMoneyline,
+              PropSideBMoneyline: p.PropSideBMoneyline,
               propStatus: p.propStatus,
               packId: packRecordId,
               propOrder: p.propOrder,
@@ -431,6 +501,9 @@ export default function CreatePackPage() {
               PropSideATake: p.PropSideATake,
               PropSideBTake: p.PropSideBTake,
               propType: p.propType,
+              propValueModel: p.propValueModel,
+              PropSideAMoneyline: p.PropSideAMoneyline,
+              PropSideBMoneyline: p.PropSideBMoneyline,
               propStatus: p.propStatus,
               propOrder: p.propOrder,
               teams: p.teams,
@@ -460,18 +533,37 @@ export default function CreatePackPage() {
       {step === 1 && (
         <div className="max-w-lg mx-auto">
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="packLeague" className="block text-sm font-medium text-gray-700">League</label>
+              <select
+                id="packLeague"
+                value={packLeague}
+                onChange={(e) => setPackLeague(e.target.value)}
+                className="mt-1 block w-full border rounded px-2 py-1"
+                required
+              >
+                <option value="">-- Select League --</option>
+                {leagueOptions.map((lg) => (
+                  <option key={lg} value={lg}>
+                    {lg.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
           {/* Type selection at top */}
           <div>
             <label htmlFor="packType" className="block text-sm font-medium text-gray-700">Type</label>
             <select
               id="packType"
               value={packType}
-              onChange={(e) => setPackType(e.target.value)}
+              onChange={handlePackTypeChange}
               className="mt-1 block w-full border rounded px-2 py-1"
               required
             >
               <option value="event">Event</option>
               <option value="content">Content</option>
+              <option value="vegas">Vegas</option>
+              <option value="superprop">Super Prop</option>
             </select>
           </div>
           {packType === "event" && (
@@ -483,6 +575,7 @@ export default function CreatePackPage() {
                   setSelectedEvent(evt);
                   setPackTitle(evt.eventTitle);
                 }}
+                league={packLeague}
               />
               {selectedEvent && (
                 <>
@@ -514,7 +607,33 @@ export default function CreatePackPage() {
                       </a>
                     </p>
                   )}
+                  <p className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEvent(null)}
+                      className="text-sm text-red-600 underline"
+                    >
+                      Remove event
+                    </button>
+                  </p>
                 </>
+              )}
+            </div>
+          )}
+          {packType === "vegas" && (
+            <div>
+              <label htmlFor="event" className="block text-sm font-medium text-gray-700">Event (optional)</label>
+              <EventSelector
+                selectedEvent={selectedEvent}
+                onSelect={(evt) => {
+                  setSelectedEvent(evt);
+                }}
+                league={packLeague}
+              />
+              {selectedEvent && (
+                <p className="mt-2 text-sm text-gray-700">
+                  Selected: {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}
+                </p>
               )}
             </div>
           )}
@@ -555,7 +674,18 @@ export default function CreatePackPage() {
               className="mt-1 block w-full"
             />
             {coverPreview && (
-              <img src={coverPreview} alt="Cover preview" className="mt-2 max-h-40 object-contain" />
+              <>
+                <img src={coverPreview} alt="Cover preview" className="mt-2 max-h-40 object-contain" />
+                <p className="mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setCoverFile(null); setCoverPreview(null); }}
+                    className="text-sm text-red-600 underline"
+                  >
+                    Remove cover image
+                  </button>
+                </p>
+              </>
             )}
           </div>
           {error && <p className="text-red-600">{error}</p>}
@@ -590,7 +720,8 @@ export default function CreatePackPage() {
               <p><strong>Title:</strong> {packDetails.packTitle}</p>
               <p><strong>Summary:</strong> {packDetails.packSummary}</p>
               <p><strong>Type:</strong> {packDetails.packType}</p>
-              {packDetails.packType === 'event' && selectedEvent && (
+              <p><strong>League:</strong> {packDetails.packLeague}</p>
+              {(packDetails.packType === 'event' || packDetails.packType === 'vegas') && selectedEvent && (
                 <p><strong>Event:</strong> {selectedEvent.eventTitle} — {new Date(selectedEvent.eventTime).toLocaleString()}</p>
               )}
               {teamOptions.length > 0 && (
@@ -694,6 +825,9 @@ export default function CreatePackPage() {
                           setNewPropSideBTake(p.PropSideBTake);
                           // Pre-populate team selection
                           setNewPropTeams(p.teams || []);
+                          setNewPropValueModel(p.propValueModel || 'popular');
+                          setNewPropSideAMoneyline(p.PropSideAMoneyline || '');
+                          setNewPropSideBMoneyline(p.PropSideBMoneyline || '');
                         }}
                         className="text-blue-600 underline"
                       >
@@ -797,6 +931,42 @@ export default function CreatePackPage() {
               />
             </div>
             <div>
+              <label htmlFor="newPropValueModel" className="block text-sm font-medium text-gray-700">Value Model</label>
+              <select
+                id="newPropValueModel"
+                value={newPropValueModel}
+                onChange={(e) => setNewPropValueModel(e.target.value)}
+                className="mt-1 block w-full border rounded px-2 py-1"
+              >
+                <option value="popular">Popular Value</option>
+                <option value="vegas">Vegas Mode</option>
+              </select>
+            </div>
+            {newPropValueModel === "vegas" && (
+              <>
+                <div>
+                  <label htmlFor="newPropSideAMoneyline" className="block text-sm font-medium text-gray-700">Side A Moneyline</label>
+                  <input
+                    id="newPropSideAMoneyline"
+                    type="number"
+                    value={newPropSideAMoneyline}
+                    onChange={(e) => setNewPropSideAMoneyline(e.target.value)}
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="newPropSideBMoneyline" className="block text-sm font-medium text-gray-700">Side B Moneyline</label>
+                  <input
+                    id="newPropSideBMoneyline"
+                    type="number"
+                    value={newPropSideBMoneyline}
+                    onChange={(e) => setNewPropSideBMoneyline(e.target.value)}
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                  />
+                </div>
+              </>
+            )}
+            <div>
               <label htmlFor="newPropType" className="block text-sm font-medium text-gray-700">Type</label>
               <select
                 id="newPropType"
@@ -891,7 +1061,8 @@ export default function CreatePackPage() {
               <p><strong>Title:</strong> {packDetails.packTitle}</p>
               <p><strong>Summary:</strong> {packDetails.packSummary}</p>
               <p><strong>Type:</strong> {packDetails.packType}</p>
-              {packDetails.packType === 'event' && selectedEvent && (
+              <p><strong>League:</strong> {packDetails.packLeague}</p>
+              {(packDetails.packType === 'event' || packDetails.packType === 'vegas') && (
                 <p><strong>Event:</strong> {selectedEvent.eventTitle}</p>
               )}
             </div>

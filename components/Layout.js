@@ -1,13 +1,30 @@
 // File: /components/Layout.js
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Header from "./Header";
 import SidebarNav from "./SidebarNav";
 import Footer from "./Footer";
 
 export default function Layout({ children }) {
+  const { data: session } = useSession();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const profileID = session?.user?.profileID;
+  const sidebarItems = [
+    { label: "Dashboard", href: "/" },
+    { label: "Marketplace", href: "/marketplace" },
+    { label: "Leaderboard", href: "/leaderboard" },
+    ...(profileID ? [{ label: "Profile", href: `/profile/${profileID}` }] : []),
+    {
+      label: "Admin",
+      href: "/admin",
+      subItems: [
+        { label: "Events", href: "/admin/events" },
+        { label: "Packs", href: "/admin/packs" },
+      ],
+    },
+  ];
 
   // Initialize collapsed state from localStorage
   useEffect(() => {
@@ -21,10 +38,6 @@ export default function Layout({ children }) {
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", collapsed);
   }, [collapsed]);
-  const sidebarItems = [
-    { label: "Dashboard", href: "/" },
-    { label: "Admin", href: "/admin" },
-  ];
 
   // Otherwise => original layout (with header, container, padding, etc.)
   return (

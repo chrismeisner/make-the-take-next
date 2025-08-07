@@ -103,7 +103,6 @@ export default function LeaderboardPage() {
 		<table style={{ borderCollapse: 'collapse', width: '100%' }}>
 		  <thead>
 			<tr style={{ borderBottom: '1px solid #ccc' }}>
-			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Phone</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Username</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Takes</th>
 			  <th style={{ textAlign: 'left', padding: '0.5rem' }}>Points</th>
@@ -111,17 +110,8 @@ export default function LeaderboardPage() {
 			</tr>
 		  </thead>
 		  <tbody>
-			{leaderboard.map((item) => (
-			  <tr key={item.phone} style={{ borderBottom: '1px solid #eee' }}>
-				<td style={{ padding: '0.5rem' }}>
-				  {item.profileID ? (
-					<Link href={'/profile/' + item.profileID}>
-					  {obscurePhone(item.phone)}
-					</Link>
-				  ) : (
-					obscurePhone(item.phone)
-				  )}
-				</td>
+			{leaderboard.map((item, idx) => (
+			  <tr key={item.profileID ?? idx} style={{ borderBottom: '1px solid #eee' }}>
 				<td style={{ padding: '0.5rem', fontWeight: item.profileID === currentProfileID ? 'bold' : 'normal' }}>
 				  {item.profileID ? (
 					<Link href={'/profile/' + item.profileID}>
@@ -131,11 +121,9 @@ export default function LeaderboardPage() {
 					"Unknown"
 				  )}
 				</td>
-				<td style={{ padding: '0.5rem' }}>{item.count}</td>
+				<td style={{ padding: '0.5rem' }}>{item.takes}</td>
 				<td style={{ padding: '0.5rem' }}>{Math.round(item.points)}</td>
-				<td style={{ padding: '0.5rem' }}>
-				  {item.won}-{item.lost}
-				</td>
+				<td style={{ padding: '0.5rem' }}>{item.won}-{item.lost}-{item.pushed}</td>
 			  </tr>
 			))}
 		  </tbody>

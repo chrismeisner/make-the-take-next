@@ -27,18 +27,18 @@ export default function Header({ collapsed, setCollapsed }) {
 	console.log("[Header] Session data:", session);
 
 	async function fetchPoints() {
-	  if (!session?.user?.phone) {
+	  if (!session?.user?.profileID) {
 		setUserPoints(null);
 		return;
 	  }
 	  try {
-		const resp = await fetch("/api/userPoints");
+		const resp = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
 		const data = await resp.json();
 		if (data.success) {
 		  const roundedPts = Math.round(data.totalPoints || 0);
 		  setUserPoints(roundedPts);
 		} else {
-		  console.log("[Header] /api/userPoints error =>", data.error);
+		  console.log("[Header] /api/profile error =>", data.error);
 		  setUserPoints(null);
 		}
 	  } catch (err) {
@@ -102,14 +102,14 @@ export default function Header({ collapsed, setCollapsed }) {
 	return (
 	  <div className="flex items-center space-x-3">
 		<span className="text-sm text-gray-200">
-		  {userPoints != null ? `${userPoints} pts` : ""}
+		  {userPoints != null ? `${userPoints} 🦴` : ""}
 		</span>
 		<span className="text-sm text-gray-200">
-		  {tokenBalance != null ? `${tokenBalance} tokens` : ""}
+		  {tokenBalance != null ? `${tokenBalance} 💎` : ""}
 		</span>
 		{/* ProfileID => link to /profile/[profileID] */}
 		<Link href={`/profile/${profileID}`} className={pillLinkStyles}>
-		  💀 {profileID}
+		  {profileID}
 		</Link>
 		{/* Sign out moved to sidebar */}
 	  </div>

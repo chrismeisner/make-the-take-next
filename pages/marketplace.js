@@ -13,6 +13,7 @@ export default function MarketplacePage() {
   const { data: session, status } = useSession();
   const [tokenBalance, setTokenBalance] = useState(0);
   const [viewMode, setViewMode] = useState('grid');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   useEffect(() => {
     async function fetchItems() {
@@ -61,25 +62,33 @@ export default function MarketplacePage() {
     fetchBalance();
   }, [status, session]);
 
+  // Sort items by token cost based on sortOrder
+  const sortedItems = items.slice().sort((a, b) =>
+    sortOrder === 'asc' ? a.itemTokens - b.itemTokens : b.itemTokens - a.itemTokens
+  );
+
   if (loading) return <div className="p-4">Loading marketplace...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Marketplace</h1>
-      <div className="flex space-x-2 mb-4">
-        <button onClick={() => setViewMode('grid')} className={`px-3 py-1 rounded ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
-          Grid
-        </button>
-        <button onClick={() => setViewMode('stack')} className={`px-3 py-1 rounded ${viewMode === 'stack' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
-          Stack
-        </button>
+      <div className="flex space-x-2 mb-4 items-center">
+        <button onClick={() => setViewMode('grid')} className={`px-3 py-1 rounded ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>Grid</button>
+        <button onClick={() => setViewMode('stack')} className={`px-3 py-1 rounded ${viewMode === 'stack' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}>Stack</button>
+        <div className="ml-auto flex items-center space-x-2">
+          <label htmlFor="sortOrder" className="text-sm">Sort:</label>
+          <select id="sortOrder" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="px-2 py-1 border rounded">
+            <option value="asc">Lowest Cost</option>
+            <option value="desc">Highest Cost</option>
+          </select>
+        </div>
       </div>
       {items.length === 0 ? (
         <p>No items available at this time.</p>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((item) => {
+          {sortedItems.map((item) => {
             const canRedeem = session?.user && tokenBalance >= item.itemTokens;
             return (
               <div key={item.itemID} className="border rounded shadow-sm bg-white p-4">
@@ -87,6 +96,10 @@ export default function MarketplacePage() {
                 <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
                 <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
                 <p className="text-sm text-gray-700">{item.itemDescription}</p>
+                <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
+                </div>
                 <button
                   className={`mt-2 w-full px-3 py-1 rounded ${
                     canRedeem
@@ -104,7 +117,7 @@ export default function MarketplacePage() {
         </div>
       ) : (
         <Swiper effect="cards" grabCursor modules={[EffectCards]} className="w-full max-w-md mx-auto">
-          {items.map((item) => {
+          {sortedItems.map((item) => {
             const canRedeem = session?.user && tokenBalance >= item.itemTokens;
             return (
               <SwiperSlide key={item.itemID}>
@@ -113,6 +126,10 @@ export default function MarketplacePage() {
                   <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
                   <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
                   <p className="text-sm text-gray-700">{item.itemDescription}</p>
+                  <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                    <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
+                  </div>
                   <button
                     className={`mt-2 w-full px-3 py-1 rounded ${
                       canRedeem

@@ -1,4 +1,5 @@
 import Airtable from 'airtable';
+import { sumTakePoints, isVisibleTake } from '../../../lib/points';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -26,7 +27,8 @@ export default async function handler(req, res) {
 
 	// Initialize arrays to hold user's takes & packs
 	let userTakes = [];
-	let userPacks = [];
+	let userPackIDs = [];
+	let totalPoints = 0;
 
 	// 2) If the profile has "Takes" linked, fetch them
 	if (Array.isArray(pf.Takes) && pf.Takes.length > 0) {
@@ -36,15 +38,16 @@ export default async function handler(req, res) {
 		.select({ filterByFormula, maxRecords: 5000 })
 		.all();
 
+	  // Compute total points ignoring overwritten/hidden takes
+	  totalPoints = sumTakePoints(takeRecords);
 	  // Filter out any takes that have been overwritten
 	  userTakes = takeRecords
-		.filter((t) => t.fields.takeStatus !== 'overwritten')
+		.filter(isVisibleTake)
 		.map((t) => {
 		  const tf = t.fields;
 		  // Collect linked pack IDs from the take
-		  const packs = tf.Packs || [];
-		  // Add linked packs to userPacks array (we'll deduplicate later)
-		  userPacks.push(...packs);
+		  const packIDs = tf.packID || [];
+		  userPackIDs.push(...packIDs);
 		  let contentImageUrls = [];
 		  if (Array.isArray(tf.contentImage)) {
 			contentImageUrls = tf.contentImage.map((att) => att.url);
@@ -59,37 +62,39 @@ export default async function handler(req, res) {
 			takePopularity: tf.takePopularity || 0,
 			createdTime: t._rawJson.createdTime,
 			takeStatus: tf.takeStatus || '',
+			propResult: Array.isArray(tf.propResult) ? tf.propResult[0] : tf.propResult || '',
+			propEventMatchup: Array.isArray(tf.propEventMatchup) ? tf.propEventMatchup[0] : tf.propEventMatchup || '',
+			propLeague: Array.isArray(tf.propLeague) ? tf.propLeague[0] : tf.propLeague || '',
+			propESPN: Array.isArray(tf.propESPN) ? tf.propESPN[0] : tf.propESPN || '',
+			propStatus: Array.isArray(tf.propStatus) ? tf.propStatus[0] : tf.propStatus || '',
 			takeResult: tf.takeResult || '',
 			takePTS: tf.takePTS || 0,
+			takeHide: tf.takeHide || false,
 			takeTitle: tf.takeTitle || '',
 			takeContentImageUrls: contentImageUrls,
-			packs, // packs linked to this take
+			packIDs, // lookup packIDs for this take
 		  };
 		});
 	}
 
 	// 3) Deduplicate and fetch pack details for each unique pack ID in userPacks.
-	const uniquePackIDs = [...new Set(userPacks)];
-	const packDetails = await Promise.all(
-	  uniquePackIDs.map(async (packId) => {
-		const packRecords = await base("Packs")
-		  .select({ filterByFormula: `RECORD_ID()="${packId}"`, maxRecords: 1 })
-		  .firstPage();
-		if (packRecords.length > 0) {
-		  const pack = packRecords[0].fields;
-		  return {
-			id: packId,
-			packURL: pack.packURL || '',
-			packTitle: pack.packTitle || '',
-			packStatus: pack.packStatus || '',
-			packCover: pack.packCover || [],
-			eventTime: pack.eventTime || null,
-		  };
-		}
-		return null;
-	  })
-	);
-	const validPacks = packDetails.filter((p) => p !== null);
+	const uniquePackIDs = [...new Set(userPackIDs)];
+	// Fetch all packs by packID lookup field in one go
+	const filterByFormula = `OR(${uniquePackIDs.map((id) => "{packID}=\"" + id + "\"").join(',')})`;
+	const packRecords = await base("Packs")
+	  .select({ filterByFormula, maxRecords: uniquePackIDs.length })
+	  .all();
+	const validPacks = packRecords.map((pr) => {
+	  const pf = pr.fields;
+	  return {
+		packID: pf.packID || '',
+		packURL: pf.packURL || '',
+		packTitle: pf.packTitle || '',
+		packStatus: pf.packStatus || '',
+		packCover: pf.packCover || [],
+		eventTime: pf.eventTime || null,
+	  };
+	});
 
 	// 4) Fetch the Teams record if profileTeam is linked.
 	let profileTeamData = null;
@@ -147,8 +152,9 @@ export default async function handler(req, res) {
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
+	  totalPoints,
 	  totalTakes: userTakes.length,
-	  userTakes,
+	  userTakes: userTakes,
 	  userPacks: validPacks,
 	  userExchanges,
 	});

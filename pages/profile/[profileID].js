@@ -11,7 +11,7 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState(null);
   const [userTakes, setUserTakes] = useState([]);
-  const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0 });
+  const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0, pushes: 0 });
   const [userPacks, setUserPacks] = useState([]);
   const [userExchanges, setUserExchanges] = useState([]);
   const [prizes, setPrizes] = useState([]);
@@ -28,11 +28,20 @@ export default function ProfilePage() {
 		if (data.success) {
 		  setProfile(data.profile);
 		  if (data.userTakes) {
+			// Takes are already filtered server-side; sort and set
 			const sortedTakes = data.userTakes.sort(
 			  (a, b) => new Date(b.createdTime) - new Date(a.createdTime)
 			);
 			setUserTakes(sortedTakes);
-			calculateUserStats(sortedTakes);
+			// Compute wins/losses/pushes and use server totalPoints
+			const wins = sortedTakes.filter(t => (t.takeResult||'').toLowerCase() === 'won').length;
+			const losses = sortedTakes.filter(t => (t.takeResult||'').toLowerCase() === 'lost').length;
+			const pending = sortedTakes.filter(t => (t.takeResult||'').toLowerCase() === 'pending').length;
+			const pushes = sortedTakes.filter(t => {
+			  const r = (t.takeResult||'').toLowerCase();
+			  return r === 'push' || r === 'pushed';
+			}).length;
+			setUserStats({ points: Math.round(data.totalPoints || 0), wins, losses, pending, pushes });
 		  }
 		  setUserPacks(data.userPacks || []);
 		  setUserExchanges(data.userExchanges || []);
@@ -68,17 +77,7 @@ export default function ProfilePage() {
 	fetchPrizes();
   }, []);
 
-  // Calculate user stats from their takes
-  function calculateUserStats(takesArr) {
-	let points = 0, wins = 0, losses = 0, pending = 0;
-	takesArr.forEach((take) => {
-	  points += take.takePTS || 0;
-	  if (take.takeResult === "Won") wins++;
-	  else if (take.takeResult === "Lost") losses++;
-	  else if (take.takeResult === "Pending") pending++;
-	});
-	setUserStats({ points: Math.round(points), wins, losses, pending });
-  }
+  // calculateUserStats is no longer needed; stats computed inline after fetch
 
   // Compute token balance including exchanges spent and log for debugging (unconditional hook)
   const tokensEarned = Math.floor(userStats.points / 1000);
@@ -93,6 +92,7 @@ export default function ProfilePage() {
   if (error) return <div className="p-4 text-red-600">{error}</div>;
   if (!profile) return <div className="p-4">Profile not found.</div>;
   const isOwnProfile = session?.user && session.user.profileID === profile.profileID;
+  const packMap = userPacks.reduce((map, pack) => { map[pack.packID] = pack; return map; }, {});
 
   return (
 	<div className="p-4 max-w-4xl mx-auto">
@@ -150,44 +150,28 @@ export default function ProfilePage() {
 		<strong>Created:</strong> {profile.createdTime}
 	  </p>
 
-	  {/* User Stats */}
-	  <h3 className="text-xl font-bold mt-6 mb-2">Your Stats</h3>
-	  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
-		<div>
-		  <strong className="block">Total Points</strong>
-		  {userStats.points}
+	  {/* Quick Stats */}
+	  <h3 className="text-xl font-bold mt-6 mb-2">Quick Stats</h3>
+	  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">{userStats.points}</span>
+		  <div className="text-sm text-gray-600 mt-1">🦴 Bones</div>
 		</div>
-		<div>
-		  <strong className="block">Tokens</strong>
-		  {tokenBalance}
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">{tokenBalance}</span>
+		  <div className="text-sm text-gray-600 mt-1">💎 Diamonds</div>
 		</div>
-		<div>
-		  <strong className="block">Wins</strong>
-		  {userStats.wins}
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">6</span>
+		  <div className="text-sm text-gray-600 mt-1">🏆 Awards</div>
 		</div>
-		<div>
-		  <strong className="block">Losses</strong>
-		  {userStats.losses}
-		</div>
-		<div>
-		  <strong className="block">Pending</strong>
-		  {userStats.pending}
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</span>
+		  <div className="text-sm text-gray-600 mt-1">Record</div>
 		</div>
 	  </div>
 
-	  {/* Available Prizes */}
-	  <h3 className="text-xl font-bold mt-6 mb-2">Available Prizes</h3>
-	  {prizes.length === 0 ? (
-		<p className="text-center">No prizes available at this time.</p>
-	  ) : (
-		<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-		  {prizes.map((prize) => (
-			<PrizeCard key={prize.prizeID} prize={prize} />
-		  ))}
-		</div>
-	  )}
-
-	  {/* Packs Played In */}
+	  {/* Packs You've Played In */}
 	  <h3 className="text-xl font-bold mt-6 mb-2">Packs You've Played In</h3>
 	  {userPacks.length === 0 ? (
 		<p>You haven't participated in any packs yet.</p>
@@ -233,19 +217,73 @@ export default function ProfilePage() {
 		  ))}
 		</div>
 	  )}
-  {/* Exchanges Section */}
-  <h3 className="text-xl font-bold mt-6 mb-2">Exchanges</h3>
-  {userExchanges.length === 0 ? (
-    <p className="text-center">No exchanges yet.</p>
-  ) : (
-    <ul className="list-disc list-inside text-sm">
-      {userExchanges.map((ex) => (
-        <li key={ex.exchangeID}>
-          Spent {ex.exchangeTokens} tokens on {ex.exchangeItem.join(', ')} on {new Date(ex.createdTime).toLocaleString()}
-        </li>
-      ))}
-    </ul>
-  )}
+
+      {/* Takes Table */}
+      <h3 className="text-xl font-bold mt-6 mb-2">Your Takes</h3>
+      {userTakes.length === 0 ? (
+        <p>No takes yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white">
+            <thead>
+              <tr>
+                <th className="px-4 py-2 text-left">Title</th>
+                <th className="px-4 py-2 text-left">Event</th>
+                <th className="px-4 py-2 text-left">Prop Result</th>
+                <th className="px-4 py-2 text-left">Pack</th>
+                <th className="px-4 py-2 text-left">Points</th>
+                <th className="px-4 py-2 text-left">Result</th>
+                <th className="px-4 py-2 text-left">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userTakes.map((take) => (
+                <tr key={take.takeID}>
+                  <td className="border px-4 py-2">{take.takeTitle || take.propTitle}</td>
+                  <td className="border px-4 py-2">
+                    {take.propLeague && take.propESPN ? (
+                      <a
+                        href={`https://www.espn.com/${take.propLeague}/game/_/gameId/${take.propESPN}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-blue-600"
+                      >
+                        {take.propEventMatchup}
+                      </a>
+                    ) : (
+                      take.propEventMatchup || 'N/A'
+                    )}
+                  </td>
+                  <td className="border px-4 py-2">{take.propResult || 'N/A'}</td>
+                  <td className="border px-4 py-2">
+                    {take.packIDs && take.packIDs.length > 0
+                      ? take.packIDs.map(pid => packMap[pid]?.packTitle || pid).join(', ')
+                      : 'N/A'}
+                  </td>
+                  <td className="border px-4 py-2">{Math.round(take.takePTS)}</td>
+                  <td className="border px-4 py-2">
+                    {(() => {
+                      const result = take.propStatus === 'closed' ? 'Pending' : take.takeResult;
+                      const rLower = result.toLowerCase();
+                      let classes = 'bg-gray-100 text-gray-800';
+                      if (rLower === 'won') classes = 'bg-green-100 text-green-800';
+                      else if (rLower === 'lost') classes = 'bg-red-100 text-red-800';
+                      else if (rLower === 'pending') classes = 'bg-yellow-100 text-yellow-800';
+                      else if (rLower === 'push' || rLower === 'pushed') classes = 'bg-teal-100 text-teal-800';
+                      return (
+                        <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${classes}`}>
+                          {result}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="border px-4 py-2">{new Date(take.createdTime).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
 	  <p className="mt-4">
 		<Link href="/" className="underline text-blue-600">

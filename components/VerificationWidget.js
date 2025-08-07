@@ -78,6 +78,7 @@ function Choice({
   onSelect,
   // New prop: which side is correct if graded
   winningSide,
+  previewValue,
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -89,15 +90,15 @@ function Choice({
   const fillWidth = showResults ? `${percentage}%` : "0%";
   const fillColor = `rgba(219, 234, 254, ${fillOpacity})`;
 
+  // Base container: no stroke here, only layout & background
   const containerClasses = [
-	"relative",
-	"mb-2",
-	"p-3",
-	"rounded-md",
-	"transition-colors",
-	clickable ? "cursor-pointer" : "cursor-default",
-	isSelected ? "border-2 border-blue-500 bg-white" : "border border-gray-300 bg-gray-50",
-	isHovered && clickable && !isSelected ? "border-gray-400" : "",
+    "relative",
+    "mb-2",
+    "p-3",
+    "rounded-md",
+    "transition-colors",
+    clickable ? "cursor-pointer" : "cursor-default",
+    isSelected ? "bg-white" : "bg-gray-50",
   ].join(" ");
 
   // Decide if we show a grading icon (✅ / ❌):
@@ -112,6 +113,20 @@ function Choice({
     gradingIcon = winningSide === sideValue ? "✅" : "❌";
   }
 
+  // Split previewValue into number and bone emoji
+  let previewNumber = '';
+  let previewBone = '';
+  if (previewValue) {
+    const boneChar = '🦴';
+    const idx = previewValue.indexOf(boneChar);
+    if (idx !== -1) {
+      previewNumber = previewValue.slice(0, idx).replace(/^\+/, '');
+      previewBone = boneChar;
+    } else {
+      previewNumber = previewValue.replace(/^\+/, '');
+    }
+  }
+
   return (
 	<div
 	  className={containerClasses}
@@ -119,38 +134,48 @@ function Choice({
 	  onMouseEnter={() => clickable && setIsHovered(true)}
 	  onMouseLeave={() => clickable && setIsHovered(false)}
 	>
-	  {/* Fill bar behind the label */}
-	  <div
-		style={{
-		  position: "absolute",
-		  top: 0,
-		  left: 0,
-		  width: fillWidth,
-		  height: "100%",
-		  backgroundColor: fillColor,
-		  zIndex: 0,
-		  transition: "width 0.4s ease",
-		}}
-	  />
-	  <div className="relative z-10 flex items-center">
-		{/* If there's a grading icon, show it to the left */}
-		{gradingIcon && <span className="mr-1">{gradingIcon}</span>}
-
-		<span>
-		  {label}
-		  {/* If showResults => also show the percentage, plus the "pirate" 🏴‍☠️ if isVerified */}
-		  {showResults && (
-			<>
-			  {isSelected ? (
-				<span className="ml-2 text-sm text-gray-700">({percentage}% Fans Agree)</span>
-			  ) : (
-				<span className="ml-2 text-sm text-gray-700">({percentage}%)</span>
-			  )}
-			  {isVerified && <span className="ml-2">��‍☠️</span>}
-			</>
-		  )}
-		</span>
-	  </div>
+      {/* Fill bar behind everything */}
+      <div
+        className="rounded-l-md"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: fillWidth,
+          height: "100%",
+          backgroundColor: fillColor,
+          zIndex: 0,
+          transition: "width 0.4s ease",
+        }}
+      />
+      {/* Stroke overlay: rendered above fill, below content */}
+      <div
+        className={`absolute inset-0 rounded-md border pointer-events-none ${
+          isSelected ? "border-blue-500" : "border-gray-300"
+        } ${isHovered && clickable && !isSelected ? "border-gray-400" : ""}`}
+        style={{ zIndex: 1 }}
+      />
+      {/* Content wrapper */}
+      <div className="relative z-10 flex items-center">
+    {/* Grading icon, title, and percentage on the left */}
+    <div className="flex items-center space-x-2">
+      {gradingIcon && <div className="choice-grading-icon">{gradingIcon}</div>}
+      <div className="choice-label font-medium">{label}</div>
+      {showResults && (
+        <div className="choice-percentage text-sm text-gray-700">
+          {`${percentage}%`}
+        </div>
+      )}
+    </div>
+    <div className="flex-1" />
+    {/* Preview value always */}
+    {previewValue && (
+      <div className="choice-preview-container ml-4 flex items-center">
+        <div className="choice-preview-number">{previewNumber}</div>
+        <div className="choice-preview-bone ml-1">{previewBone}</div>
+      </div>
+    )}
+  </div>
 	</div>
   );
 }
@@ -175,7 +200,7 @@ function PropChoices({
   }
 
   // Only reveal results (bars + percentages) once the user has taken (or already had taken)
-  const shouldShowResults = resultsRevealed && (!!alreadyTookSide || !!selectedChoice);
+  const shouldShowResults = resultsRevealed && (propStatus !== "open" || !!alreadyTookSide || !!selectedChoice);
 
   // Use the dynamic choices array passed in (each { value, label, percentage })
 
@@ -190,6 +215,7 @@ function PropChoices({
             key={choice.value}
             label={choice.label}
             percentage={choice.percentage}
+            previewValue={choice.previewValue}
             isSelected={isSelected}
             isVerified={isVerified}
             showResults={shouldShowResults}

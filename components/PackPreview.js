@@ -1,6 +1,7 @@
 import Link from "next/link";
 import StatusPill from "./StatusPill";
 import useLeaderboard from "../hooks/useLeaderboard";
+import useCountdown from "../hooks/useCountdown";
 
 export default function PackPreview({ pack }) {
   // Determine a common pack identifier
@@ -9,9 +10,27 @@ export default function PackPreview({ pack }) {
   // Number of props assumed to be provided by pack.propsCount
   const propsCount = pack.propsCount || 0;
   const takeCount = pack.takeCount || 0;
+  // User-specific verified take count from API
+  const userTakesCount = pack.userTakesCount || 0;
   // Fetch the pack-specific leaderboard for graded packs
   const { leaderboard, loading } = useLeaderboard({ packURL: pack.packURL });
   const winnerID = !loading && leaderboard.length > 0 ? leaderboard[0].profileID : null;
+
+  // Derive sorted event times
+  const eventTimes = Array.isArray(pack.propEventRollup) ? [...pack.propEventRollup] : [];
+  eventTimes.sort((a, b) => new Date(a) - new Date(b));
+  // Compute earliest event date for display
+  const earliestEventTime = eventTimes.length > 0 ? eventTimes[0] : pack.eventTime;
+  const earliestDateObj = new Date(earliestEventTime);
+  const isTodayDate = earliestDateObj.toDateString() === new Date().toDateString();
+  const formattedEarliestDate = isTodayDate
+    ? 'Today'
+    : earliestDateObj.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  // Compute next future event time and set up live countdown
+  const now = Date.now();
+  const futureEventTimes = eventTimes.filter(evt => new Date(evt).getTime() > now);
+  const nextEventTime = futureEventTimes.length > 0 ? futureEventTimes[0] : null;
+  const { days, hours, minutes, seconds, isCompleted } = useCountdown(nextEventTime || pack.eventTime);
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -46,15 +65,22 @@ export default function PackPreview({ pack }) {
 		<h2 className="text-lg font-semibold">
 		  {pack.packTitle || "Untitled Pack"}
 		</h2>
-		{pack.eventTime && (
-		  <p className="text-xs text-gray-500">
-			Event: {new Date(pack.eventTime).toLocaleString()}
-		  </p>
-		)}
-		<StatusPill status={pack.packStatus} eventTime={pack.eventTime} />
+		{earliestEventTime && (
+  <div className="mt-2 text-xs text-gray-600">
+    <p>🗓️ {formattedEarliestDate}</p>
+  </div>
+)}
+{futureEventTimes.length > 0 && (
+  <div className="mt-2 text-sm text-gray-600">
+    <p className="font-semibold">Next event in:</p>
+    <p>{days}d {hours}h {minutes}m {seconds}s</p>
+  </div>
+)}
+		<StatusPill status={pack.packStatus} />
 		<div className="mt-2 text-sm text-gray-600">
 		  <p>Props: {propsCount}</p>
-		  <p>Takes: {takeCount}</p>
+		  <p>Total takes: {takeCount}</p>
+		  <p>Your takes: {userTakesCount}/{propsCount}</p>
           {pack.packStatus === "graded" && winnerID && (
             <p>Winner: @{winnerID}</p>
           )}

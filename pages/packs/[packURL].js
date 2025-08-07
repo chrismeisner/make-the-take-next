@@ -278,6 +278,41 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
       </PackContextProvider>
     );
   }
+  // Scaffold: If this is a Vegas pack, render the carousel view (placeholder for Vegas mode)
+  if (packData.packType === 'vegas') {
+    return (
+      <>
+        <Head>
+          <title>{packData.packTitle}</title>
+          <meta property="og:type" content="website" />
+          <meta property="og:title" content={packData.packTitle} />
+          <meta property="og:description" content={packData.packSummary} />
+          {packData.packCover?.[0]?.url && (
+            <meta property="og:image" content={packData.packCover[0].url} />
+          )}
+          <meta property="og:url" content={`${debugLogs.origin}/packs/${packData.packURL}`} />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content={packData.packTitle} />
+          <meta name="twitter:description" content={packData.packSummary} />
+          {packData.packCover?.[0]?.url && (
+            <meta name="twitter:image" content={packData.packCover[0].url} />
+          )}
+        </Head>
+        {(!isRef || mounted) && (
+          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+            <PackCarouselView
+              packData={packData}
+              leaderboard={leaderboard}
+              debugLogs={debugLogs}
+              userReceipts={userReceipts}
+              activity={activity}
+            />
+          </PackContextProvider>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <Head>

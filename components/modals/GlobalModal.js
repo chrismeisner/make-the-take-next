@@ -12,7 +12,7 @@ export default function GlobalModal({ isOpen, onClose, children }) {
 		onClick={onClose}
 	  ></div>
 	  {/* Content */}
-	  <div className="relative bg-white p-4 rounded shadow-lg z-50 max-w-2xl w-full">
+	  <div className="relative bg-white p-4 rounded shadow-lg z-50 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
 		<button
 		  className="absolute top-2 right-2 text-gray-600 text-xl"
 		  onClick={onClose}

@@ -8,6 +8,7 @@ export default function PacksIndexPage({ packsData }) {
   const [sortType, setSortType] = useState("newest");
   const [showEvent, setShowEvent] = useState(true);
   const [showContent, setShowContent] = useState(true);
+  const [showVegas, setShowVegas] = useState(true);
 
   // Sorting function: sorts by newest, oldest, or soonest event
   function sortPacks(list, type) {
@@ -35,6 +36,7 @@ export default function PacksIndexPage({ packsData }) {
 	return list.filter((pack) => {
 	  if (pack.packType === "event" && showEvent) return true;
 	  if (pack.packType === "content" && showContent) return true;
+	  if (pack.packType === "vegas" && showVegas) return true;
 	  return false;
 	});
   }
@@ -91,6 +93,14 @@ export default function PacksIndexPage({ packsData }) {
 			onChange={(e) => setShowContent(e.target.checked)}
 		  />{" "}
 		  Content
+		</label>
+		<label style={{ marginLeft: "1rem" }}>
+		  <input
+			type="checkbox"
+			checked={showVegas}
+			onChange={(e) => setShowVegas(e.target.checked)}
+		  />{" "}
+		  Vegas
 		</label>
 	  </div>
 

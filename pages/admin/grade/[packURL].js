@@ -38,6 +38,12 @@ export default function GradePackPage() {
     fetch(`/api/packs/${packURL}`)
       .then((res) => res.json())
       .then((data) => {
+        console.log('[GradePackPage] fetched pack data:', data.pack);
+        (data.pack.props || []).forEach((p) =>
+          console.log(
+            `[GradePackPage] prop ${p.airtableId} -> propESPNLookup=${p.propESPNLookup}, propLeagueLookup=${p.propLeagueLookup}`
+          )
+        );
         if (data.success) {
           setPackType(data.pack.packType || null);
           const propsData = data.pack.props || [];
@@ -65,10 +71,14 @@ export default function GradePackPage() {
 
   useEffect(() => {
     if (!loading && !scoresFetched && espnGameID && eventLeague) {
-      fetch("/api/admin/fetchMlbEvents", {
+      const dateStr = eventTime ? eventTime.slice(0,10).replace(/-/g, "") : "";
+      const endpoint = eventLeague.toLowerCase() === 'nfl'
+        ? '/api/admin/fetchNflEvents'
+        : '/api/admin/fetchMlbEvents';
+      fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: eventTime ? eventTime.slice(0,10).replace(/-/g, "") : "" }),
+        body: JSON.stringify({ date: dateStr }),
       })
         .then((res) => res.json())
         .then(() => fetch(`/api/packs/${packURL}`))
@@ -162,17 +172,30 @@ export default function GradePackPage() {
                 <div className="flex-1">
                   <div className="font-medium">{prop.propShort}</div>
                   <div className="text-sm text-gray-600">{prop.propSummary}</div>
+                  {prop.propLeagueLookup && prop.propESPNLookup && (
+                    <a
+                      href={`https://www.espn.com/${String(prop.propLeagueLookup).toLowerCase()}/boxscore/_/gameId/${prop.propESPNLookup}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline text-sm mt-1 block"
+                    >
+                      View Game
+                    </a>
+                  )}
                 </div>
                 <div className="flex space-x-2">
                   {packType === 'superprop' ? (
                     prop.sideLabels.map((label, i) => {
                       const letter = String.fromCharCode(65 + i);
-                      const statusKey = `graded${letter}`;
+                      const statusKey = `graded${letter}`
+
                       return (
                         <button
                           key={letter}
                           onClick={() => handleStatusChange(prop.airtableId, statusKey)}
-                          className={`px-3 py-1 rounded ${statuses[prop.airtableId] === statusKey ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                          className={`px-3 py-1 rounded ${
+                            statuses[prop.airtableId] === statusKey ? 'bg-green-600 text-white' : 'bg-gray-200'
+                          }`}
                         >
                           {label}
                         </button>
@@ -182,47 +205,55 @@ export default function GradePackPage() {
                     <>
                       <button
                         onClick={() => handleStatusChange(prop.airtableId, 'gradedA')}
-                        className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedA' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                        className={`px-3 py-1 rounded ${
+                          statuses[prop.airtableId] === 'gradedA' ? 'bg-green-600 text-white' : 'bg-gray-200'
+                        }`}
                       >
-                        {prop.sideALabel}
+                        {prop.sideLabels[0]}
                       </button>
                       <button
                         onClick={() => handleStatusChange(prop.airtableId, 'gradedB')}
-                        className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'gradedB' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                        className={`px-3 py-1 rounded ml-2 ${
+                          statuses[prop.airtableId] === 'gradedB' ? 'bg-green-600 text-white' : 'bg-gray-200'
+                        }`}
                       >
-                        {prop.sideBLabel}
+                        {prop.sideLabels[1]}
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(prop.airtableId, 'push')}
+                        className={`px-3 py-1 rounded ml-2 ${
+                          statuses[prop.airtableId] === 'push' ? 'bg-yellow-600 text-white' : 'bg-gray-200'
+                        }`}
+                      >
+                        Push
                       </button>
                     </>
                   )}
-                  <button
-                    onClick={() => handleStatusChange(prop.airtableId, 'push')}
-                    className={`px-3 py-1 rounded ${statuses[prop.airtableId] === 'push' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                  >
-                    Push
-                  </button>
                 </div>
-              </div>
-              <div>
-                <input
-                  type="text"
-                  value={results[prop.airtableId] || ""}
-                  onChange={(e) => handleResultChange(prop.airtableId, e.target.value)}
-                  className="border rounded px-2 py-1 w-full"
-                  placeholder="Result"
-                />
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    placeholder="Result"
+                    value={results[prop.airtableId] || ''}
+                    onChange={(e) => handleResultChange(prop.airtableId, e.target.value)}
+                    className="w-full border px-2 py-1 rounded"
+                  />
+                </div>
               </div>
             </div>
           ))}
+          <div className="mt-4">
+            <button
+              disabled={saving}
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            {saveError && <p className="text-red-600 mt-2">{saveError}</p>}
+          </div>
         </div>
       )}
-      {saveError && <p className="text-red-600 mt-4">Error: {saveError}</p>}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-6 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-      >
-        {saving ? "Saving..." : "Save"}
-      </button>
     </div>
   );
-} 
+}

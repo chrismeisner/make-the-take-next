@@ -7,6 +7,7 @@ import { useModal } from "../../contexts/ModalContext";
 export default function AdminPage({ superAdminSecret }) {
   const { data: session } = useSession();
   const { openModal } = useModal();
+  // Render Twilio webhook settings on main Admin page
   const [timezone, setTimezone] = useState("");
 
   useEffect(() => {
@@ -48,6 +49,33 @@ export default function AdminPage({ superAdminSecret }) {
   // State for updating NFL teams
   const [loadingNflTeams, setLoadingNflTeams] = useState(false);
   const [nflTeamsResult, setNflTeamsResult] = useState(null);
+  // State for fetching NFL events
+  const [loadingNflEvents, setLoadingNflEvents] = useState(false);
+  const [nflEventsResult, setNflEventsResult] = useState(null);
+  // State for fetching NFL events
+  const [nflDate, setNflDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [sendingHello, setSendingHello] = useState(false);
+  const [helloResult, setHelloResult] = useState("");
+  const [closingProps, setClosingProps] = useState(false);
+  const [closePropsResult, setClosePropsResult] = useState(null);
+
+  const handleCloseProps = async () => {
+    setClosingProps(true);
+    setClosePropsResult(null);
+    try {
+      const res = await fetch("/api/admin/closeProps", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setClosePropsResult(`Closed ${data.closedCount} props.`);
+      } else {
+        setClosePropsResult(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setClosePropsResult(`Error: ${err.message}`);
+    } finally {
+      setClosingProps(false);
+    }
+  };
 
   // If we want to log out the current user:
   function handleForceLogout() {
@@ -75,6 +103,24 @@ export default function AdminPage({ superAdminSecret }) {
       setEventsResult({ success: false, error: err.message });
     } finally {
       setLoadingEvents(false);
+    }
+  };
+  // Handler for fetching NFL events
+  const handleFetchNflEvents = async () => {
+    setLoadingNflEvents(true);
+    try {
+      const dateStr = nflDate.replace(/-/g, "");
+      const res = await fetch("/api/admin/fetchNflEvents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dateStr }),
+      });
+      const data = await res.json();
+      setNflEventsResult(data);
+    } catch (err) {
+      setNflEventsResult({ success: false, error: err.message });
+    } finally {
+      setLoadingNflEvents(false);
     }
   };
   
@@ -118,6 +164,25 @@ export default function AdminPage({ superAdminSecret }) {
     }
   };
 
+  const sendHelloText = async () => {
+    setSendingHello(true);
+    setHelloResult("");
+    try {
+      const res = await fetch("/api/admin/sendHelloText", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        // Show both the from and to numbers in the success message
+        setHelloResult(`Hello text sent from ${data.from} to ${data.to}`);
+      } else {
+        setHelloResult(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setHelloResult(`Error: ${err.message}`);
+    } finally {
+      setSendingHello(false);
+    }
+  };
+
   // For example, if we only want to show it if the user is actually logged in:
   if (!session?.user) {
 	return <div>Not logged in, no force-logout needed.</div>;
@@ -143,6 +208,11 @@ export default function AdminPage({ superAdminSecret }) {
             Create New Pack
           </button>
         </Link>
+        <Link href="/admin/create-pack?packType=vegas">
+          <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+            Create New Vegas Pack
+          </button>
+        </Link>
         <Link href="/admin/create-event">
           <button className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
             Create New Event
@@ -151,6 +221,11 @@ export default function AdminPage({ superAdminSecret }) {
         <Link href="/admin/create-super-prop">
           <button className="px-3 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
             Create Super Prop
+          </button>
+        </Link>
+        <Link href="/admin/vegas">
+          <button className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+            Vegas Odds Viewer
           </button>
         </Link>
       </div>
@@ -192,6 +267,49 @@ export default function AdminPage({ superAdminSecret }) {
       </div>
     )}
   </div>
+      {/* Get NFL Events */}
+      <div className="mt-4">
+        <div className="flex items-center space-x-2">
+          <input
+            type="date"
+            value={nflDate}
+            onChange={(e) => setNflDate(e.target.value)}
+            className="px-2 py-2 border rounded"
+          />
+          <button
+            onClick={handleFetchNflEvents}
+            disabled={loadingNflEvents || !nflDate}
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loadingNflEvents ? "Fetching..." : "Get NFL Events"}
+          </button>
+        </div>
+        {nflEventsResult && (
+          <div className='mt-2'>
+            {nflEventsResult.success ? (
+              <>
+                <p className='text-green-600'>Successfully processed {nflEventsResult.processedCount} events.</p>
+                <ul className='mt-2 space-y-1'>
+                  {nflEventsResult.events.map(evt => (
+                    <li key={evt.espnGameID}>
+                      <Link href={`/teams/${evt.homeTeamSlug}`} className='text-blue-600 hover:underline'>
+                        {evt.homeTeam}
+                      </Link>
+                      {' vs '}
+                      <Link href={`/teams/${evt.awayTeamSlug}`} className='text-blue-600 hover:underline'>
+                        {evt.awayTeam}
+                      </Link>
+                      {` on ${new Date(evt.eventTime).toLocaleString()}`}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className='text-red-600'>Error: {nflEventsResult.error}</p>
+            )}
+          </div>
+        )}
+      </div>
       
       {/* Update MLB Teams button */}
       <div className="mt-4">
@@ -259,6 +377,26 @@ export default function AdminPage({ superAdminSecret }) {
          Grade Packs
        </button>
      </div>
+     <div className="mt-4">
+      <button
+        onClick={sendHelloText}
+        disabled={sendingHello}
+        className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+      >
+        {sendingHello ? "Sending..." : "Send Hello Text"}
+      </button>
+      {helloResult && <p className="mt-2 text-sm">{helloResult}</p>}
+    </div>
+    <div className="mt-4">
+      <button
+        onClick={handleCloseProps}
+        disabled={closingProps}
+        className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+      >
+        {closingProps ? "Closing..." : "Close Props"}
+      </button>
+      {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
+    </div>
     </div>
   );
 }

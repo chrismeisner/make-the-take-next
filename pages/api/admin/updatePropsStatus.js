@@ -49,50 +49,51 @@ export default async function handler(req, res) {
     await base("Props").update(formatted);
 
     // If packURL provided and all props are graded or pushed, update packStatus to "graded"
-    if (packURL && updates.every(u => ["gradedA", "gradedB", "push"].includes(u.propStatus))) {
+    if (packURL) {
       try {
-        const packRecords = await base("Packs").select({
+        // Fetch the Pack record to get linked Props
+        const packRecs = await base("Packs").select({
           filterByFormula: `{packURL} = "${packURL}"`,
           maxRecords: 1,
         }).firstPage();
-        if (packRecords.length > 0) {
-          await base("Packs").update([
-            { id: packRecords[0].id, fields: { packStatus: "graded" } },
-          ]);
-          // --- SMS notification: fetch takers and send SMS ---
-          const packRecord = packRecords[0];
-          const packId = packRecord.id;
-          // Use the reciprocal Takes link on the Pack record
-          const linkedTakeIds = packRecord.fields.Takes || [];
-          console.log(`[admin/updatePropsStatus] Pack ${packId} has ${linkedTakeIds.length} linked Takes:`, linkedTakeIds);
-          let takes = [];
-          if (linkedTakeIds.length > 0) {
-            // Build formula to select only the 'latest' takes among these IDs
-            const idFilters = linkedTakeIds.map(id => `RECORD_ID()="${id}"`).join(",");
-            const formula = `AND({takeStatus} = "latest", OR(${idFilters}))`;
-            console.log(`[admin/updatePropsStatus] Fetching Takes with formula: ${formula}`);
-            takes = await base("Takes").select({ filterByFormula: formula, maxRecords: linkedTakeIds.length }).all();
-          }
-          const phones = [...new Set(
-            takes.map(t => t.fields.takeMobile).filter(Boolean)
-          )];
-          smsRecipients = phones;
-          console.log(`[admin/updatePropsStatus] Found ${phones.length} SMS recipients:`, phones);
-          for (const to of phones) {
-            console.log(`[admin/updatePropsStatus] Sending SMS to ${to}`);
-            try {
-              await sendSMS({
-                to,
-                message: `🎉 Your pack "${packURL}" has been graded! View results: ${process.env.SITE_URL}/packs/${packURL}`,
-              });
-              console.log(`[admin/updatePropsStatus] SMS sent to ${to}`);
-            } catch (smsErr) {
-              console.error("[admin/updatePropsStatus] SMS send error for", to, smsErr);
+        if (packRecs.length > 0) {
+          const pr = packRecs[0];
+          const propIds = pr.fields.Props || [];
+          if (propIds.length > 0) {
+            // Fetch all Props for this pack
+            const propFormula = `OR(${propIds.map(id => `RECORD_ID()="${id}"`).join(",")})`;
+            const propRecs = await base("Props").select({ filterByFormula: propFormula, maxRecords: propIds.length }).all();
+            // Check that all Props are graded or pushed
+            const allGraded = propRecs.every(r => {
+              const status = r.fields.propStatus;
+              return ["gradedA", "gradedB", "push"].includes(status);
+            });
+            if (allGraded) {
+              // Update packStatus to graded
+              await base("Packs").update([{ id: pr.id, fields: { packStatus: "graded" } }]);
+              console.log(`[admin/updatePropsStatus] Pack ${pr.id} status set to graded`);
+              // Send SMS notifications as before
+              const linkedTakeIds = pr.fields.Takes || [];
+              let takes = [];
+              if (linkedTakeIds.length > 0) {
+                const idFilters = linkedTakeIds.map(id => `RECORD_ID()="${id}"`).join(",");
+                const formula = `AND({takeStatus} = "latest", OR(${idFilters}))`;
+                takes = await base("Takes").select({ filterByFormula: formula, maxRecords: linkedTakeIds.length }).all();
+              }
+              const phones = [...new Set(takes.map(t => t.fields.takeMobile).filter(Boolean))];
+              smsRecipients = phones;
+              for (const to of phones) {
+                try {
+                  await sendSMS({ to, message: `🎉 Your pack "${packURL}" has been graded! View results: ${process.env.SITE_URL}/packs/${packURL}` });
+                } catch (smsErr) {
+                  console.error(`[admin/updatePropsStatus] SMS send error for ${to}:`, smsErr);
+                }
+              }
             }
           }
         }
       } catch (err) {
-        console.error("[admin/updatePropsStatus] Error updating packStatus:", err);
+        console.error("[admin/updatePropsStatus] Error checking/updating packStatus:", err);
       }
     }
 

@@ -12,6 +12,9 @@ import FeaturedPackModal from "./modals/FeaturedPackModal";
 import PackCompletedModal from "./modals/PackCompletedModal";
 import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
 import SuperPropCreatedModal from "./modals/SuperPropCreatedModal";
+import AddEventModal from "./modals/AddEventModal";
+import AddPropModal from "./modals/AddPropModal";
+import GenerateSummaryModal from "./modals/GenerateSummaryModal";
 import GradePacksModal from "./modals/GradePacksModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
@@ -150,6 +153,23 @@ export default function GlobalModalRenderer() {
 		  {...modalConfig.modalProps}
 		/>
 	  );
+	case "addEvent":
+	  return (
+		<AddEventModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  onEventSelected={modalConfig.modalProps.onEventSelected}
+		/>
+	  );
+	case "addProp":
+	  return (
+		<AddPropModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  onPropsAdded={modalConfig.modalProps.onPropsAdded}
+		  initialLeague={modalConfig.modalProps.initialLeague}
+		/>
+	  );
 	case "superPropCreated": {
 	  const { url, onDone } = modalConfig.modalProps;
 	  return (
@@ -213,6 +233,20 @@ export default function GlobalModalRenderer() {
           />
         );
       }
+	case "aiSummaryContext": {
+	  const { defaultPrompt, onGenerate } = modalConfig.modalProps;
+	  return (
+		<GenerateSummaryModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  defaultPrompt={defaultPrompt}
+		  onGenerate={(context) => {
+			onGenerate(context);
+			closeModal();
+		  }}
+		/>
+	  );
+	}
 	default:
 	  return null;
   }

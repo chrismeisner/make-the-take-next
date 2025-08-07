@@ -21,6 +21,7 @@ export default async function handler(req, res) {
     const dateStr = date
       ? date
       : new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    console.log(`[admin/fetchMlbEvents] Get MLB events pressed for date=${dateStr}`);
     const url = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`;
     const response = await fetch(url);
     if (!response.ok) {
@@ -85,8 +86,6 @@ export default async function handler(req, res) {
         eventTime,
         eventTitle,
         eventStatus,
-        homeTeam,
-        awayTeam,
         eventLeague,
         homeTeamLink,
         awayTeamLink,
