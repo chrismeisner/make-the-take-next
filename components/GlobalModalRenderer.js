@@ -16,6 +16,7 @@ import AddEventModal from "./modals/AddEventModal";
 import AddPropModal from "./modals/AddPropModal";
 import GenerateSummaryModal from "./modals/GenerateSummaryModal";
 import GradePacksModal from "./modals/GradePacksModal";
+import GradePropsModal from "./modals/GradePropsModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
 
@@ -208,6 +209,14 @@ export default function GlobalModalRenderer() {
 		  isOpen={true}
 		  onClose={closeModal}
 		  packs={modalConfig.modalProps.packs}
+		/>
+	  );
+	case "gradeProps":
+	  return (
+		<GradePropsModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  props={modalConfig.modalProps.props}
 		/>
 	  );
 	case "qrCode":

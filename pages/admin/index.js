@@ -37,6 +37,21 @@ export default function AdminPage({ superAdminSecret }) {
       console.error("Grade Packs fetch failed:", err);
     }
   };
+ 
+  // Handler for fetching Props to grade
+  const handleGradeProps = async () => {
+    try {
+      const res = await fetch("/api/admin/gradeProps", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        openModal("gradeProps", { props: data.props });
+      } else {
+        console.error("Grade Props error:", data.error);
+      }
+    } catch (err) {
+      console.error("Grade Props fetch failed:", err);
+    }
+  };
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [eventsResult, setEventsResult] = useState(null);
   const [mlbDateOption, setMlbDateOption] = useState("Today");
@@ -378,6 +393,14 @@ export default function AdminPage({ superAdminSecret }) {
        </button>
      </div>
      <div className="mt-4">
+      <button
+        onClick={handleGradeProps}
+        className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+      >
+        Prop Grader
+      </button>
+    </div>
+    <div className="mt-4">
       <button
         onClick={sendHelloText}
         disabled={sendingHello}

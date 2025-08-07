@@ -171,52 +171,7 @@ export default function ProfilePage() {
 		</div>
 	  </div>
 
-	  {/* Packs You've Played In */}
-	  <h3 className="text-xl font-bold mt-6 mb-2">Packs You've Played In</h3>
-	  {userPacks.length === 0 ? (
-		<p>You haven't participated in any packs yet.</p>
-	  ) : (
-		<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-		  {userPacks.map((pack) => (
-			<Link
-			  key={pack.id}
-			  href={`/packs/${pack.packURL}`}
-			  className="border rounded shadow-md bg-white overflow-visible p-2 block"
-			>
-			  <div
-				className="aspect-square relative bg-blue-600 bg-cover bg-center"
-				style={{
-				  backgroundImage:
-					pack.packCover && pack.packCover.length > 0
-					  ? `url(${pack.packCover[0].url})`
-					  : undefined,
-				}}
-			  >
-				{!pack.packCover && (
-				  <div className="flex items-center justify-center h-full">
-					<span>No Cover</span>
-				  </div>
-				)}
-			  </div>
-			  <div className="p-4">
-				<h2 className="text-lg font-semibold">
-				  {pack.packTitle || "Untitled Pack"}
-				</h2>
-				{pack.eventTime && (
-				  <p className="text-xs text-gray-500">
-					Event: {new Date(pack.eventTime).toLocaleString()}
-				  </p>
-				)}
-				{pack.packStatus && (
-				  <p className="text-xs text-gray-500">
-					Status: {pack.packStatus}
-				  </p>
-				)}
-			  </div>
-			</Link>
-		  ))}
-		</div>
-	  )}
+      
 
       {/* Takes Table */}
       <h3 className="text-xl font-bold mt-6 mb-2">Your Takes</h3>
