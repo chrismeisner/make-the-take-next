@@ -1,6 +1,7 @@
 import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
 import { sendSMS } from "../../../lib/twilioService";
+import { aggregateTakeStats } from "../../../lib/leaderboard";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -79,6 +80,33 @@ export default async function handler(req, res) {
                 const idFilters = linkedTakeIds.map(id => `RECORD_ID()="${id}"`).join(",");
                 const formula = `AND({takeStatus} = "latest", OR(${idFilters}))`;
                 takes = await base("Takes").select({ filterByFormula: formula, maxRecords: linkedTakeIds.length }).all();
+              }
+
+              // Compute leaderboard winner from takes and write to packWinner (linked Profile record)
+              try {
+                const statsList = aggregateTakeStats(takes);
+                if (statsList.length > 0) {
+                  const top = statsList[0];
+                  const winnerPhone = top.phone;
+                  if (winnerPhone) {
+                    // Find the Airtable Profiles record by phone to link
+                    const profileRecs = await base("Profiles").select({
+                      filterByFormula: `{profileMobile} = "${winnerPhone}"`,
+                      maxRecords: 1,
+                    }).firstPage();
+                    if (profileRecs.length > 0) {
+                      const winnerProfileRecordId = profileRecs[0].id;
+                      await base("Packs").update([
+                        { id: pr.id, fields: { packWinner: [winnerProfileRecordId] } },
+                      ]);
+                      console.log(`[admin/updatePropsStatus] Pack ${pr.id} winner set to profile record ${winnerProfileRecordId}`);
+                    } else {
+                      console.warn(`[admin/updatePropsStatus] No profile found for winner phone ${winnerPhone}`);
+                    }
+                  }
+                }
+              } catch (winnerErr) {
+                console.error("[admin/updatePropsStatus] Error computing/saving pack winner:", winnerErr);
               }
               const phones = [...new Set(takes.map(t => t.fields.takeMobile).filter(Boolean))];
               smsRecipients = phones;

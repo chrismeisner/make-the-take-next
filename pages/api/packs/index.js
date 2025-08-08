@@ -46,6 +46,9 @@ async function fetchAllPacks() {
 	  eventTime: fields.eventTime || null,
 	  createdAt: record._rawJson.createdTime,
 	  propsCount: (fields.Props || []).length,
+      // Winner info (from Airtable): either lookup or derive from linked record id
+      winnerProfileID: fields.winnerProfileID || null,
+      packWinnerRecordIds: Array.isArray(fields.packWinner) ? fields.packWinner : [],
 	};
   }));
   return packsData;

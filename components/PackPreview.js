@@ -1,6 +1,6 @@
 import Link from "next/link";
 import StatusPill from "./StatusPill";
-import useLeaderboard from "../hooks/useLeaderboard";
+// Simplified: we will read winner from pack.winnerProfileID (lookup) or pack.packWinnerRecordIds
 import useCountdown from "../hooks/useCountdown";
 
 export default function PackPreview({ pack }) {
@@ -12,9 +12,8 @@ export default function PackPreview({ pack }) {
   const takeCount = pack.takeCount || 0;
   // User-specific verified take count from API
   const userTakesCount = pack.userTakesCount || 0;
-  // Fetch the pack-specific leaderboard for graded packs
-  const { leaderboard, loading } = useLeaderboard({ packURL: pack.packURL });
-  const winnerID = !loading && leaderboard.length > 0 ? leaderboard[0].profileID : null;
+  // Winner: prefer lookup winnerProfileID, fallback to first packWinner linked record id (if your UI uses it)
+  const winnerID = pack.winnerProfileID || null;
 
   // Derive sorted event times
   const eventTimes = Array.isArray(pack.propEventRollup) ? [...pack.propEventRollup] : [];
@@ -81,9 +80,7 @@ export default function PackPreview({ pack }) {
 		  <p>Props: {propsCount}</p>
 		  <p>Total takes: {takeCount}</p>
 		  <p>Your takes: {userTakesCount}/{propsCount}</p>
-          {pack.packStatus === "graded" && winnerID && (
-            <p>Winner: @{winnerID}</p>
-          )}
+          {pack.packStatus === "graded" && winnerID && (<p>Winner: @{winnerID}</p>)}
 		</div>
 	  </div>
 	</Link>

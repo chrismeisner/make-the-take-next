@@ -176,6 +176,9 @@ export default function PacksIndexPage({ packsData }) {
 					  {pack.prizeSummary}
 					</p>
 				  )}
+                  {String(pack.packStatus).toLowerCase() === "graded" && pack.winnerProfileID && (
+                    <p className="text-sm text-gray-700 mt-1">Winner: @{pack.winnerProfileID}</p>
+                  )}
 				  {pack.packSummary && (
 					<p className="text-sm text-gray-700 mt-2">
 					  {pack.packSummary}

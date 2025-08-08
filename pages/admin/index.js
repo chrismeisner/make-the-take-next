@@ -92,6 +92,21 @@ export default function AdminPage({ superAdminSecret }) {
     }
   };
 
+  // Handler to fetch graded packs without winners and open selection modal
+  const handleGetPackWinners = async () => {
+    try {
+      const res = await fetch("/api/admin/packsWithoutWinners", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        openModal("getPackWinners", { packs: data.packs });
+      } else {
+        console.error("packsWithoutWinners error:", data.error);
+      }
+    } catch (err) {
+      console.error("packsWithoutWinners fetch failed:", err);
+    }
+  };
+
   // If we want to log out the current user:
   function handleForceLogout() {
 	// signOut can optionally redirect the user to a callback URL
@@ -392,6 +407,15 @@ export default function AdminPage({ superAdminSecret }) {
          Grade Packs
        </button>
      </div>
+      {/* Get Pack Winners button */}
+      <div className="mt-4">
+        <button
+          onClick={handleGetPackWinners}
+          className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+        >
+          Get Pack Winners
+        </button>
+      </div>
      <div className="mt-4">
       <button
         onClick={handleGradeProps}

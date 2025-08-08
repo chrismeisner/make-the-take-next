@@ -133,6 +133,17 @@ export default async function handler(req, res) {
 	  profileTeamData, // Contains favorite team info
 	  createdTime: profRec._rawJson.createdTime,
 	};
+    // 6) Compute Awards: number of graded packs this profile has won
+    let awardsCount = 0;
+    try {
+      const winnerFormula = `OR(AND(LOWER({packStatus})='graded', {winnerProfileID}='${profileID}'), AND(LOWER({packStatus})='graded', FIND('${profRec.id}', ARRAYJOIN({packWinner}))>0))`;
+      const wonRecs = await base('Packs')
+        .select({ filterByFormula: winnerFormula, maxRecords: 5000 })
+        .all();
+      awardsCount = wonRecs.length;
+    } catch (awErr) {
+      console.error('[profile] Error computing awards =>', awErr);
+    }
 	// Fetch Exchange records for this profile by matching the 'profileID' lookup field in Exchanges
 	const exchangeFilter = `{profileID}="${profileID}"`;
 	console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
@@ -148,7 +159,7 @@ export default async function handler(req, res) {
 	  createdTime: r._rawJson.createdTime,
 	}));
 
-	// 6) Return the aggregated data
+    // 7) Return the aggregated data
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
@@ -157,6 +168,7 @@ export default async function handler(req, res) {
 	  userTakes: userTakes,
 	  userPacks: validPacks,
 	  userExchanges,
+      awardsCount,
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);

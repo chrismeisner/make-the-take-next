@@ -14,6 +14,7 @@ export default function ProfilePage() {
   const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0, pushes: 0 });
   const [userPacks, setUserPacks] = useState([]);
   const [userExchanges, setUserExchanges] = useState([]);
+  const [awardsCount, setAwardsCount] = useState(0);
   const [prizes, setPrizes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,7 +45,8 @@ export default function ProfilePage() {
 			setUserStats({ points: Math.round(data.totalPoints || 0), wins, losses, pending, pushes });
 		  }
 		  setUserPacks(data.userPacks || []);
-		  setUserExchanges(data.userExchanges || []);
+          setUserExchanges(data.userExchanges || []);
+          setAwardsCount(data.awardsCount || 0);
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
@@ -161,10 +163,15 @@ export default function ProfilePage() {
 		  <span className="text-2xl font-bold">{tokenBalance}</span>
 		  <div className="text-sm text-gray-600 mt-1">💎 Diamonds</div>
 		</div>
-		<div className="border rounded p-4 text-center">
-		  <span className="text-2xl font-bold">6</span>
-		  <div className="text-sm text-gray-600 mt-1">🏆 Awards</div>
-		</div>
+        <div className="border rounded p-4 text-center">
+          <span className="text-2xl font-bold">{awardsCount}</span>
+          <div className="text-sm text-gray-600 mt-1">🏆 Awards</div>
+          <div className="mt-2">
+            <Link href={`/profile/${encodeURIComponent(profileID)}/awards`} className="text-xs text-blue-600 underline">
+              View Awards
+            </Link>
+          </div>
+        </div>
 		<div className="border rounded p-4 text-center">
 		  <span className="text-2xl font-bold">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</span>
 		  <div className="text-sm text-gray-600 mt-1">Record</div>
