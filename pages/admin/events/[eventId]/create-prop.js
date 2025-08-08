@@ -333,7 +333,8 @@ export default function CreateEventPropPage() {
             onClick={() => {
               const away = Array.isArray(event.awayTeam) ? event.awayTeam[0] : event.awayTeam || '';
               const home = Array.isArray(event.homeTeam) ? event.homeTeam[0] : event.homeTeam || '';
-              const defaultPrompt = `Search the web for the latest news and statistics around today's game between ${away} and ${home}. Write this in long paragraph format filled with stats and narratives.`;
+              const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
+              const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
               openModal('aiSummaryContext', { defaultPrompt, onGenerate: handleGenerateSummary });
             }}
             className="mt-1 text-sm bg-indigo-600 text-white rounded px-3 py-1 hover:bg-indigo-700"

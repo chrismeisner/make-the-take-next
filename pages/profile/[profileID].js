@@ -14,8 +14,12 @@ export default function ProfilePage() {
   const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0, pushes: 0 });
   const [userPacks, setUserPacks] = useState([]);
   const [userExchanges, setUserExchanges] = useState([]);
+  const [achievementsValueTotal, setAchievementsValueTotal] = useState(0);
   const [awardsCount, setAwardsCount] = useState(0);
   const [prizes, setPrizes] = useState([]);
+  const [tokensEarned, setTokensEarned] = useState(0);
+  const [tokensSpent, setTokensSpent] = useState(0);
+  const [tokensBalance, setTokensBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,9 +48,14 @@ export default function ProfilePage() {
 			}).length;
 			setUserStats({ points: Math.round(data.totalPoints || 0), wins, losses, pending, pushes });
 		  }
-		  setUserPacks(data.userPacks || []);
+          setUserPacks(data.userPacks || []);
           setUserExchanges(data.userExchanges || []);
           setAwardsCount(data.awardsCount || 0);
+          setAchievementsValueTotal(data.achievementsValueTotal || 0);
+          // Tokens summary from API
+          setTokensEarned(Number.isFinite(data.tokensEarned) ? data.tokensEarned : 0);
+          setTokensSpent(Number.isFinite(data.tokensSpent) ? data.tokensSpent : 0);
+          setTokensBalance(Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0);
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
@@ -81,15 +90,10 @@ export default function ProfilePage() {
 
   // calculateUserStats is no longer needed; stats computed inline after fetch
 
-  // Compute token balance including exchanges spent and log for debugging (unconditional hook)
-  const tokensEarned = Math.floor(userStats.points / 1000);
-  const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
-  const tokenBalance = tokensEarned - tokensSpent;
+  // Diamonds now map to achievementsValueTotal
   useEffect(() => {
-    console.log('[ProfilePage] Points:', userStats.points);
-    console.log('[ProfilePage] Exchanges:', userExchanges);
-    console.log('[ProfilePage] Tokens Earned:', tokensEarned, 'Tokens Spent:', tokensSpent, 'Token Balance:', tokenBalance);
-  }, [userStats.points, userExchanges, tokensEarned, tokensSpent, tokenBalance]);
+    console.log('[ProfilePage] Achievements Value Total (Diamonds):', achievementsValueTotal);
+  }, [achievementsValueTotal]);
   if (loading) return <div className="p-4">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
   if (!profile) return <div className="p-4">Profile not found.</div>;
@@ -154,15 +158,21 @@ export default function ProfilePage() {
 
 	  {/* Quick Stats */}
 	  <h3 className="text-xl font-bold mt-6 mb-2">Quick Stats</h3>
-	  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 		<div className="border rounded p-4 text-center">
 		  <span className="text-2xl font-bold">{userStats.points}</span>
 		  <div className="text-sm text-gray-600 mt-1">🦴 Bones</div>
+          <div className="mt-1 text-xs text-gray-600">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</div>
 		</div>
-		<div className="border rounded p-4 text-center">
-		  <span className="text-2xl font-bold">{tokenBalance}</span>
-		  <div className="text-sm text-gray-600 mt-1">💎 Diamonds</div>
-		</div>
+        <div className="border rounded p-4 text-center">
+          <span className="text-2xl font-bold">{tokensBalance}</span>
+          <div className="text-sm text-gray-600 mt-1">💎 Diamonds</div>
+          <div className="mt-2 flex items-center justify-center gap-3">
+            <Link href={`/profile/${encodeURIComponent(profileID)}/tokens`} className="text-xs text-blue-600 underline">
+              View History
+            </Link>
+          </div>
+        </div>
         <div className="border rounded p-4 text-center">
           <span className="text-2xl font-bold">{awardsCount}</span>
           <div className="text-sm text-gray-600 mt-1">🏆 Awards</div>
@@ -172,10 +182,6 @@ export default function ProfilePage() {
             </Link>
           </div>
         </div>
-		<div className="border rounded p-4 text-center">
-		  <span className="text-2xl font-bold">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</span>
-		  <div className="text-sm text-gray-600 mt-1">Record</div>
-		</div>
 	  </div>
 
       

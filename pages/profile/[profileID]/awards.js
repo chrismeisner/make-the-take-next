@@ -1,24 +1,54 @@
 import Airtable from "airtable";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
 export default function ProfileAwardsPage({ profileID, profileUsername, winnerPacks = [] }) {
+  const [sortOrder, setSortOrder] = useState("desc"); // desc = most recent first
+
+  const sortedPacks = useMemo(() => {
+    const toTimestamp = (pack) => {
+      const value = pack.packDate || pack.eventTime || pack.createdTime || 0;
+      const t = new Date(value).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const packsCopy = Array.isArray(winnerPacks) ? [...winnerPacks] : [];
+    return packsCopy.sort((a, b) => {
+      const at = toTimestamp(a);
+      const bt = toTimestamp(b);
+      return sortOrder === "desc" ? bt - at : at - bt;
+    });
+  }, [winnerPacks, sortOrder]);
+
   return (
     <div className="p-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{profileUsername ? `@${profileUsername}` : profileID} Awards</h1>
-        <Link href={`/profile/${encodeURIComponent(profileID)}`} className="underline text-blue-600">
-          Back to Profile
-        </Link>
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-gray-700">
+            <span className="mr-2">Sort</span>
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            >
+              <option value="desc">Most recent</option>
+              <option value="asc">Oldest</option>
+            </select>
+          </label>
+          <Link href={`/profile/${encodeURIComponent(profileID)}`} className="underline text-blue-600">
+            Back to Profile
+          </Link>
+        </div>
       </div>
 
-      {winnerPacks.length === 0 ? (
+      {sortedPacks.length === 0 ? (
         <p className="text-gray-700">No awards yet.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {winnerPacks.map((p) => (
+          {sortedPacks.map((p) => (
             <Link key={p.packID || p.airtableId} href={`/packs/${p.packURL}`} className="block border rounded shadow-sm bg-white overflow-hidden">
               <div className="aspect-square w-full bg-gray-100 relative" style={{ backgroundImage: p.packCover ? `url(${p.packCover})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                 {!p.packCover && (
@@ -26,8 +56,13 @@ export default function ProfileAwardsPage({ profileID, profileUsername, winnerPa
                 )}
               </div>
               <div className="p-3">
-                <h2 className="font-semibold text-base mb-1">{p.packTitle || p.packURL || 'Untitled Pack'}</h2>
-                <div className="text-xs text-gray-600">{p.eventTime ? new Date(p.eventTime).toLocaleString() : ''}</div>
+                <h2 className="font-semibold text-base mb-1 flex items-center gap-1">
+                  {p.packTitle || p.packURL || 'Untitled Pack'}
+                </h2>
+                <div className="text-xs text-gray-600">{(p.packDate || p.eventTime || p.createdTime) ? new Date(p.packDate || p.eventTime || p.createdTime).toLocaleString() : ''}</div>
+                {p.winnerProfileID && (
+                  <div className="text-xs text-gray-700 mt-1">🏆 @{p.winnerProfileID}</div>
+                )}
               </div>
             </Link>
           ))}
@@ -60,6 +95,18 @@ export async function getServerSideProps({ params }) {
     const winnerPacks = packRecords.map((rec) => {
       const f = rec.fields || {};
       const coverUrl = Array.isArray(f.packCover) && f.packCover.length > 0 ? f.packCover[0].url : null;
+      const propEventRollup = Array.isArray(f.propEventRollup) ? f.propEventRollup : [];
+      // Compute earliest event time from propEventRollup as pack date
+      let earliestEventIso = null;
+      if (propEventRollup.length > 0) {
+        const times = propEventRollup
+          .map((t) => new Date(t).getTime())
+          .filter((t) => Number.isFinite(t));
+        if (times.length > 0) {
+          const minMs = Math.min(...times);
+          earliestEventIso = new Date(minMs).toISOString();
+        }
+      }
       return {
         airtableId: rec.id,
         packID: f.packID || rec.id,
@@ -67,13 +114,17 @@ export async function getServerSideProps({ params }) {
         packTitle: f.packTitle || '',
         packCover: coverUrl,
         eventTime: f.eventTime || null,
+        propEventRollup,
+        packDate: earliestEventIso || f.eventTime || rec._rawJson?.createdTime || null,
+        winnerProfileID: f.winnerProfileID || null,
+        createdTime: rec._rawJson?.createdTime || null,
       };
     });
 
-    // Sort by event time desc if present, else by created time desc
+    // Sort by packDate desc (most recent first)
     winnerPacks.sort((a, b) => {
-      const at = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-      const bt = b.eventTime ? new Date(b.eventTime).getTime() : 0;
+      const at = a.packDate ? new Date(a.packDate).getTime() : 0;
+      const bt = b.packDate ? new Date(b.packDate).getTime() : 0;
       return bt - at;
     });
 
@@ -83,5 +134,6 @@ export async function getServerSideProps({ params }) {
     return { notFound: true };
   }
 }
+
 
 

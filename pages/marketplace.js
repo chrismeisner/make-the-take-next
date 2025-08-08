@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/router';
+import { useModal } from '../contexts/ModalContext';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCards } from 'swiper/modules';
 import 'swiper/css';
@@ -14,6 +16,10 @@ export default function MarketplacePage() {
   const [tokenBalance, setTokenBalance] = useState(0);
   const [viewMode, setViewMode] = useState('grid');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [redeeming, setRedeeming] = useState(null); // itemID while in-flight
+  const [toast, setToast] = useState({ type: '', message: '' });
+  const router = useRouter();
+  const { openModal, closeModal } = useModal();
 
   useEffect(() => {
     async function fetchItems() {
@@ -41,31 +47,77 @@ export default function MarketplacePage() {
       setTokenBalance(0);
       return;
     }
-    async function fetchBalance() {
+    async function fetchTokenBalance() {
       try {
-        const [pointsRes, profileRes] = await Promise.all([
-          fetch('/api/userPoints'),
-          fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`)
-        ]);
-        const pointsData = await pointsRes.json();
+        const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
         const profileData = await profileRes.json();
-        const totalPoints = pointsData.success ? pointsData.totalPoints : 0;
-        const tokensEarned = Math.floor(totalPoints / 1000);
-        const tokensSpent = profileData.success
-          ? profileData.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
-          : 0;
-        setTokenBalance(tokensEarned - tokensSpent);
+        if (profileData?.success) {
+          const totalPoints = Math.round(profileData.totalPoints || 0);
+          const tokensEarned = Math.floor(totalPoints / 1000);
+          const tokensSpent = Array.isArray(profileData.userExchanges)
+            ? profileData.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
+            : 0;
+          setTokenBalance(tokensEarned - tokensSpent);
+        } else {
+          setTokenBalance(0);
+        }
       } catch (err) {
         console.error('Error fetching token balance:', err);
+        setTokenBalance(0);
       }
     }
-    fetchBalance();
+    fetchTokenBalance();
   }, [status, session]);
 
-  // Sort items by token cost based on sortOrder
+  // Sort items by cost based on sortOrder
   const sortedItems = items.slice().sort((a, b) =>
     sortOrder === 'asc' ? a.itemTokens - b.itemTokens : b.itemTokens - a.itemTokens
   );
+
+  async function performExchange(item) {
+    const res = await fetch('/api/exchanges', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemID: item.itemID }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to redeem item');
+    }
+    if (typeof data.balanceAfter === 'number') {
+      setTokenBalance(data.balanceAfter);
+    } else {
+      // Fallback: refetch profile to recompute balance
+      const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
+      const profileData = await profileRes.json();
+      if (profileData?.success) {
+        const totalPoints = Math.round(profileData.totalPoints || 0);
+        const tokensEarned = Math.floor(totalPoints / 1000);
+        const tokensSpent = Array.isArray(profileData.userExchanges)
+          ? profileData.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
+          : 0;
+        setTokenBalance(tokensEarned - tokensSpent);
+      }
+    }
+    closeModal();
+    router.push(`/profile/${encodeURIComponent(session.user.profileID)}/tokens`);
+  }
+
+  function openRedeemConfirm(item) {
+    if (!session?.user) return;
+    setToast({ type: '', message: '' });
+    setRedeeming(item.itemID);
+    openModal('exchangeConfirm', {
+      item,
+      onConfirm: async () => {
+        try {
+          await performExchange(item);
+        } finally {
+          setRedeeming(null);
+        }
+      },
+    });
+  }
 
   if (loading) return <div className="p-4">Loading marketplace...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
@@ -94,9 +146,9 @@ export default function MarketplacePage() {
               <div key={item.itemID} className="border rounded shadow-sm bg-white p-4">
                 <h2 className="text-lg font-semibold mb-2">{item.itemName}</h2>
                 <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
-                <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
+                <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} diamonds</p>
                 <p className="text-sm text-gray-700">{item.itemDescription}</p>
-                <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+                <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} diamonds</p>
                 <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
                 </div>
@@ -106,10 +158,10 @@ export default function MarketplacePage() {
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-gray-400 text-gray-700 cursor-not-allowed'
                   }`}
-                  disabled={!canRedeem}
-                  onClick={() => console.log(`Redeem clicked for ${item.itemID}`)}
+                  disabled={!canRedeem || redeeming === item.itemID}
+                  onClick={() => openRedeemConfirm(item)}
                 >
-                  Redeem
+                  {redeeming === item.itemID ? 'Redeeming…' : 'Redeem'}
                 </button>
               </div>
             );
@@ -124,9 +176,9 @@ export default function MarketplacePage() {
                 <div className="border rounded shadow-sm bg-white p-4">
                   <h2 className="text-lg font-semibold mb-2">{item.itemName}</h2>
                   <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
-                  <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
+                  <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} diamonds</p>
                   <p className="text-sm text-gray-700">{item.itemDescription}</p>
-                  <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+                  <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} diamonds</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                     <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
                   </div>
@@ -136,10 +188,10 @@ export default function MarketplacePage() {
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
                         : 'bg-gray-400 text-gray-700 cursor-not-allowed'
                     }`}
-                    disabled={!canRedeem}
-                    onClick={() => console.log(`Redeem clicked for ${item.itemID}`)}
+                    disabled={!canRedeem || redeeming === item.itemID}
+                    onClick={() => openRedeemConfirm(item)}
                   >
-                    Redeem
+                    {redeeming === item.itemID ? 'Redeeming…' : 'Redeem'}
                   </button>
                 </div>
               </SwiperSlide>
@@ -147,6 +199,15 @@ export default function MarketplacePage() {
           })}
         </Swiper>
       )}
+      {toast.message ? (
+        <div
+          className={`mt-4 p-3 rounded ${
+            toast.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}
+        >
+          {toast.message}
+        </div>
+      ) : null}
       <p className="mt-4">
         <Link href="/" className="underline text-blue-600">
           Back to Home

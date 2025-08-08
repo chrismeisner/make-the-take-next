@@ -49,6 +49,7 @@ export default async function handler(req, res) {
       return {
         airtableId: rec.id,
         propID: f.propID || rec.id,
+        packID: f.packID || null,
         propShort: f.propShort || f.PropShort || "",
         propSummary: f.propSummary || "",
         propStatus: f.propStatus || "open",
@@ -62,9 +63,45 @@ export default async function handler(req, res) {
       };
     });
 
-    return res.status(200).json({ success: true, props });
+    // Fetch pack info for any props with a packID
+    const uniquePackIDs = [...new Set(props.map(p => p.packID).filter(Boolean))];
+    let packIdToInfo = {};
+    if (uniquePackIDs.length > 0) {
+      const packChunks = [];
+      const packChunkSize = 50;
+      for (let i = 0; i < uniquePackIDs.length; i += packChunkSize) {
+        packChunks.push(uniquePackIDs.slice(i, i + packChunkSize));
+      }
+      for (const chunk of packChunks) {
+        const formula = `OR(${chunk.map((pid) => `{packID} = "${pid}"`).join(',')})`;
+        const records = await base("Packs")
+          .select({
+            filterByFormula: formula,
+            maxRecords: chunk.length,
+          })
+          .all();
+        records.forEach((rec) => {
+          const f = rec.fields || {};
+          const pid = f.packID || rec.id;
+          packIdToInfo[pid] = {
+            airtableId: rec.id,
+            packID: f.packID || rec.id,
+            packURL: f.packURL || "",
+            packTitle: f.packTitle || "",
+          };
+        });
+      }
+    }
+
+    const propsWithPackInfo = props.map(p => ({
+      ...p,
+      packInfo: p.packID ? packIdToInfo[p.packID] || null : null,
+    }));
+
+    return res.status(200).json({ success: true, props: propsWithPackInfo });
   } catch (error) {
     console.error("[admin/getPropsByIDs] Error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 }
+

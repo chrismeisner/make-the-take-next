@@ -20,6 +20,7 @@ import GradePropsModal from "./modals/GradePropsModal";
 import GetPackWinnersModal from "./modals/GetPackWinnersModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
+import ExchangeConfirmModal from "./modals/ExchangeConfirmModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -29,6 +30,17 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "exchangeConfirm": {
+      const { item, onConfirm } = modalConfig.modalProps;
+      return (
+        <ExchangeConfirmModal
+          isOpen={true}
+          onClose={closeModal}
+          item={item}
+          onConfirm={onConfirm}
+        />
+      );
+    }
 	case "challenge":
 	  {
         // Include the logged-in user's takes

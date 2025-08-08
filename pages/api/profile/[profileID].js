@@ -144,6 +144,28 @@ export default async function handler(req, res) {
     } catch (awErr) {
       console.error('[profile] Error computing awards =>', awErr);
     }
+
+    // 7) Compute Achievements total value (sum of achievementValue)
+    let achievementsValueTotal = 0;
+    let achievements = [];
+    try {
+      // Prefer matching by profileID text field if present on Achievements
+      const achFormula = `{profileID}="${profileID}"`;
+      const achRecs = await base('Achievements')
+        .select({ filterByFormula: achFormula, maxRecords: 5000 })
+        .all();
+      achievements = achRecs.map((r) => ({
+        id: r.id,
+        achievementKey: r.fields.achievementKey || '',
+        achievementTitle: r.fields.achievementTitle || '',
+        achievementDescription: r.fields.achievementDescription || '',
+        achievementValue: typeof r.fields.achievementValue === 'number' ? r.fields.achievementValue : 0,
+        createdTime: r._rawJson.createdTime,
+      }));
+      achievementsValueTotal = achievements.reduce((sum, a) => sum + (a.achievementValue || 0), 0);
+    } catch (achErr) {
+      console.error('[profile] Error fetching achievements =>', achErr);
+    }
 	// Fetch Exchange records for this profile by matching the 'profileID' lookup field in Exchanges
 	const exchangeFilter = `{profileID}="${profileID}"`;
 	console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
@@ -159,7 +181,12 @@ export default async function handler(req, res) {
 	  createdTime: r._rawJson.createdTime,
 	}));
 
-    // 7) Return the aggregated data
+    // 7.5) Compute tokens summary consistent with Marketplace
+    const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
+    const tokensEarned = Math.floor(Math.round(totalPoints || 0) / 1000);
+    const tokensBalance = tokensEarned - tokensSpent;
+
+    // 8) Return the aggregated data
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
@@ -169,6 +196,11 @@ export default async function handler(req, res) {
 	  userPacks: validPacks,
 	  userExchanges,
       awardsCount,
+      achievementsValueTotal,
+      achievements,
+      tokensEarned,
+      tokensSpent,
+      tokensBalance,
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);
