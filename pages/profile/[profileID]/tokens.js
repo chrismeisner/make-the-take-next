@@ -1,6 +1,7 @@
 import Airtable from "airtable";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import PageContainer from "../../../components/PageContainer";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -37,7 +38,7 @@ export default function ProfileTokensPage({ profileID, profileUsername, achievem
   }, [exchanges]);
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
+    <PageContainer>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">
           {profileUsername ? `@${profileUsername}` : profileID} Tokens
@@ -122,7 +123,7 @@ export default function ProfileTokensPage({ profileID, profileUsername, achievem
           </table>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -208,6 +209,7 @@ export async function getServerSideProps({ params }) {
     return { notFound: true };
   }
 }
+
 
 
 

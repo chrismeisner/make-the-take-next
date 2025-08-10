@@ -36,20 +36,15 @@ export default function CreateEventPropPage() {
   // Add propOpenTime state and default helper
   const [propOpenTime, setPropOpenTime] = useState('');
   const computeDefaultOpenTime = () => {
-    const now = new Date();
-    let date = new Date(now);
-    if (now.getHours() < 12) {
-      date.setHours(12, 0, 0, 0);
-    } else if (now.getHours() < 18) {
-      date.setHours(18, 0, 0, 0);
-    } else {
-      date.setDate(date.getDate() + 1);
-      date.setHours(12, 0, 0, 0);
-    }
+    // Default to 12:00 local time of the current day
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
     return formatDateTimeLocal(date.toISOString());
   };
   useEffect(() => {
-    setPropOpenTime(computeDefaultOpenTime());
+    // On initial load, default both open/close times to 12:00 local time of today
+    const noonToday = computeDefaultOpenTime();
+    setPropOpenTime(noonToday);
   }, []);
 
   useEffect(() => {
@@ -79,6 +74,10 @@ export default function CreateEventPropPage() {
           if (event.homeTeamLink) initial.push(...event.homeTeamLink);
           if (event.awayTeamLink) initial.push(...event.awayTeamLink);
           setSelectedTeams(initial);
+          // Default close time to when the event starts
+          if (event?.eventTime) {
+            setPropCloseTime(formatDateTimeLocal(event.eventTime));
+          }
         }
       } catch (err) {
         console.error('Error fetching teams:', err);
@@ -86,12 +85,62 @@ export default function CreateEventPropPage() {
     })();
   }, [event]);
 
-  // Prefill propCloseTime when event loads
-  useEffect(() => {
-    if (event && event.eventTime) {
-      setPropCloseTime(formatDateTimeLocal(event.eventTime));
+  // Quick setters for open/close time helpers based on event
+  const setOpenOneHourBeforeEvent = () => {
+    if (!event?.eventTime) return;
+    const dt = new Date(event.eventTime);
+    dt.setHours(dt.getHours() - 1);
+    setPropOpenTime(formatDateTimeLocal(dt.toISOString()));
+  };
+
+  const setOpenNoonESTOfEventDay = () => {
+    if (!event?.eventTime) return;
+    const eventDate = new Date(event.eventTime);
+    // Get event day parts in America/New_York
+    const dateParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(eventDate);
+    const partMap = Object.fromEntries(dateParts.map(p => [p.type, p.value]));
+    const yyyy = partMap.year;
+    const mm = partMap.month;
+    const dd = partMap.day;
+    // Determine the EST/EDT offset for that day
+    const offsetParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'shortOffset',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(eventDate);
+    const tzNamePart = offsetParts.find(p => p.type === 'timeZoneName');
+    // Fallback to -05:00 if parsing fails
+    let offset = '-05:00';
+    if (tzNamePart?.value) {
+      const match = tzNamePart.value.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/i) || tzNamePart.value.match(/UTC([+-])(\d{1,2})(?::?(\d{2}))?/i);
+      if (match) {
+        const sign = match[1];
+        const hh = String(Math.abs(parseInt(match[2], 10))).padStart(2, '0');
+        const mmOff = String(match[3] ? parseInt(match[3], 10) : 0).padStart(2, '0');
+        offset = `${sign}${hh}:${mmOff}`;
+      }
     }
-  }, [event]);
+    const estNoonIso = `${yyyy}-${mm}-${dd}T12:00:00${offset}`;
+    const localEquivalent = new Date(estNoonIso);
+    setPropOpenTime(formatDateTimeLocal(localEquivalent.toISOString()));
+  };
+
+  const setCloseTenMinutesAfterEvent = () => {
+    if (!event?.eventTime) return;
+    const dt = new Date(event.eventTime);
+    dt.setMinutes(dt.getMinutes() + 10);
+    setPropCloseTime(formatDateTimeLocal(dt.toISOString()));
+  };
 
   // Handler to fetch moneyline odds and prefill form
   const handlePopulateMoneyline = async () => {
@@ -178,7 +227,7 @@ export default function CreateEventPropPage() {
   };
 
   // Handler to generate AI summary
-  const handleGenerateSummary = async (context) => {
+  const handleGenerateSummary = async (context, model) => {
     if (!eventId) {
       setError('Missing eventId for summary generation');
       return;
@@ -189,11 +238,11 @@ export default function CreateEventPropPage() {
       const res = await fetch(`/api/admin/generatePropSummary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, context }),
+        body: JSON.stringify({ eventId, context, model }),
       });
       const data = await res.json();
       if (data.success) {
-        setPropSummary(data.summary);
+        return data.summary;
       } else {
         setError(data.error || 'AI summary generation failed');
       }
@@ -335,7 +384,14 @@ export default function CreateEventPropPage() {
               const home = Array.isArray(event.homeTeam) ? event.homeTeam[0] : event.homeTeam || '';
               const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
               const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-              openModal('aiSummaryContext', { defaultPrompt, onGenerate: handleGenerateSummary });
+              const serverPrompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDateTime} in the ${event.eventLeague || ''}, use relevant narratives and stats. A good example is: "Matthews (5.67 ERA, 42 K) opposes Paddack (4.77 ERA, 88 K) as Tigers (66–48) aim to extend their four-game win streak over Twins (52–60)."`;
+              openModal('aiSummaryContext', {
+                defaultPrompt,
+                serverPrompt,
+                defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
+                onGenerate: handleGenerateSummary,
+                onUse: (text) => setPropSummary(text)
+              });
             }}
             className="mt-1 text-sm bg-indigo-600 text-white rounded px-3 py-1 hover:bg-indigo-700"
           >
@@ -352,12 +408,20 @@ export default function CreateEventPropPage() {
             onChange={(e) => setPropOpenTime(e.target.value)}
             className="mt-1 block w-full border rounded px-2 py-1"
           />
-          <p
-            className="text-sm text-blue-600 cursor-pointer"
-            onClick={() => setPropOpenTime(computeDefaultOpenTime())}
-          >
-            Default Open Time
-          </p>
+          <div className="flex flex-col gap-1 mt-1">
+            <p
+              className="text-sm text-blue-600 cursor-pointer"
+              onClick={setOpenOneHourBeforeEvent}
+            >
+              1 hour before event time
+            </p>
+            <p
+              className="text-sm text-blue-600 cursor-pointer"
+              onClick={setOpenNoonESTOfEventDay}
+            >
+              12p EST of event day
+            </p>
+          </div>
         </div>
         <div>
           <label htmlFor="propCloseTime" className="block text-sm font-medium text-gray-700">
@@ -375,6 +439,12 @@ export default function CreateEventPropPage() {
             onClick={() => setPropCloseTime(formatDateTimeLocal(event.eventTime))}
           >
             When event starts
+          </p>
+          <p
+            className="text-sm text-blue-600 cursor-pointer"
+            onClick={setCloseTenMinutesAfterEvent}
+          >
+            10 minutes after event starts
           </p>
         </div>
         <h3 className="font-semibold">Side A</h3>

@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import PageContainer from "../../../components/PageContainer";
 
 export default function ExchangesPage() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function ExchangesPage() {
   if (error) return <div className="p-4 text-red-600">{error}</div>;
 
   return (
-    <div className="p-4 max-w-4xl mx-auto">
+    <PageContainer>
       <h2 className="text-2xl font-bold mb-4">Exchanges</h2>
       {userExchanges.length === 0 ? (
         <p className="text-center">No exchanges yet.</p>
@@ -52,6 +53,6 @@ export default function ExchangesPage() {
           Back to Profile
         </Link>
       </p>
-    </div>
+    </PageContainer>
   );
 }

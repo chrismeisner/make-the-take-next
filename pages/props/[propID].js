@@ -1,6 +1,7 @@
 import React from "react";
 import Head from "next/head";
 import Link from "next/link";
+import PackPreview from "../../components/PackPreview";
 import { useModal } from "../../contexts/ModalContext";
 import VerificationWidget from "../../components/VerificationWidget";
 import { useState } from "react";
@@ -129,7 +130,7 @@ export default function PropDetailPage({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {associatedPacks.map((pack) => (
-                <PackPreviewCard key={pack.airtableId} pack={pack} />
+                <PackPreview key={pack.packID || pack.airtableId || pack.id} pack={pack} />
               ))}
             </div>
           )}
@@ -177,31 +178,6 @@ export default function PropDetailPage({
     </div>
   </div>
 	</>
-  );
-}
-
-/**
- * Renders a mini preview card for each pack in the "Available Packs" section
- */
-function PackPreviewCard({ pack }) {
-  return (
-	<div className="border p-4 rounded shadow-sm bg-white">
-	  {pack.packPrizeImage && pack.packPrizeImage.length > 0 && (
-		<img
-		  src={pack.packPrizeImage[0].url}
-		  alt="Pack Image"
-		  className="w-full h-32 object-cover rounded mb-2"
-		/>
-	  )}
-	  <h4 className="text-lg font-semibold">
-		<Link href={`/packs/${pack.packURL}`} className="underline text-blue-600">
-		  {pack.packTitle}
-		</Link>
-	  </h4>
-	  {pack.prizeSummary && (
-		<p className="text-sm text-gray-600 mt-1">{pack.prizeSummary}</p>
-	  )}
-	</div>
   );
 }
 
@@ -301,23 +277,34 @@ if (propData.propCoverStatus !== "generated" || !finalCoverImageUrl) {
 
 		console.log("[PropDetailPage] packRecords found =>", packRecords.length);
 
-		associatedPacks = packRecords.map((rec) => {
-		  const pf = rec.fields;
-		  let packPrizeImage = [];
-		  if (Array.isArray(pf.packPrizeImage)) {
-			packPrizeImage = pf.packPrizeImage.map((img) => ({
-			  url: img.url,
-			  filename: img.filename,
-			}));
-		  }
-		  return {
-			airtableId: rec.id,
-			packTitle: pf.packTitle || "Untitled Pack",
-			packURL: pf.packURL || "",
-			packPrizeImage,
-			prizeSummary: pf.prizeSummary || "",
-		  };
-		});
+        associatedPacks = packRecords.map((rec) => {
+          const pf = rec.fields;
+          let packPrizeImage = [];
+          if (Array.isArray(pf.packPrizeImage)) {
+            packPrizeImage = pf.packPrizeImage.map((img) => ({
+              url: img.url,
+              filename: img.filename,
+            }));
+          }
+          let packCover = [];
+          if (Array.isArray(pf.packCover)) {
+            packCover = pf.packCover.map((img) => ({ url: img.url, filename: img.filename }));
+          }
+          return {
+            airtableId: rec.id,
+            packID: pf.packID || rec.id,
+            packTitle: pf.packTitle || "Untitled Pack",
+            packURL: pf.packURL || "",
+            packPrizeImage,
+            prizeSummary: pf.prizeSummary || "",
+            // Added to align with PackPreview's needs
+            packCover,
+            packStatus: pf.packStatus || "Unknown",
+            eventTime: pf.eventTime || null,
+            propEventRollup: Array.isArray(pf.propEventRollup) ? pf.propEventRollup : [],
+            propsCount: Array.isArray(pf.Props) ? pf.Props.length : 0,
+          };
+        });
 	  } catch (err) {
 		console.error("[PropDetailPage] Error fetching packRecords =>", err);
 	  }

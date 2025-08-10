@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Airtable from 'airtable';
 import { useModal } from '../../../contexts/ModalContext';
 import { useSession } from 'next-auth/react';
+import PageContainer from '../../../components/PageContainer';
 
 export async function getServerSideProps(context) {
   const { packURL, receiptId } = context.params;
@@ -119,7 +120,7 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
     });
   };
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <PageContainer>
       {/* Pack preview with link */}
       <Link
         href={`/packs/${packData.packURL}/cards`}
@@ -207,6 +208,6 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
           );
         })}
       </ul>
-    </div>
+    </PageContainer>
   );
 } 

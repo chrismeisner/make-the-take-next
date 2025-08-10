@@ -219,231 +219,264 @@ export default function AdminPage({ superAdminSecret }) {
   }
 
   return (
-	<div className="p-4">
-	  <h1 className="text-2xl font-bold mb-4">Admin Tools</h1>
-	  {timezone && (
-          <p className="text-xs text-gray-500 mb-4">Timezone: {timezone}</p>
-        )}
-	  <p>Welcome, Admin.</p>
-	  <button
-        onClick={handleSwitchSuperAdmin}
-        className="mt-4 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
-      >
-        Switch to Super Admin
-      </button>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-1">Admin Tools</h1>
+      {timezone && (
+        <p className="text-xs text-gray-500 mb-4">Timezone: {timezone}</p>
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Administration */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Administration</h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleSwitchSuperAdmin}
+              className="px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+            >
+              Switch to Super Admin
+            </button>
+            <button
+              onClick={handleForceLogout}
+              className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Force Log Out
+            </button>
+          </div>
+        </section>
 
-	  <div className="mt-4 space-x-2">
-        <Link href="/admin/create-pack">
-          <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-            Create New Pack
-          </button>
-        </Link>
-        <Link href="/admin/create-pack?packType=vegas">
-          <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-            Create New Vegas Pack
-          </button>
-        </Link>
-        <Link href="/admin/create-event">
-          <button className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Create New Event
-          </button>
-        </Link>
-        <Link href="/admin/create-super-prop">
-          <button className="px-3 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
-            Create Super Prop
-          </button>
-        </Link>
-        <Link href="/admin/vegas">
-          <button className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-            Vegas Odds Viewer
-          </button>
-        </Link>
-      </div>
+        {/* Content Creation */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Content</h2>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin/contests/new">
+              <button className="px-3 py-2 bg-pink-600 text-white rounded hover:bg-pink-700">
+                Create New Contest
+              </button>
+            </Link>
+            <Link href="/admin/create-pack">
+              <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                Create New Pack
+              </button>
+            </Link>
+            <Link href="/admin/create-pack?packType=vegas">
+              <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                Create New Vegas Pack
+              </button>
+            </Link>
+            <Link href="/admin/create-event">
+              <button className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                Create New Event
+              </button>
+            </Link>
+            <Link href="/admin/create-super-prop">
+              <button className="px-3 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
+                Create Super Prop
+              </button>
+            </Link>
+            <Link href="/admin/vegas">
+              <button className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                Vegas Odds Viewer
+              </button>
+            </Link>
+            <Link href="/admin/odds-api-test">
+              <button className="px-3 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">
+                Odds API Test
+              </button>
+            </Link>
+            <Link href="/admin/test-ai">
+              <button className="px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900">
+                Test AI (Prompts)
+              </button>
+            </Link>
+          </div>
+        </section>
 
-	  <button
-		onClick={handleForceLogout}
-		className="mt-4 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-	  >
-		Force Log Out
-	  </button>
+        {/* Events Ingestion */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Events</h2>
+          <div className="space-y-3">
+            {/* MLB Events */}
+            <div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={mlbDateOption}
+                  onChange={(e) => setMlbDateOption(e.target.value)}
+                  className="px-2 py-2 border rounded"
+                >
+                  <option value="Yesterday">Yesterday</option>
+                  <option value="Today">Today</option>
+                  <option value="Tomorrow">Tomorrow</option>
+                </select>
+                <button
+                  onClick={handleFetchEvents}
+                  disabled={loadingEvents}
+                  className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loadingEvents ? "Fetching..." : "Get MLB Events"}
+                </button>
+              </div>
+              {eventsResult && (
+                <div className="mt-2">
+                  {eventsResult.success ? (
+                    <p className="text-green-600">Successfully processed {eventsResult.processedCount} events.</p>
+                  ) : (
+                    <p className="text-red-600">Error: {eventsResult.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
 
-  {/* Get MLB Events button */}
-  <div className="mt-4">
-    <div className="flex items-center space-x-2">
-      <select
-        value={mlbDateOption}
-        onChange={(e) => setMlbDateOption(e.target.value)}
-        className="px-2 py-2 border rounded"
-      >
-        <option value="Yesterday">Yesterday</option>
-        <option value="Today">Today</option>
-        <option value="Tomorrow">Tomorrow</option>
-      </select>
-      <button
-        onClick={handleFetchEvents}
-        disabled={loadingEvents}
-        className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loadingEvents ? "Fetching..." : "Get MLB Events"}
-      </button>
-    </div>
-    {eventsResult && (
-      <div className="mt-2">
-        {eventsResult.success ? (
-          <p className="text-green-600">Successfully processed {eventsResult.processedCount} events.</p>
-        ) : (
-          <p className="text-red-600">Error: {eventsResult.error}</p>
-        )}
-      </div>
-    )}
-  </div>
-      {/* Get NFL Events */}
-      <div className="mt-4">
-        <div className="flex items-center space-x-2">
-          <input
-            type="date"
-            value={nflDate}
-            onChange={(e) => setNflDate(e.target.value)}
-            className="px-2 py-2 border rounded"
-          />
-          <button
-            onClick={handleFetchNflEvents}
-            disabled={loadingNflEvents || !nflDate}
-            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loadingNflEvents ? "Fetching..." : "Get NFL Events"}
-          </button>
-        </div>
-        {nflEventsResult && (
-          <div className='mt-2'>
-            {nflEventsResult.success ? (
-              <>
-                <p className='text-green-600'>Successfully processed {nflEventsResult.processedCount} events.</p>
-                <ul className='mt-2 space-y-1'>
-                  {nflEventsResult.events.map(evt => (
-                    <li key={evt.espnGameID}>
-                      <Link href={`/teams/${evt.homeTeamSlug}`} className='text-blue-600 hover:underline'>
-                        {evt.homeTeam}
-                      </Link>
-                      {' vs '}
-                      <Link href={`/teams/${evt.awayTeamSlug}`} className='text-blue-600 hover:underline'>
-                        {evt.awayTeam}
-                      </Link>
-                      {` on ${new Date(evt.eventTime).toLocaleString()}`}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className='text-red-600'>Error: {nflEventsResult.error}</p>
+            {/* NFL Events */}
+            <div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={nflDate}
+                  onChange={(e) => setNflDate(e.target.value)}
+                  className="px-2 py-2 border rounded"
+                />
+                <button
+                  onClick={handleFetchNflEvents}
+                  disabled={loadingNflEvents || !nflDate}
+                  className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loadingNflEvents ? "Fetching..." : "Get NFL Events"}
+                </button>
+              </div>
+              {nflEventsResult && (
+                <div className="mt-2">
+                  {nflEventsResult.success ? (
+                    <>
+                      <p className='text-green-600'>Successfully processed {nflEventsResult.processedCount} events.</p>
+                      <ul className='mt-2 space-y-1'>
+                        {nflEventsResult.events.map(evt => (
+                          <li key={evt.espnGameID}>
+                            <Link href={`/teams/${evt.homeTeamSlug}`} className='text-blue-600 hover:underline'>
+                              {evt.homeTeam}
+                            </Link>
+                            {" vs "}
+                            <Link href={`/teams/${evt.awayTeamSlug}`} className='text-blue-600 hover:underline'>
+                              {evt.awayTeam}
+                            </Link>
+                            {` on ${new Date(evt.eventTime).toLocaleString()}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className='text-red-600'>Error: {nflEventsResult.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Team Sync */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Teams</h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleUpdateTeams}
+              disabled={loadingTeams}
+              className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loadingTeams ? "Updating MLB Teams..." : "Update MLB Teams"}
+            </button>
+            <button
+              onClick={handleUpdateNbaTeams}
+              disabled={loadingNbaTeams}
+              className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loadingNbaTeams ? "Updating NBA Teams..." : "Update NBA Teams"}
+            </button>
+            <button
+              onClick={handleUpdateNflTeams}
+              disabled={loadingNflTeams}
+              className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loadingNflTeams ? "Updating NFL Teams..." : "Update NFL Teams"}
+            </button>
+          </div>
+          <div className="space-y-1 mt-2 text-sm">
+            {teamsResult && (
+              <div>
+                {teamsResult.success ? (
+                  <p className="text-green-600">Successfully processed {teamsResult.processedCount} teams.</p>
+                ) : (
+                  <p className="text-red-600">Error: {teamsResult.error}</p>
+                )}
+              </div>
+            )}
+            {nbaTeamsResult && (
+              <div>
+                {nbaTeamsResult.success ? (
+                  <p className="text-green-600">Successfully processed {nbaTeamsResult.processedCount} teams.</p>
+                ) : (
+                  <p className="text-red-600">Error: {nbaTeamsResult.error}</p>
+                )}
+              </div>
+            )}
+            {nflTeamsResult && (
+              <div>
+                {nflTeamsResult.success ? (
+                  <p className="text-green-600">Successfully processed {nflTeamsResult.processedCount} teams.</p>
+                ) : (
+                  <p className="text-red-600">Error: {nflTeamsResult.error}</p>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
-      
-      {/* Update MLB Teams button */}
-      <div className="mt-4">
-        <button
-          onClick={handleUpdateTeams}
-          disabled={loadingTeams}
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loadingTeams ? "Updating MLB Teams..." : "Update MLB Teams"}
-        </button>
-        {teamsResult && (
-          <div className="mt-2">
-            {teamsResult.success ? (
-              <p className="text-green-600">Successfully processed {teamsResult.processedCount} teams.</p>
-            ) : (
-              <p className="text-red-600">Error: {teamsResult.error}</p>
-            )}
+        </section>
+
+        {/* Grading & Winners */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Grading & Winners</h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleGradePacks}
+              className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              Grade Packs
+            </button>
+            <button
+              onClick={handleGradeProps}
+              className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              Prop Grader
+            </button>
+            <button
+              onClick={handleGetPackWinners}
+              className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              Get Pack Winners
+            </button>
+            <button
+              onClick={handleCloseProps}
+              disabled={closingProps}
+              className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+            >
+              {closingProps ? "Closing..." : "Close Props"}
+            </button>
           </div>
-        )}
-      </div>
-      {/* Update NBA Teams button */}
-      <div className="mt-4">
-        <button
-          onClick={handleUpdateNbaTeams}
-          disabled={loadingNbaTeams}
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loadingNbaTeams ? "Updating NBA Teams..." : "Update NBA Teams"}
-        </button>
-        {nbaTeamsResult && (
-          <div className="mt-2">
-            {nbaTeamsResult.success ? (
-              <p className="text-green-600">Successfully processed {nbaTeamsResult.processedCount} teams.</p>
-            ) : (
-              <p className="text-red-600">Error: {nbaTeamsResult.error}</p>
-            )}
+          {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
+        </section>
+
+        {/* Messaging */}
+        <section className="border rounded-lg p-4">
+          <h2 className="text-lg font-semibold mb-3">Messaging</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <button
+              onClick={sendHelloText}
+              disabled={sendingHello}
+              className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+            >
+              {sendingHello ? "Sending..." : "Send Hello Text"}
+            </button>
+            {helloResult && <p className="text-sm">{helloResult}</p>}
           </div>
-        )}
+        </section>
       </div>
-      {/* Update NFL Teams button */}
-      <div className="mt-4">
-        <button
-          onClick={handleUpdateNflTeams}
-          disabled={loadingNflTeams}
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loadingNflTeams ? "Updating NFL Teams..." : "Update NFL Teams"}
-        </button>
-        {nflTeamsResult && (
-          <div className="mt-2">
-            {nflTeamsResult.success ? (
-              <p className="text-green-600">Successfully processed {nflTeamsResult.processedCount} teams.</p>
-            ) : (
-              <p className="text-red-600">Error: {nflTeamsResult.error}</p>
-            )}
-          </div>
-        )}
-      </div>
-     {/* Grade Packs button */}
-     <div className="mt-4">
-       <button
-         onClick={handleGradePacks}
-         className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-       >
-         Grade Packs
-       </button>
-     </div>
-      {/* Get Pack Winners button */}
-      <div className="mt-4">
-        <button
-          onClick={handleGetPackWinners}
-          className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-        >
-          Get Pack Winners
-        </button>
-      </div>
-     <div className="mt-4">
-      <button
-        onClick={handleGradeProps}
-        className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-      >
-        Prop Grader
-      </button>
-    </div>
-    <div className="mt-4">
-      <button
-        onClick={sendHelloText}
-        disabled={sendingHello}
-        className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-      >
-        {sendingHello ? "Sending..." : "Send Hello Text"}
-      </button>
-      {helloResult && <p className="mt-2 text-sm">{helloResult}</p>}
-    </div>
-    <div className="mt-4">
-      <button
-        onClick={handleCloseProps}
-        disabled={closingProps}
-        className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-      >
-        {closingProps ? "Closing..." : "Close Props"}
-      </button>
-      {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
-    </div>
     </div>
   );
 }

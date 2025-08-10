@@ -46,12 +46,26 @@ export default async function handler(req, res) {
         propStatus: propStatus ?? "open",
         ...(packId ? { Packs: [packId] } : {}),
         ...(teams && teams.length ? { Teams: teams } : {}),
+        // Keep numeric propOrder as a transitional fallback if provided
         ...(propOrder !== undefined ? { propOrder } : {}),
         ...(propValueModel ? { propValueModel } : {}),
         ...(moneylineA !== null && !isNaN(moneylineA) ? { PropSideAMoneyline: moneylineA } : {}),
         ...(moneylineB !== null && !isNaN(moneylineB) ? { PropSideBMoneyline: moneylineB } : {}),
         ...(propCover ? { propCover: [{ url: propCover }] } : {}),
       };
+      // Initialize per-pack ordering JSON if we have an order
+      if (propOrder !== undefined) {
+        try {
+          const orderMap = {};
+          if (typeof propOrder === 'number') {
+            orderMap.default = propOrder;
+          }
+          if (packId && typeof propOrder === 'number') {
+            orderMap[packId] = propOrder;
+          }
+          fieldsToCreate.propOrderByPack = JSON.stringify(orderMap);
+        } catch {}
+      }
       console.log('[api/props POST] fieldsToCreate:', fieldsToCreate);
       // Determine eventRecordId: explicit, new, or pack's existing event
       let eventRecordId;
@@ -96,7 +110,7 @@ export default async function handler(req, res) {
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
     // Destructure updatable fields, including new ones
-    const { propId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime } = req.body;
+    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime } = req.body;
     // Parse moneyline inputs for updates
     const updMoneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
       ? parseFloat(PropSideAMoneyline)
@@ -125,7 +139,29 @@ export default async function handler(req, res) {
     try {
       const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
       const fieldsToUpdate = {};
+      // If order is being updated, merge into propOrderByPack JSON
+      if (propOrder !== undefined) {
+        try {
+          const existing = await base('Props').find(propId);
+          const existingFields = existing.fields || {};
+          let map = {};
+          if (typeof existingFields.propOrderByPack === 'string' && existingFields.propOrderByPack.trim()) {
+            try { map = JSON.parse(existingFields.propOrderByPack); } catch { map = {}; }
+          }
+          if (typeof propOrder === 'number') {
+            if (packId) {
+              map[packId] = propOrder;
+            } else {
+              map.default = propOrder;
+            }
+            fieldsToUpdate.propOrderByPack = JSON.stringify(map);
+          }
+        } catch (e) {
+          console.error('[api/props PATCH] Failed to merge propOrderByPack:', e);
+        }
+      }
       if (propStatus     !== undefined) fieldsToUpdate.propStatus     = propStatus;
+      // Keep numeric propOrder updated for backward compatibility
       if (propOrder      !== undefined) fieldsToUpdate.propOrder      = propOrder;
       if (propShort      !== undefined) fieldsToUpdate.propShort      = propShort;
       if (propSummary    !== undefined) fieldsToUpdate.propSummary    = propSummary;

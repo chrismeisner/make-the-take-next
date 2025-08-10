@@ -83,7 +83,7 @@ export default function AdminNewPackPage() {
       // Build payload including event link and props
       const payload = { packTitle, packURL };
       if (packSummary) payload.packSummary = packSummary;
-      if (packLeague) payload.packLeague = packLeague;
+      if (packLeague) payload.packLeague = packLeague.toLowerCase();
       if (packCoverUrl) payload.packCoverUrl = packCoverUrl;
       if (packStatus) payload.packStatus = packStatus;
       if (propsList.length) payload.props = propsList.map(p => p.airtableId);
@@ -94,6 +94,18 @@ export default function AdminNewPackPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Persist the chosen order onto each Prop via propOrder
+        if (propsList.length > 0) {
+          await Promise.all(
+            propsList.map((prop, index) =>
+              fetch('/api/props', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ propId: prop.airtableId, packId: data.record.id, propOrder: index }),
+              }).then(r => r.json()).catch(() => null)
+            )
+          );
+        }
         router.push(`/admin/packs/${data.record.id}`);
       } else {
         setError(data.error || 'Failed to create pack.');
@@ -205,7 +217,7 @@ export default function AdminNewPackPage() {
           <div className="mb-2">
             <button
               type="button"
-              onClick={() => openModal('addProp', { onPropsAdded: selectedProps => setPropsList(pl => [...pl, ...selectedProps]), initialLeague: packLeague })}
+              onClick={() => openModal('addProp', { onPropsAdded: selectedProps => setPropsList(pl => [...pl, ...selectedProps]), initialLeague: packLeague, excludeIds: propsList.map(p => p.airtableId).filter(Boolean), viewName: 'Open' })}
               className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Add Prop

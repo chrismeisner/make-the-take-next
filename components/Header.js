@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
+import { useModal } from "../contexts/ModalContext";
 
 // Minimal link style for header links (non-pill)
 const linkBaseStyles = "text-sm text-gray-200 hover:text-gray-300 transition-colors";
@@ -15,8 +16,9 @@ const pillLinkStyles = `
   text-gray-200 transition-colors
 `;
 
-export default function Header({ collapsed, setCollapsed }) {
+export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
   const { data: session, status } = useSession();
+  const { openModal } = useModal();
   const router = useRouter();
   const [userPoints, setUserPoints] = useState(null);
   const [tokenBalance, setTokenBalance] = useState(null);
@@ -98,15 +100,20 @@ export default function Header({ collapsed, setCollapsed }) {
 	if (!session?.user?.profileID) return null;
 
 	const profileID = session.user.profileID;
+    const formattedUserPoints = userPoints != null ? userPoints.toLocaleString() : null;
 
 	return (
-	  <div className="flex items-center space-x-3">
-		<span className="text-sm text-gray-200">
-		  {userPoints != null ? `${userPoints} 🦴` : ""}
-		</span>
-		<span className="text-sm text-gray-200">
-		  {tokenBalance != null ? `${tokenBalance} 💎` : ""}
-		</span>
+      <div className="flex items-center space-x-3">
+        {userPoints != null && (
+          <Link href="/leaderboard" className={pillLinkStyles} title="Points (Leaderboard)" aria-label="View leaderboard">
+            {formattedUserPoints} 🦴
+          </Link>
+        )}
+        {tokenBalance != null && (
+          <Link href="/marketplace" className={pillLinkStyles} title="Diamonds (Marketplace)" aria-label="Go to marketplace">
+            {tokenBalance} 💎
+          </Link>
+        )}
 		{/* ProfileID => link to /profile/[profileID] */}
 		<Link href={`/profile/${profileID}`} className={pillLinkStyles}>
 		  {profileID}
@@ -123,11 +130,16 @@ export default function Header({ collapsed, setCollapsed }) {
 		<div className="flex items-center justify-between h-12">
 		  {/* Brand and timezone */}
 		  <div className="flex items-center">
-			<button onClick={() => setCollapsed(!collapsed)} className="text-gray-200 hover:text-gray-300 transition-colors mr-4">
-			  {collapsed ? '>>' : '<<'}
-			</button>
+            {/* Mobile hamburger opens nav modal */}
+            <button
+              className="lg:hidden text-gray-200 hover:text-gray-300 transition-colors mr-4"
+              onClick={() => openModal("mobileNav", { items: sidebarItems })}
+              aria-label="Open menu"
+            >
+              ☰
+            </button>
 			<Link href="/" className={linkBaseStyles}>
-			  🏴‍☠️ Make The Take
+			  🏴‍☠️
 			</Link>
 			{/* timezone display removed; moved to admin page */}
 		  </div>

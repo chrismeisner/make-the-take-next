@@ -62,6 +62,14 @@ export default function LoginRequiredModal({ isOpen, onClose, receiptId, packTit
     }
     // Submit takes now that we're authenticated
     const newTakeIDs = await submitAllTakes(receiptId);
+    // Fire-and-forget SMS notification to the user
+    try {
+      fetch("/api/notifyPackSubmitted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packURL: window?.location?.pathname.split("/")[2], packTitle, receiptId }),
+      });
+    } catch {}
     openModal("packCompleted", { packTitle, receiptId, newTakeIDs });
     setIsLoading(false);
   };

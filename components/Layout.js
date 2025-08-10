@@ -13,7 +13,9 @@ export default function Layout({ children }) {
   const profileID = session?.user?.profileID;
   const sidebarItems = [
     { label: "Dashboard", href: "/" },
+    { label: "Packs", href: "/packs" },
     { label: "Marketplace", href: "/marketplace" },
+    { label: "Contests", href: "/contests" },
     { label: "Leaderboard", href: "/leaderboard" },
     ...(profileID ? [{ label: "Profile", href: `/profile/${profileID}` }] : []),
     {
@@ -21,6 +23,7 @@ export default function Layout({ children }) {
       href: "/admin",
       subItems: [
         { label: "Events", href: "/admin/events" },
+        { label: "Contests", href: "/admin/contests" },
         { label: "Packs", href: "/admin/packs" },
       ],
     },
@@ -44,7 +47,7 @@ export default function Layout({ children }) {
     <div className="h-screen flex">
       <SidebarNav items={sidebarItems} collapsed={collapsed} setCollapsed={setCollapsed} />
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-        <Header collapsed={collapsed} setCollapsed={setCollapsed} />
+        <Header collapsed={collapsed} setCollapsed={setCollapsed} sidebarItems={sidebarItems} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}
         </main>

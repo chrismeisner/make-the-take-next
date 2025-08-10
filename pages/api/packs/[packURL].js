@@ -74,16 +74,35 @@ export default async function handler(req, res) {
 		.join(",")})`;
 	  console.log("[packURL] Props formula =>", formula);
 
-	  const propsRecords = await base("Props")
+      const propsRecords = await base("Props")
 		.select({
 		  filterByFormula: formula,
-		  // Sort props by the new propOrder field
-		  sort: [{ field: "propOrder", direction: "asc" }],
+          // Do not sort in Airtable; we'll sort per-pack using propOrderByPack
 		  maxRecords: 100,
 		})
 		.all();
 
 	  console.log("[packURL] propsRecords length =>", propsRecords.length);
+      // Compute per-pack order using propOrderByPack JSON text; fallback to default, then numeric propOrder
+      const packRecordId = packRecord.id;
+      const getPerPackOrder = (rec) => {
+        try {
+          const f = rec.fields || {};
+          const raw = f.propOrderByPack;
+          if (typeof raw === 'string' && raw.trim()) {
+            const map = JSON.parse(raw);
+            if (map && Object.prototype.hasOwnProperty.call(map, packRecordId) && typeof map[packRecordId] === 'number') {
+              return map[packRecordId];
+            }
+            if (map && Object.prototype.hasOwnProperty.call(map, 'default') && typeof map.default === 'number') {
+              return map.default;
+            }
+          }
+        } catch {}
+        const po = rec.fields && typeof rec.fields.propOrder === 'number' ? rec.fields.propOrder : 0;
+        return po;
+      };
+      propsRecords.sort((a, b) => getPerPackOrder(a) - getPerPackOrder(b));
 
 	  propsData = propsRecords.map((record) => {
 		const f = record.fields;

@@ -1,6 +1,7 @@
 import Airtable from "airtable";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import PageContainer from "../../../components/PageContainer";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -22,7 +23,7 @@ export default function ProfileDiamondsPage({ profileID, profileUsername, achiev
   }, [achievements, sortOrder]);
 
   return (
-    <div className="p-4 max-w-5xl mx-auto">
+    <PageContainer>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">
           {profileUsername ? `@${profileUsername}` : profileID} Diamonds
@@ -73,7 +74,7 @@ export default function ProfileDiamondsPage({ profileID, profileUsername, achiev
           </table>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

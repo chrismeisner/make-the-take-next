@@ -1,12 +1,14 @@
 import Airtable from "airtable";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import PageContainer from "../../../components/PageContainer";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-export default function ProfileAwardsPage({ profileID, profileUsername, winnerPacks = [] }) {
+export default function ProfileAwardsPage({ profileID, profileUsername, winnerPacks = [], userTakesByPack = {}, userPointsByPack = {}, userResultsByPack = {} }) {
   const [sortOrder, setSortOrder] = useState("desc"); // desc = most recent first
+  const [expandedRows, setExpandedRows] = useState({});
 
   const sortedPacks = useMemo(() => {
     const toTimestamp = (pack) => {
@@ -23,7 +25,7 @@ export default function ProfileAwardsPage({ profileID, profileUsername, winnerPa
   }, [winnerPacks, sortOrder]);
 
   return (
-    <div className="p-4 max-w-5xl mx-auto">
+    <PageContainer>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{profileUsername ? `@${profileUsername}` : profileID} Awards</h1>
         <div className="flex items-center gap-3">
@@ -47,28 +49,113 @@ export default function ProfileAwardsPage({ profileID, profileUsername, winnerPa
       {sortedPacks.length === 0 ? (
         <p className="text-gray-700">No awards yet.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {sortedPacks.map((p) => (
-            <Link key={p.packID || p.airtableId} href={`/packs/${p.packURL}`} className="block border rounded shadow-sm bg-white overflow-hidden">
-              <div className="aspect-square w-full bg-gray-100 relative" style={{ backgroundImage: p.packCover ? `url(${p.packCover})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                {!p.packCover && (
-                  <div className="absolute inset-0 flex items-center justify-center text-gray-500">No Cover</div>
-                )}
-              </div>
-              <div className="p-3">
-                <h2 className="font-semibold text-base mb-1 flex items-center gap-1">
-                  {p.packTitle || p.packURL || 'Untitled Pack'}
-                </h2>
-                <div className="text-xs text-gray-600">{(p.packDate || p.eventTime || p.createdTime) ? new Date(p.packDate || p.eventTime || p.createdTime).toLocaleString() : ''}</div>
-                {p.winnerProfileID && (
-                  <div className="text-xs text-gray-700 mt-1">🏆 @{p.winnerProfileID}</div>
-                )}
-              </div>
-            </Link>
-          ))}
+        <>
+          <h2 className="text-lg font-semibold mb-2">Packs Won</h2>
+          <div className="overflow-x-auto">
+          <table className="min-w-full bg-white border rounded">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Pack</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Date</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">League</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Your Takes</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">W-L-P</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Points</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedPacks.map((p) => {
+                const dateStr = (p.packDate || p.eventTime || p.createdTime)
+                  ? new Date(p.packDate || p.eventTime || p.createdTime).toLocaleString()
+                  : '';
+                const takes = userTakesByPack[p.packID] || [];
+                const isExpanded = Boolean(expandedRows[p.packID]);
+                const packPoints = Number.isFinite(userPointsByPack[p.packID]) ? userPointsByPack[p.packID] : 0;
+                const results = userResultsByPack[p.packID] || { won: 0, lost: 0, pushed: 0, pending: 0 };
+                return (
+                  <>
+                    <tr key={(p.packID || p.airtableId) + '-row'} className="border-t">
+                      <td className="px-4 py-2 align-middle">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded bg-gray-100 overflow-hidden flex-shrink-0">
+                            {p.packCover ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.packCover} alt="Pack cover" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{p.packTitle || p.packURL || 'Untitled Pack'}</div>
+                            {p.winnerProfileID && (
+                              <div className="text-xs text-gray-600">🏆 @{p.winnerProfileID}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 align-middle text-sm text-gray-700">{dateStr}</td>
+                      <td className="px-4 py-2 align-middle text-sm text-gray-700">{p.packLeague || ''}</td>
+                      <td className="px-4 py-2 align-middle text-sm text-gray-700">
+                        <div className="flex items-center gap-2">
+                          <span>{takes.length}</span>
+                          {takes.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRows((prev) => ({ ...prev, [p.packID]: !isExpanded }))}
+                              className="text-blue-600 underline text-xs"
+                            >
+                              {isExpanded ? 'Hide' : 'View'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 align-middle text-sm text-gray-800">{results.won}-{results.lost}-{results.pushed}</td>
+                      <td className="px-4 py-2 align-middle text-sm text-gray-800 font-medium">{Math.round(packPoints)}</td>
+                      <td className="px-4 py-2 align-middle">
+                        {p.packURL ? (
+                          <Link href={`/packs/${p.packURL}`} className="text-blue-600 underline text-sm">View Pack</Link>
+                        ) : (
+                          <span className="text-gray-400 text-sm">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && takes.length > 0 && (
+                      <tr key={(p.packID || p.airtableId) + '-exp'} className="bg-gray-50">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="text-sm text-gray-800">Your recent takes in this pack</div>
+                          <ul className="mt-2 space-y-1">
+                            {takes
+                              .slice()
+                              .sort((a, b) => new Date(b.createdTime) - new Date(a.createdTime))
+                              .slice(0, 5)
+                              .map((t) => (
+                                <li key={t.takeID} className="flex items-center justify-between">
+                                  <div className="min-w-0">
+                                    <span className="font-medium truncate">{t.takeTitle || t.propTitle || 'Untitled Take'}</span>
+                                    <span className="ml-2 text-xs text-gray-600">{new Date(t.createdTime).toLocaleString()}</span>
+                                  </div>
+                                  <div className="text-xs">
+                                    <span className="mr-2">{Math.round(t.takePTS)}</span>
+                                    <span className="inline-block px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                      {t.takeResult || 'Pending'}
+                                    </span>
+                                  </div>
+                                </li>
+                              ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+        </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -117,6 +204,7 @@ export async function getServerSideProps({ params }) {
         propEventRollup,
         packDate: earliestEventIso || f.eventTime || rec._rawJson?.createdTime || null,
         winnerProfileID: f.winnerProfileID || null,
+        packLeague: (f.packLeague || '') ? String(f.packLeague).toLowerCase() : '',
         createdTime: rec._rawJson?.createdTime || null,
       };
     });
@@ -128,7 +216,56 @@ export async function getServerSideProps({ params }) {
       return bt - at;
     });
 
-    return { props: { profileID, profileUsername, winnerPacks } };
+    // Fetch user's latest takes (by Profile link or phone) and group by packID
+    const profileMobile = profileRecord.fields.profileMobile || null;
+    const userClause = [
+      `FIND('${profileRecordId}', ARRAYJOIN({Profile}))>0`,
+      profileMobile ? `{takeMobile}='${profileMobile}'` : null,
+    ].filter(Boolean);
+    let userTakesByPack = {};
+    let userPointsByPack = {};
+    let userResultsByPack = {};
+    if (userClause.length > 0) {
+      const takesFormula = `AND({takeStatus} = 'latest', OR(${userClause.join(',')}))`;
+      const takeRecords = await base('Takes')
+        .select({ filterByFormula: takesFormula, maxRecords: 5000 })
+        .all();
+      const map = new Map();
+      const totals = new Map();
+      const resultTotals = new Map();
+      for (const tr of takeRecords) {
+        const tf = tr.fields || {};
+        const packIDs = Array.isArray(tf.packID) ? tf.packID : tf.packID ? [tf.packID] : [];
+        const takeLite = {
+          takeID: tf.takeID || tr.id,
+          takeTitle: tf.takeTitle || tf.propTitle || null,
+          propTitle: tf.propTitle || null,
+          takePTS: Number.isFinite(tf.takePTS) ? tf.takePTS : Number(tf.takePTS) || 0,
+          takeResult: tf.takeResult || null,
+          createdTime: tr._rawJson?.createdTime || new Date().toISOString(),
+        };
+        const rLower = String(takeLite.takeResult || '').toLowerCase();
+        for (const pid of packIDs) {
+          if (!pid) continue;
+          if (!map.has(pid)) map.set(pid, []);
+          map.get(pid).push(takeLite);
+          const prev = totals.get(pid) || 0;
+          totals.set(pid, prev + (Number.isFinite(takeLite.takePTS) ? takeLite.takePTS : 0));
+          if (!resultTotals.has(pid)) resultTotals.set(pid, { won: 0, lost: 0, pushed: 0, pending: 0 });
+          const agg = resultTotals.get(pid);
+          if (rLower === 'won') agg.won += 1;
+          else if (rLower === 'lost') agg.lost += 1;
+          else if (rLower === 'push' || rLower === 'pushed') agg.pushed += 1;
+          else if (rLower === 'pending') agg.pending += 1;
+          resultTotals.set(pid, agg);
+        }
+      }
+      userTakesByPack = Object.fromEntries([...map.entries()]);
+      userPointsByPack = Object.fromEntries([...totals.entries()]);
+      userResultsByPack = Object.fromEntries([...resultTotals.entries()]);
+    }
+
+    return { props: { profileID, profileUsername, winnerPacks, userTakesByPack, userPointsByPack, userResultsByPack } };
   } catch (err) {
     console.error('[Awards page] Error:', err);
     return { notFound: true };

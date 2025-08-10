@@ -69,13 +69,7 @@ export default function PackPreview({ pack }) {
     <p>🗓️ {formattedEarliestDate}</p>
   </div>
 )}
-{futureEventTimes.length > 0 && (
-  <div className="mt-2 text-sm text-gray-600">
-    <p className="font-semibold">Next event in:</p>
-    <p>{days}d {hours}h {minutes}m {seconds}s</p>
-  </div>
-)}
-		<StatusPill status={pack.packStatus} />
+        <StatusPill status={pack.packStatus} eventTime={nextEventTime || earliestEventTime} />
 		<div className="mt-2 text-sm text-gray-600">
 		  <p>Props: {propsCount}</p>
 		  <p>Total takes: {takeCount}</p>

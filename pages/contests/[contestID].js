@@ -4,19 +4,21 @@ import React, { useEffect, useState } from "react";
 import useLeaderboard from '../../hooks/useLeaderboard';
 import { useSession } from "next-auth/react"; // <-- Import useSession
 import Head from "next/head";
+import PageHeader from "../../components/PageHeader";
+import PageContainer from "../../components/PageContainer";
 import Link from "next/link";
+import PackPreview from "../../components/PackPreview";
+import { useModal } from "../../contexts/ModalContext";
 
 export default function ContestDetailPage({ contestData, error }) {
   // 1) NextAuth session
   const { data: session } = useSession();
   const isLoggedIn = !!session;
+  const { openModal } = useModal();
   // Unified leaderboard hook
   const { leaderboard, loading: loadingLB, error: lbError } = useLeaderboard({ contestID: contestData?.contestID });
 
-  // SMS subscription state
-  const [subscribeSMS, setSubscribeSMS] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [signupMessage, setSignupMessage] = useState("");
+  // Removed SMS subscription UI
 
   // Countdown state
   const [timeLeft, setTimeLeft] = useState("");
@@ -70,27 +72,17 @@ export default function ContestDetailPage({ contestData, error }) {
   const {
 	contestID,
 	contestTitle,
+	contestSummary,
+	contestPrize,
 	contestDetails,
 	contestEndTime,
+	contestCover = [],
 	packs = [],
   } = contestData;
 
-  // Sign-up handler
-  const handleSignUp = async () => {
-	if (!phoneNumber) {
-	  setSignupMessage("Please enter a valid phone number.");
-	  return;
-	}
-	setSignupMessage("");
-	try {
-	  // In real usage, you'd POST to an API
-	  console.log("Signing up user phone =>", phoneNumber);
-	  setSignupMessage("Success! You are signed up for SMS alerts.");
-	} catch (err) {
-	  console.error("Sign-up error =>", err);
-	  setSignupMessage(`Error: ${err.message}`);
-	}
-  };
+  const coverUrl = Array.isArray(contestCover) && contestCover.length > 0 ? contestCover[0].url : null;
+
+  // Removed sign-up handler
 
   return (
 	<div>
@@ -98,191 +90,167 @@ export default function ContestDetailPage({ contestData, error }) {
 		<title>{contestTitle} | Make The Take</title>
 	  </Head>
 
-	  {/* Hero Section */}
-	  <div className="bg-gray-100 py-10 px-4 text-center">
-		<h1 className="text-3xl md:text-4xl font-bold mb-2">{contestTitle}</h1>
-		<p className="text-gray-600 mb-4">
-		  Contest ID: <strong>{contestID}</strong>
-		</p>
+      <PageHeader
+        title={contestTitle}
+        breadcrumbs={[
+          { name: "Home", href: "/" },
+          { name: "Contests", href: "/contests" },
+          { name: contestTitle },
+        ]}
+        actions={
+          <button
+            onClick={() => {
+              const url = typeof window !== 'undefined' ? window.location.href : '';
+              openModal('shareContest', {
+                contestTitle,
+                contestSummary,
+                contestUrl: url,
+              });
+            }}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+            aria-label="Share contest"
+          >
+            Share
+          </button>
+        }
+      />
 
-		{/* Countdown */}
-		{contestEndTime && (
-		  <div className="mb-4">
-			{timeLeft === "Contest Ended!" ? (
-			  <p className="text-red-600 text-lg font-semibold">
-				Contest Ended!
-			  </p>
-			) : (
-			  <>
-				<p className="text-gray-700 mb-1">Time Left:</p>
-				<p className="text-xl font-semibold text-blue-600">{timeLeft}</p>
-			  </>
-			)}
-		  </div>
-		)}
+      {/* ========== Leaderboard + Packs (Side-by-side on desktop) ========== */}
+      <PageContainer>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Header details + Leaderboard */}
+        <section>
+          {/* Header Details moved into left column */}
+          <div className="mb-6">
+            {/* Title (shown again per request) */}
+            <h1 className="text-2xl md:text-3xl font-bold mb-3">{contestTitle}</h1>
 
-		{/* Contest Details */}
-		{contestDetails && (
-		  <div className="max-w-2xl mx-auto mb-4">
-			<p className="text-sm md:text-base whitespace-pre-wrap text-gray-700">
-			  {contestDetails}
-			</p>
-		  </div>
-		)}
+            {/* Cover image in left column as well */}
+            {coverUrl && (
+              <div className="mb-4">
+                <img
+                  src={coverUrl}
+                  alt={contestTitle}
+                  className="h-16 w-16 rounded object-cover border border-gray-200 shadow-sm"
+                />
+              </div>
+            )}
+            {/* Countdown */}
+            {contestEndTime && (
+              <div className="mb-4">
+                {timeLeft === "Contest Ended!" ? (
+                  <p className="text-red-600 text-lg font-semibold">
+                    Contest Ended!
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-gray-700 mb-1">Time Left:</p>
+                    <p className="text-xl font-semibold text-blue-600">{timeLeft}</p>
+                  </>
+                )}
+              </div>
+            )}
 
-		{/* Conditionally Render "Stay Updated!" if user is NOT logged in */}
-		{!isLoggedIn && (
-		  <div className="flex flex-col items-center mt-4 space-y-2">
-			<h3 className="text-lg font-semibold">Stay Updated!</h3>
-			<p className="text-sm text-gray-600">
-			  Get an SMS alert whenever new packs are released for this contest.
-			</p>
-			<div className="text-xs text-gray-500">
-			  By subscribing, you consent to receive text messages (SMS).
-			  Standard rates may apply. Reply STOP to unsubscribe.
-			</div>
+            {/* Summary */}
+            {contestSummary && (
+              <div className="mb-3">
+                <p className="text-sm md:text-base text-gray-700">{contestSummary}</p>
+              </div>
+            )}
 
-			{/* Phone input + Sign up button */}
-			<div className="flex flex-col md:flex-row items-start md:items-center gap-2 mt-2">
-			  <label className="block md:mr-2">
-				<span className="text-sm text-gray-700">Mobile Number:</span>
-				<input
-				  type="tel"
-				  value={phoneNumber}
-				  onChange={(e) => setPhoneNumber(e.target.value)}
-				  placeholder="+1 (555) 555-5555"
-				  className="mt-1 px-3 py-2 border border-gray-300 rounded w-48 md:w-56"
-				/>
-			  </label>
-			  <button
-				onClick={handleSignUp}
-				className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-			  >
-				Sign Up
-			  </button>
-			</div>
+            {/* Prize */}
+            {contestPrize && (
+              <div className="mb-4">
+                <p className="text-sm text-green-700 font-medium">Prize: {contestPrize}</p>
+              </div>
+            )}
 
-			{/* "I agree" checkbox below phone */}
-			<div className="mt-2">
-			  <label className="inline-flex items-center gap-2">
-				<input
-				  type="checkbox"
-				  checked={subscribeSMS}
-				  onChange={(e) => setSubscribeSMS(e.target.checked)}
-				  className="h-4 w-4"
-				/>
-				<span className="text-sm">
-				  I agree to receive text messages about new packs.
-				</span>
-			  </label>
-			</div>
+            {/* Contest Details */}
+            {contestDetails && (
+              <div className="mb-4">
+                <p className="text-sm md:text-base whitespace-pre-wrap text-gray-700">
+                  {contestDetails}
+                </p>
+              </div>
+            )}
 
-			{signupMessage && (
-			  <p
-				className={`mt-2 ${
-				  signupMessage.startsWith("Error")
-					? "text-red-600"
-					: "text-green-600"
-				}`}
-			  >
-				{signupMessage}
-			  </p>
-			)}
-		  </div>
-		)}
-	  </div>
+            {/* SMS subscription UI removed */}
+          </div>
 
-	  {/* ========== Leaderboard Section (MOVED ABOVE PACKS) ========== */}
-	  <div className="p-4">
-		<h2 className="text-xl font-bold mb-3">Contest Leaderboard</h2>
-		{loadingLB ? (
-		  <p className="text-gray-500">Loading leaderboard...</p>
-		) : lbError ? (
-		  <p className="text-red-600">Error: {lbError}</p>
-		) : leaderboard.length === 0 ? (
-		  <p className="text-gray-500">
-			No data found for this contest’s leaderboard.
-		  </p>
-		) : (
-		  <div className="overflow-x-auto">
-			<table className="table-auto w-full border-collapse">
-			  <thead>
-				<tr className="border-b bg-gray-50">
-				  {/* Rank Column */}
-				  <th className="text-left py-2 px-3">Rank</th>
-				  <th className="text-left py-2 px-3">Profile</th>
-				  <th className="text-left py-2 px-3">Takes</th>
-				  <th className="text-left py-2 px-3">Points</th>
-				  <th className="text-left py-2 px-3">Record</th>
-				</tr>
-			  </thead>
-			  <tbody>
-				{leaderboard.map((item, idx) => {
-				  // idx => rank
-				  const rank = idx + 1;
-				  const { profileID, count, points, won, lost } = item;
+          <h2 className="text-xl font-bold mb-3">Contest Leaderboard</h2>
+          {loadingLB ? (
+            <p className="text-gray-500">Loading leaderboard...</p>
+          ) : lbError ? (
+            <p className="text-red-600">Error: {lbError}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table-auto w-full border-collapse">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    {/* Rank Column */}
+                    <th className="text-left py-2 px-3">Rank</th>
+                    <th className="text-left py-2 px-3">Profile</th>
+                    <th className="text-left py-2 px-3">Takes</th>
+                    <th className="text-left py-2 px-3">Points</th>
+                    <th className="text-left py-2 px-3">Record</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 px-3 text-center text-gray-500">
+                        No entries yet. Be the first to enter!
+                      </td>
+                    </tr>
+                  ) : (
+                    leaderboard.map((item, idx) => {
+                      const rank = idx + 1;
+                      const { profileID, count, points, won, lost } = item;
+                      return (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="py-2 px-3 font-semibold">{rank}</td>
+                          <td className="py-2 px-3">
+                            {profileID ? (
+                              <Link
+                                href={'/profile/' + profileID}
+                                className={"text-blue-600 underline " + (profileID === session?.user?.profileID ? "font-bold" : "")}
+                              >
+                                {profileID}
+                              </Link>
+                            ) : (
+                              "Unknown"
+                            )}
+                          </td>
+                          <td className="py-2 px-3">{count}</td>
+                          <td className="py-2 px-3">{Math.round(points)}</td>
+                          <td className="py-2 px-3">
+                            {won}-{lost}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
-				  return (
-					<tr key={idx} className="border-b hover:bg-gray-50">
-					  <td className="py-2 px-3 font-semibold">{rank}</td>
-					  <td className="py-2 px-3">
-						{profileID ? (
-						  <Link
-							href={'/profile/' + profileID}
-							className={"text-blue-600 underline " + (profileID === session?.user?.profileID ? "font-bold" : "")}
-						  >
-							{profileID}
-						  </Link>
-						) : (
-						  "Unknown"
-						)}
-					  </td>
-					  <td className="py-2 px-3">{count}</td>
-					  <td className="py-2 px-3">{Math.round(points)}</td>
-					  <td className="py-2 px-3">
-						{won}-{lost}
-					  </td>
-					</tr>
-				  );
-				})}
-			  </tbody>
-			</table>
-		  </div>
-		)}
-	  </div>
-
-	  {/* ========== Packs Section (MOVED BELOW LEADERBOARD) ========== */}
-	  <div className="p-4">
-		<h2 className="text-xl font-bold mb-2">Packs in this Contest</h2>
-		{packs.length === 0 ? (
-		  <p className="text-gray-600">No Packs linked yet.</p>
-		) : (
-		  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-			{packs.map((pack) => {
-			  const coverUrl =
-				pack.packCover && pack.packCover.length > 0
-				  ? pack.packCover[0].url
-				  : null;
-
-			  return (
-				<Link key={pack.airtableId} href={`/packs/${pack.packURL}`}>
-				  <div className="border rounded bg-white p-4 shadow-sm hover:shadow-md transition cursor-pointer">
-					{coverUrl && (
-					  <img
-						src={coverUrl}
-						alt={pack.packTitle}
-						className="w-full h-40 object-cover mb-2 rounded"
-					  />
-					)}
-					<h3 className="text-lg font-semibold">{pack.packTitle}</h3>
-					<p className="text-sm text-gray-600">URL: {pack.packURL}</p>
-				  </div>
-				</Link>
-			  );
-			})}
-		  </div>
-		)}
-	  </div>
+        {/* Right: Packs */}
+        <section>
+          <h2 className="text-xl font-bold mb-2">Packs in this Contest</h2>
+          {packs.length === 0 ? (
+            <p className="text-gray-600">No Packs linked yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {packs.map((pack) => (
+                <PackPreview key={pack.packID || pack.airtableId || pack.id} pack={pack} />
+              ))}
+            </div>
+          )}
+        </section>
+        </div>
+      </PageContainer>
 	</div>
   );
 }

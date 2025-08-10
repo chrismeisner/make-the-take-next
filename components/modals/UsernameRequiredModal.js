@@ -43,6 +43,14 @@ export default function UsernameRequiredModal({ isOpen, onClose, receiptId, pack
       }
       // After updating username, submit takes
       const newTakeIDs = await submitAllTakes(receiptId);
+      // Fire-and-forget SMS notification to the user
+      try {
+        fetch("/api/notifyPackSubmitted", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ packURL: window?.location?.pathname.split("/")[2], packTitle, receiptId }),
+        });
+      } catch {}
       openModal("packCompleted", { packTitle, receiptId, newTakeIDs });
     } catch (err) {
       console.error("[UsernameRequiredModal] updateUsername error:", err);

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import PageHeader from "../../components/PageHeader";
+import PageContainer from "../../components/PageContainer";
 
 /** Helper to format a date like "Monday, Feb 24" */
 function formatDate(dStr) {
@@ -190,45 +192,49 @@ export default function ContestsIndexPage({ contests }) {
    * 6) Render the page layout & the contest cards
    *********************************************/
   return (
-	<div className="max-w-4xl mx-auto p-4">
-	  <h1 className="text-2xl font-bold mb-4">All Contests</h1>
+    <>
+      <PageHeader
+        title="All Contests"
+        breadcrumbs={[{ name: "Home", href: "/" }, { name: "Contests" }]}
+      />
 
-	  {/* Filter checkboxes => Open, Coming Up, Closed */}
-	  <div className="flex flex-wrap gap-4 mb-6">
-		<label className="inline-flex items-center space-x-1 text-sm">
-		  <input
-			type="checkbox"
-			checked={showStatuses.open}
-			onChange={() => handleStatusChange("open")}
-		  />
-		  <span>Open</span>
-		</label>
+      <PageContainer>
+        {/* Filter checkboxes => Open, Coming Up, Closed */}
+        <div className="flex flex-wrap gap-4 mb-6">
+          <label className="inline-flex items-center space-x-1 text-sm">
+            <input
+              type="checkbox"
+              checked={showStatuses.open}
+              onChange={() => handleStatusChange("open")}
+            />
+            <span>Open</span>
+          </label>
 
-		<label className="inline-flex items-center space-x-1 text-sm">
-		  <input
-			type="checkbox"
-			checked={showStatuses.comingUp}
-			onChange={() => handleStatusChange("comingUp")}
-		  />
-		  <span>Coming Up</span>
-		</label>
+          <label className="inline-flex items-center space-x-1 text-sm">
+            <input
+              type="checkbox"
+              checked={showStatuses.comingUp}
+              onChange={() => handleStatusChange("comingUp")}
+            />
+            <span>Coming Up</span>
+          </label>
 
-		<label className="inline-flex items-center space-x-1 text-sm">
-		  <input
-			type="checkbox"
-			checked={showStatuses.closed}
-			onChange={() => handleStatusChange("closed")}
-		  />
-		  <span>Closed</span>
-		</label>
-	  </div>
+          <label className="inline-flex items-center space-x-1 text-sm">
+            <input
+              type="checkbox"
+              checked={showStatuses.closed}
+              onChange={() => handleStatusChange("closed")}
+            />
+            <span>Closed</span>
+          </label>
+        </div>
 
-	  {sortedContests.length === 0 ? (
-		<p>No contests available.</p>
-	  ) : (
-		<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-		  {sortedContests.map((contest, idx) => {
-			const {
+        {sortedContests.length === 0 ? (
+          <p>No contests available.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sortedContests.map((contest, idx) => {
+              const {
 			  contestID,
 			  contestTitle,
 			  contestSummary,
@@ -238,6 +244,7 @@ export default function ContestsIndexPage({ contests }) {
 			  contestCover,
 			  contestStartTime, // from the API
 			  contestWinner,
+                packCount,
 			} = contest;
 
 			// The first cover (if any)
@@ -260,23 +267,31 @@ export default function ContestsIndexPage({ contests }) {
 			const btnText = getButtonText(contestStatus);
 			const clickable = isClickable(contestStatus);
 
-			return (
-			  <div
-				key={contestID}
-				className="h-full flex flex-col border border-gray-200 rounded-md bg-white shadow-sm hover:shadow-md transition-shadow"
-			  >
-				{/* Cover */}
-				<div className="w-full h-40 overflow-visible">
-				  {coverUrl ? (
-					<img
-					  src={coverUrl}
-					  alt={contestTitle}
-					  className="w-full h-full object-cover"
-					/>
-				  ) : (
-					<div className="w-full h-full bg-gray-800" />
-				  )}
-				</div>
+            return (
+              <div
+                key={contestID}
+                className="h-full flex flex-col border border-gray-200 rounded-md bg-white shadow-sm hover:shadow-md transition-shadow"
+              >
+                {/* Cover */}
+                <div className="w-full aspect-square overflow-hidden">
+                  {contestID && coverUrl ? (
+                    <Link href={`/contests/${contestID}`} className="block w-full h-full">
+                      <img
+                        src={coverUrl}
+                        alt={contestTitle}
+                        className="w-full h-full object-cover"
+                      />
+                    </Link>
+                  ) : coverUrl ? (
+                    <img
+                      src={coverUrl}
+                      alt={contestTitle}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-800" />
+                  )}
+                </div>
 
 				{/* Text content */}
 				<div className="p-4 flex flex-col flex-1">
@@ -300,12 +315,15 @@ export default function ContestsIndexPage({ contests }) {
 					</p>
 				  )}
 
-				  {/* prize */}
-				  {contestPrize && (
-					<p className="text-sm text-green-700 font-medium mb-2">
-					  Prize: {contestPrize}
-					</p>
-				  )}
+                  {/* prize + pack count */}
+                  <div className="flex items-center justify-between mb-2">
+                    {contestPrize ? (
+                      <p className="text-sm text-green-700 font-medium">Prize: {contestPrize}</p>
+                    ) : <span />}
+                    {typeof packCount === 'number' && (
+                      <p className="text-xs text-gray-600">{packCount} {packCount === 1 ? 'pack' : 'packs'}</p>
+                    )}
+                  </div>
 
 				  {/* open => countdown + "Time left to enter" */}
 				  {contestStatus?.toLowerCase() === "open" && contestEndTime && (
@@ -361,12 +379,13 @@ export default function ContestsIndexPage({ contests }) {
 					)}
 				  </div>
 				</div>
-			  </div>
-			);
-		  })}
-		</div>
-	  )}
-	</div>
+              </div>
+            );
+          })}
+        </div>
+        )}
+      </PageContainer>
+    </>
   );
 }
 

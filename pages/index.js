@@ -4,12 +4,12 @@ import { useRouter } from "next/router";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
 import Link from "next/link";
-import PackPreview from "../components/PackPreview";
+// import PackPreview from "../components/PackPreview"; // removed with Active Pack Drops section
 
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const hasFetchedPacks = useRef(false);
+  // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
 
   // States for login flow (when not logged in)
   const [phone, setPhone] = useState("");
@@ -25,64 +25,37 @@ export default function LandingPage() {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
 
-  // State for active packs (for logged-in users)
-  const [activePacks, setActivePacks] = useState([]);
-  const [loadingPacks, setLoadingPacks] = useState(true);
+  // Removed Active Pack Drops on dashboard
+
+  // State for contests (for logged-in users)
+  const [activeContest, setActiveContest] = useState(null);
+  const [activeContestPacks, setActiveContestPacks] = useState([]);
+  const [loadingContests, setLoadingContests] = useState(true);
 
   // State for user takes (for logged-in users)
   const [userTakes, setUserTakes] = useState([]);
-  // State and memo for sorting active packs by the earliest event time
-  const [sortOption, setSortOption] = useState("eventTimeDesc");
-  // Add state to hide graded packs by default
-  const [hideGraded, setHideGraded] = useState(false);
-  // Add state to filter by event time, default to all time
-  const [timeFilter, setTimeFilter] = useState("thisWeek");
-  // Helper to compute the earliest event time from propEventRollup or fallback
-  const getMinEventTime = pack => {
-    const times = Array.isArray(pack.propEventRollup) ? pack.propEventRollup : [];
-    if (times.length > 0) {
-      return Math.min(...times.map(t => new Date(t).getTime()));
-    }
-    return new Date(pack.eventTime).getTime();
-  };
+  // Removed Active Pack Drops sorting/filter state and helpers
 
-  const sortedPacks = useMemo(() => {
-    if (sortOption === "eventTimeAsc") {
-      return [...activePacks].sort((a, b) => getMinEventTime(a) - getMinEventTime(b));
-    } else if (sortOption === "eventTimeDesc") {
-      return [...activePacks].sort((a, b) => getMinEventTime(b) - getMinEventTime(a));
-    }
-    return activePacks;
-  }, [activePacks, sortOption]);
+  // Removed Active Pack Drops derived lists
 
-  // Derived list of packs excluding graded ones when hideGraded is true
-  const displayedPacks = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).getTime();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-
-    return sortedPacks.filter(pack => {
-      // Hide graded packs if requested
-      if (hideGraded && String(pack.packStatus).toLowerCase() === "graded") {
-        return false;
-      }
-      // Filter by event time
-      const eventTime = getMinEventTime(pack);
-      if (timeFilter === "today") {
-        return eventTime >= startOfToday && eventTime < startOfToday + 24 * 60 * 60 * 1000;
-      }
-      if (timeFilter === "thisWeek") {
-        return eventTime >= startOfWeek && eventTime < startOfWeek + 7 * 24 * 60 * 60 * 1000;
-      }
-      if (timeFilter === "thisMonth") {
-        return eventTime >= startOfMonth && eventTime < startOfNextMonth;
-      }
-      // 'allTime'
-      return true;
-    });
-  }, [sortedPacks, hideGraded, timeFilter]);
+  // Helper: compute countdown like "Xd Xh Xm Xs" or "Ended!"
+  function computeContestTimeLeft(endTime) {
+    if (!endTime) return "";
+    const now = Date.now();
+    const end = new Date(endTime).getTime();
+    const diff = end - now;
+    if (diff <= 0) return "Ended!";
+    const secs = Math.floor(diff / 1000) % 60;
+    const mins = Math.floor(diff / (1000 * 60)) % 60;
+    const hrs = Math.floor(diff / (1000 * 60 * 60)) % 24;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    let result = "";
+    if (days > 0) result += `${days}d `;
+    if (hrs > 0 || days > 0) result += `${hrs}h `;
+    if (mins > 0 || hrs > 0 || days > 0) result += `${mins}m `;
+    result += `${secs}s`;
+    return result.trim();
+  }
 
   // Fetch teams on mount (for login flow)
   useEffect(() => {
@@ -115,31 +88,59 @@ export default function LandingPage() {
 	fetchTeams();
   }, []);
 
-  // Fetch active packs if user is logged in
+  // Removed Active Pack Drops fetching
+
+  // Fetch contests if user is logged in
   useEffect(() => {
-	if (session?.user && !hasFetchedPacks.current) {
-	  hasFetchedPacks.current = true;
-	  async function fetchActivePacks() {
-		console.log("🚀 [LandingPage] Fetching packs...");
-		setLoadingPacks(true);
-		try {
-		  const res = await fetch("/api/packs");
-		  const data = await res.json();
-		  if (data.success && data.packs) {
-			// Only include packs with status "active" or "graded"
-			const active = data.packs.filter(pack => ["active","graded"].includes(String(pack.packStatus).toLowerCase()));
-			setActivePacks(active);
-			console.log("✅ [LandingPage] Active packs:", active);
-		  }
-		} catch (err) {
-		  console.error("💥 [LandingPage] Error fetching packs:", err);
-		} finally {
-		  setLoadingPacks(false);
-		}
-	  }
-	  fetchActivePacks();
-	}
+    if (!session?.user) return;
+    let isActive = true;
+    async function fetchContests() {
+      setLoadingContests(true);
+      try {
+        const res = await fetch('/api/contests');
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.contests)) {
+          const openContests = data.contests.filter((c) => String(c.contestStatus).toLowerCase() === 'open');
+          // sort by soonest end time first
+          openContests.sort((a, b) => {
+            const ta = a.contestEndTime ? new Date(a.contestEndTime).getTime() : Infinity;
+            const tb = b.contestEndTime ? new Date(b.contestEndTime).getTime() : Infinity;
+            return ta - tb;
+          });
+          if (isActive) setActiveContest(openContests[0] || null);
+        } else if (isActive) {
+          setActiveContest(null);
+        }
+      } catch (err) {
+        if (isActive) setActiveContest(null);
+      } finally {
+        if (isActive) setLoadingContests(false);
+      }
+    }
+    fetchContests();
+    return () => { isActive = false; };
   }, [session]);
+
+  // Fetch packs for the active contest (for dashboard card listing)
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchActiveContestPacks() {
+      setActiveContestPacks([]);
+      const id = activeContest?.contestID;
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/contests/${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (isMounted && res.ok && data.success && data.contest?.packs) {
+          setActiveContestPacks(Array.isArray(data.contest.packs) ? data.contest.packs : []);
+        }
+      } catch (_) {
+        if (isMounted) setActiveContestPacks([]);
+      }
+    }
+    fetchActiveContestPacks();
+    return () => { isMounted = false; };
+  }, [activeContest?.contestID]);
 
   // Fetch user takes if logged in
   useEffect(() => {
@@ -306,63 +307,107 @@ export default function LandingPage() {
 	  <div className="p-4 w-full max-w-4xl mx-auto">
 		{session?.user ? (
 		  <>
-			{/* Active Packs Section */}
-			<div className="mb-8">
-			  <h2 className="text-2xl font-bold mb-4 text-center">Active Pack Drops</h2>
-			  {/* Combined Controls: Sort, Hide Graded, Show */}
-			  {!loadingPacks && (
-				<div className="flex items-center justify-center mb-4 space-x-6">
-				  <label htmlFor="sortOption" className="text-sm font-medium text-gray-700">
-					Sort by:
-				  </label>
-				  <select
-					id="sortOption"
-					value={sortOption}
-					onChange={(e) => setSortOption(e.target.value)}
-					className="border rounded px-2 py-1"
-				  >
-					<option value="eventTimeAsc">Coming Up Soonest</option>
-					<option value="eventTimeDesc">Latest</option>
-				  </select>
-
-				  <label className="inline-flex items-center">
-					<input
-					  type="checkbox"
-					  className="mr-2"
-					  checked={hideGraded}
-					  onChange={() => setHideGraded(prev => !prev)}
-					/>
-					<span className="text-gray-700">Hide graded packs</span>
-				  </label>
-
-				  <label htmlFor="timeFilter" className="text-sm font-medium text-gray-700">
-					Show:
-				  </label>
-				  <select
-					id="timeFilter"
-					value={timeFilter}
-					onChange={(e) => setTimeFilter(e.target.value)}
-					className="border rounded px-2 py-1"
-				  >
-					<option value="today">Today</option>
-					<option value="thisWeek">This Week</option>
-					<option value="thisMonth">This Month</option>
-					<option value="allTime">All Time</option>
-				  </select>
-				</div>
-			  )}
-			  {loadingPacks ? (
-				<p className="text-center">Loading packs...</p>
-			  ) : displayedPacks.length > 0 ? (
-				<div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-				  {displayedPacks.map((pack) => (
-					<PackPreview key={pack.packID} pack={pack} />
-				  ))}
-				</div>
-			  ) : (
-				<p className="text-center">No active packs</p>
-			  )}
-			</div>
+            {/* Active Contest Section */}
+            {!loadingContests && activeContest && (
+              <div className="mb-10">
+                <h2 className="text-2xl font-bold mb-4 text-center">Active Contest</h2>
+                {activeContest.contestID ? (
+                  <Link
+                    href={`/contests/${activeContest.contestID}`}
+                    className="block group"
+                  >
+                    <div className="flex flex-col sm:flex-row gap-4 items-stretch border rounded-md shadow-sm overflow-hidden group-hover:shadow-md transition-shadow">
+                      {/* Cover */}
+                      <div className="w-full sm:w-1/3 aspect-square bg-gray-900">
+                        {activeContest.contestCover?.length ? (
+                          <img
+                            src={activeContest.contestCover[0].url}
+                            alt={activeContest.contestTitle}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-800" />
+                        )}
+                      </div>
+                      {/* Content */}
+                      <div className="flex-1 p-4 flex flex-col">
+                        <h3 className="text-xl font-semibold mb-1">{activeContest.contestTitle || 'Untitled Contest'}</h3>
+                        {activeContest.contestSummary && (
+                          <p className="text-sm text-gray-700 mb-2">{activeContest.contestSummary}</p>
+                        )}
+                        <div className="flex items-center justify-between mb-3">
+                          {activeContest.contestPrize ? (
+                            <p className="text-sm text-green-700 font-medium">Prize: {activeContest.contestPrize}</p>
+                          ) : <span />}
+                          {activeContest.contestEndTime && (
+                            <p className="text-sm text-red-600 font-semibold">
+                              {computeContestTimeLeft(activeContest.contestEndTime)}
+                            </p>
+                          )}
+                        </div>
+                        {activeContestPacks.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-sm font-medium mb-1">Packs</p>
+                            <div className="flex flex-wrap gap-2">
+                              {activeContestPacks.map((p) => (
+                                <span key={p.packURL || p.airtableId} className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
+                                  {p.packTitle}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-4 items-stretch border rounded-md shadow-sm overflow-hidden">
+                  {/* Cover */}
+                  <div className="w-full sm:w-1/3 aspect-square bg-gray-900">
+                    {activeContest.contestCover?.length ? (
+                        <img
+                          src={activeContest.contestCover[0].url}
+                          alt={activeContest.contestTitle}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-800" />
+                      )}
+                  </div>
+                  {/* Content */}
+                  <div className="flex-1 p-4 flex flex-col">
+                    <h3 className="text-xl font-semibold mb-1">{activeContest.contestTitle || 'Untitled Contest'}</h3>
+                    {activeContest.contestSummary && (
+                      <p className="text-sm text-gray-700 mb-2">{activeContest.contestSummary}</p>
+                    )}
+                    <div className="flex items-center justify-between mb-3">
+                      {activeContest.contestPrize ? (
+                        <p className="text-sm text-green-700 font-medium">Prize: {activeContest.contestPrize}</p>
+                      ) : <span />}
+                      {activeContest.contestEndTime && (
+                        <p className="text-sm text-red-600 font-semibold">
+                          {computeContestTimeLeft(activeContest.contestEndTime)}
+                        </p>
+                      )}
+                    </div>
+                    {activeContestPacks.length > 0 && (
+                      <div className="mt-1">
+                        <p className="text-sm font-medium mb-1">Packs</p>
+                        <div className="flex flex-wrap gap-2">
+                          {activeContestPacks.map((p) => (
+                            <span key={p.packURL || p.airtableId} className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
+                              {p.packTitle}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+              </div>
+            )}
+            {/* Active Pack Drops section removed; visit /packs for the full explorer */}
           </>
 		) : (
 		  <>

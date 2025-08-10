@@ -13,6 +13,8 @@ import PackCarouselView from '../../components/PackCarouselView';
 import Head from 'next/head';
 import PropDetailPage from '../props/[propID]';
 import InlineCardProgressFooter from '../../components/InlineCardProgressFooter';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -267,15 +269,27 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
     const coverUrl = Array.isArray(packData.packCover) && packData.packCover[0]?.url;
     const pageUrl = `${debugLogs.origin}/packs/${packData.packURL}`;
     return (
-      <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-        <PropDetailPage
-          propData={superProp}
-          coverImageUrl={coverUrl}
-          pageUrl={pageUrl}
-          associatedPacks={[]}
+      <>
+        <PageHeader
+          title={packData.packTitle || packData.packURL}
+          breadcrumbs={[
+            { name: 'Home', href: '/' },
+            { name: 'Packs', href: '/packs' },
+            { name: packData.packTitle || packData.packURL },
+          ]}
         />
-        <InlineCardProgressFooter />
-      </PackContextProvider>
+        <PageContainer>
+          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+            <PropDetailPage
+              propData={superProp}
+              coverImageUrl={coverUrl}
+              pageUrl={pageUrl}
+              associatedPacks={[]}
+            />
+            <InlineCardProgressFooter />
+          </PackContextProvider>
+        </PageContainer>
+      </>
     );
   }
   // Scaffold: If this is a Vegas pack, render the carousel view (placeholder for Vegas mode)
@@ -283,7 +297,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
     return (
       <>
         <Head>
-          <title>{packData.packTitle}</title>
+          <title>{packData.packTitle} | Make The Take</title>
           <meta property="og:type" content="website" />
           <meta property="og:title" content={packData.packTitle} />
           <meta property="og:description" content={packData.packSummary} />
@@ -298,17 +312,27 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             <meta name="twitter:image" content={packData.packCover[0].url} />
           )}
         </Head>
-        {(!isRef || mounted) && (
-          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-            <PackCarouselView
-              packData={packData}
-              leaderboard={leaderboard}
-              debugLogs={debugLogs}
-              userReceipts={userReceipts}
-              activity={activity}
-            />
-          </PackContextProvider>
-        )}
+        <PageHeader
+          title={packData.packTitle || packData.packURL}
+          breadcrumbs={[
+            { name: 'Home', href: '/' },
+            { name: 'Packs', href: '/packs' },
+            { name: packData.packTitle || packData.packURL },
+          ]}
+        />
+        <PageContainer>
+          {(!isRef || mounted) && (
+            <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+              <PackCarouselView
+                packData={packData}
+                leaderboard={leaderboard}
+                debugLogs={debugLogs}
+                userReceipts={userReceipts}
+                activity={activity}
+              />
+            </PackContextProvider>
+          )}
+        </PageContainer>
       </>
     );
   }
@@ -316,7 +340,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
   return (
     <>
       <Head>
-        <title>{packData.packTitle}</title>
+        <title>{packData.packTitle} | Make The Take</title>
         <meta property="og:type" content="website" />
         <meta property="og:title" content={packData.packTitle} />
         <meta property="og:description" content={packData.packSummary} />
@@ -332,17 +356,27 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           <meta name="twitter:image" content={packData.packCover[0].url} />
         )}
       </Head>
-      {(!isRef || mounted) && (
-        <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-          <PackCarouselView
-            packData={packData}
-            leaderboard={leaderboard}
-            debugLogs={debugLogs}
-            userReceipts={userReceipts}
-            activity={activity}
-          />
-        </PackContextProvider>
-      )}
+      <PageHeader
+        title={packData.packTitle || packData.packURL}
+        breadcrumbs={[
+          { name: 'Home', href: '/' },
+          { name: 'Packs', href: '/packs' },
+          { name: packData.packTitle || packData.packURL },
+        ]}
+      />
+      <PageContainer>
+        {(!isRef || mounted) && (
+          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+            <PackCarouselView
+              packData={packData}
+              leaderboard={leaderboard}
+              debugLogs={debugLogs}
+              userReceipts={userReceipts}
+              activity={activity}
+            />
+          </PackContextProvider>
+        )}
+      </PageContainer>
     </>
   );
 }

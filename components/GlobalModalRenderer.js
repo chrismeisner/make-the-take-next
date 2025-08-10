@@ -21,6 +21,9 @@ import GetPackWinnersModal from "./modals/GetPackWinnersModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
 import ExchangeConfirmModal from "./modals/ExchangeConfirmModal";
+import AddPacksToContestModal from "./modals/AddPacksToContestModal";
+import MobileNavModal from "./modals/MobileNavModal";
+import ShareContestModal from "./modals/ShareContestModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -30,6 +33,35 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "shareContest": {
+      const { contestTitle, contestSummary, contestUrl } = modalConfig.modalProps;
+      return (
+        <ShareContestModal
+          isOpen={true}
+          onClose={closeModal}
+          contestTitle={contestTitle}
+          contestSummary={contestSummary}
+          contestUrl={contestUrl}
+        />
+      );
+    }
+    case "mobileNav": {
+      const { items } = modalConfig.modalProps;
+      return (
+        <MobileNavModal isOpen={true} onClose={closeModal} items={items} />
+      );
+    }
+    case "addPacksToContest": {
+      const { initialSelected, onConfirm } = modalConfig.modalProps;
+      return (
+        <AddPacksToContestModal
+          isOpen={true}
+          onClose={closeModal}
+          initialSelected={initialSelected}
+          onConfirm={onConfirm}
+        />
+      );
+    }
     case "exchangeConfirm": {
       const { item, onConfirm } = modalConfig.modalProps;
       return (
@@ -181,7 +213,9 @@ export default function GlobalModalRenderer() {
 		  isOpen={true}
 		  onClose={closeModal}
 		  onPropsAdded={modalConfig.modalProps.onPropsAdded}
-		  initialLeague={modalConfig.modalProps.initialLeague}
+          initialLeague={modalConfig.modalProps.initialLeague}
+          excludeIds={modalConfig.modalProps.excludeIds}
+          viewName={modalConfig.modalProps.viewName || 'Open'}
 		/>
 	  );
 	case "superPropCreated": {
@@ -263,20 +297,20 @@ export default function GlobalModalRenderer() {
           />
         );
       }
-	case "aiSummaryContext": {
-	  const { defaultPrompt, onGenerate } = modalConfig.modalProps;
-	  return (
-		<GenerateSummaryModal
-		  isOpen={true}
-		  onClose={closeModal}
-		  defaultPrompt={defaultPrompt}
-		  onGenerate={(context) => {
-			onGenerate(context);
-			closeModal();
-		  }}
-		/>
-	  );
-	}
+    case "aiSummaryContext": {
+      const { defaultPrompt, serverPrompt, defaultModel, onGenerate, onUse } = modalConfig.modalProps;
+      return (
+        <GenerateSummaryModal
+          isOpen={true}
+          onClose={closeModal}
+          defaultPrompt={defaultPrompt}
+          serverPrompt={serverPrompt}
+          defaultModel={defaultModel}
+          onGenerate={(context, model) => onGenerate?.(context, model)}
+          onUse={(text) => { try { onUse?.(text); } finally { closeModal(); } }}
+        />
+      );
+    }
 	default:
 	  return null;
   }

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
+import PageContainer from "../../components/PageContainer";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -101,7 +102,7 @@ export default function ProfilePage() {
   const packMap = userPacks.reduce((map, pack) => { map[pack.packID] = pack; return map; }, {});
 
   return (
-	<div className="p-4 max-w-4xl mx-auto">
+    <PageContainer>
 	  {/* Profile Header */}
 	  <div className="flex items-center justify-between mb-4">
 		<h2 className="text-2xl font-bold">
@@ -258,7 +259,7 @@ export default function ProfilePage() {
 		  Back to Home
 		</Link>
 	  </p>
-	</div>
+    </PageContainer>
   );
 }
 

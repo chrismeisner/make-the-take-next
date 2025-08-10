@@ -423,6 +423,7 @@ export default function CreatePackPage() {
         } else {
           const payload = {
             propId: p.airtableId,
+            packId: packRecordId,
             propShort: p.propShort,
             propSummary: p.propSummary,
             PropSideAShort: p.PropSideAShort,
@@ -494,6 +495,7 @@ export default function CreatePackPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               propId: p.airtableId,
+              packId: packRecordId,
               propShort: p.propShort,
               propSummary: p.propSummary,
               PropSideAShort: p.PropSideAShort,

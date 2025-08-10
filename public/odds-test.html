@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>The Odds API — Local Key Checker</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+	:root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+	body { margin: 24px; line-height: 1.45; }
+	h1 { margin: 0 0 8px; font-size: 22px; }
+	.card { max-width: 900px; border: 1px solid #ddd; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+	.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+	input[type="password"], input[type="text"] { width: 410px; padding: 10px 12px; border: 1px solid #ccc; border-radius: 10px; }
+	button { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; }
+	button.primary { background: #111; color: #fff; }
+	button.secondary { background: #f2f2f2; }
+	.hint { color: #666; font-size: 13px; margin-top: 6px; }
+	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+	.box { border: 1px dashed #ccc; border-radius: 10px; padding: 10px; background: #fafafa; min-height: 120px; overflow:auto; }
+	.kvs { display: grid; grid-template-columns: 200px 1fr; gap: 6px 10px; }
+	.ok { color: #066a20; font-weight: 600; }
+	.err { color: #b00020; font-weight: 600; }
+	.muted { color: #777; }
+	code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+	<h1>🔑 The Odds API — Key & Connection Test</h1>
+	<div class="row" style="margin-top:10px;">
+	  <!-- Hard-code here if you want; the input uses it as default -->
+	  <script>
+		window.DEFAULT_API_KEY = "REPLACE_WITH_YOUR_KEY"; // ← hard-code for quick testing
+	  </script>
+	  <label for="apiKey" class="muted">API Key:</label>
+	  <input id="apiKey" type="password" placeholder="sk_xxx from dash.the-odds-api.com" />
+	  <button id="checkKey" class="primary">Check Key (GET /v4/sports)</button>
+	  <button id="testMLB" class="secondary">Test MLB Odds (GET /v4/sports/baseball_mlb/odds)</button>
+	</div>
+	<div class="hint">
+	  This page calls the API directly from your browser. If you hit a CORS or “NetworkError”, see the notes at the bottom.
+	</div>
+
+	<div class="grid">
+	  <div class="box">
+		<div class="kvs" id="meta">
+		  <div class="muted">Status</div><div id="status" class="muted">—</div>
+		  <div class="muted">Endpoint</div><div id="endpoint" class="muted">—</div>
+		  <div class="muted">x-requests-remaining</div><div id="remain" class="muted">—</div>
+		  <div class="muted">x-requests-used</div><div id="used" class="muted">—</div>
+		  <div class="muted">Time</div><div id="time" class="muted">—</div>
+		</div>
+	  </div>
+	  <div class="box"><pre id="body" style="margin:0;white-space:pre-wrap;word-break:break-word;"></pre></div>
+	</div>
+
+	<details style="margin-top:14px;">
+	  <summary><strong>Troubleshooting & Notes</strong></summary>
+	  <ul>
+		<li><strong>401 Unauthorized</strong>: Your API key is missing/invalid/disabled.</li>
+		<li><strong>403/429</strong>: Plan limits, region/market restrictions, or rate limit reached.</li>
+		<li><strong>NetworkError / CORS</strong>: Some environments block cross-origin requests from a <code>file://</code> page.
+		  Quick workaround: run a tiny local server in this folder:
+		  <ul>
+			<li>Python 3: <code>python -m http.server 5173</code> then open <code>http://localhost:5173/</code></li>
+			<li>Node: <code>npx http-server -p 5173</code></li>
+		  </ul>
+		</li>
+		<li>Free plan quotas are small; calls return headers
+		  <code>x-requests-remaining</code> and <code>x-requests-used</code>.
+		</li>
+	  </ul>
+	</details>
+  </div>
+
+  <script>
+	const apiKeyInput = document.getElementById('apiKey');
+	if (window.DEFAULT_API_KEY && window.DEFAULT_API_KEY !== "REPLACE_WITH_YOUR_KEY") {
+	  apiKeyInput.value = window.DEFAULT_API_KEY;
+	}
+
+	const statusEl = document.getElementById('status');
+	const endpEl = document.getElementById('endpoint');
+	const remainEl = document.getElementById('remain');
+	const usedEl = document.getElementById('used');
+	const timeEl = document.getElementById('time');
+	const bodyEl = document.getElementById('body');
+
+	function setMeta({status, endpoint, headers}) {
+	  statusEl.textContent = `${status} ${statusText(status)}`;
+	  statusEl.className = status >= 200 && status < 300 ? 'ok' : 'err';
+	  endpEl.textContent = endpoint;
+	  remainEl.textContent = headers.get('x-requests-remaining') ?? '—';
+	  usedEl.textContent = headers.get('x-requests-used') ?? '—';
+	  timeEl.textContent = new Date().toLocaleString();
+	}
+
+	function statusText(code) {
+	  const map = {200: 'OK', 201:'Created', 400:'Bad Request', 401:'Unauthorized', 403:'Forbidden', 404:'Not Found', 429:'Too Many Requests', 500:'Server Error'};
+	  return map[code] || '';
+	}
+
+	async function call(endpoint) {
+	  const key = (apiKeyInput.value || '').trim();
+	  if (!key) {
+		alert('Please paste your API key first.');
+		return;
+	  }
+
+	  bodyEl.textContent = 'Loading…';
+	  endpEl.textContent = endpoint;
+	  statusEl.textContent = '—';
+	  remainEl.textContent = '—';
+	  usedEl.textContent = '—';
+
+	  // Abort if it takes too long
+	  const ctrl = new AbortController();
+	  const timeout = setTimeout(() => ctrl.abort(), 12000);
+
+	  try {
+		const url = new URL(endpoint);
+		url.searchParams.set('apiKey', key);
+
+		const res = await fetch(url.toString(), {
+		  method: 'GET',
+		  signal: ctrl.signal,
+		});
+
+		clearTimeout(timeout);
+		setMeta({status: res.status, endpoint: url.pathname + url.search, headers: res.headers});
+
+		let text;
+		try { text = await res.text(); } catch { text = ''; }
+
+		// Try to pretty-print JSON if possible
+		try {
+		  const json = JSON.parse(text);
+		  bodyEl.textContent = JSON.stringify(json, null, 2);
+		} catch {
+		  bodyEl.textContent = text || '(no body)';
+		}
+	  } catch (err) {
+		clearTimeout(timeout);
+		statusEl.textContent = 'Network error';
+		statusEl.className = 'err';
+		bodyEl.textContent = [
+		  'Request failed.',
+		  '',
+		  'This is often a CORS or mixed-content issue when opening an HTML file directly (file://).',
+		  'Try serving this as http://localhost (see Troubleshooting).',
+		  '',
+		  'Error detail:',
+		  String(err && err.message ? err.message : err)
+		].join('\n');
+	  }
+	}
+
+	document.getElementById('checkKey').addEventListener('click', () => {
+	  // Low-cost endpoint to verify the key works
+	  call('https://api.the-odds-api.com/v4/sports');
+	});
+
+	document.getElementById('testMLB').addEventListener('click', () => {
+	  // Simple MLB odds probe (keeps markets light)
+	  const params = new URLSearchParams({
+		regions: 'us',
+		markets: 'h2h',
+		oddsFormat: 'american',
+		dateFormat: 'iso'
+	  });
+	  call(`https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?${params.toString()}`);
+	});
+  </script>
+</body>
+</html>

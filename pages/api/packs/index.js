@@ -9,14 +9,18 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
 );
 
 // Helper: Fetch all packs from Airtable and map to our data structure
-async function fetchAllPacks() {
-  const packRecords = await base("Packs")
-    .select({
-      maxRecords: 100,
-      // only include packs with status 'active' or 'graded'
-      filterByFormula: `OR({packStatus}='active', {packStatus}='graded')`
-    })
-    .all();
+// If a view name is provided, we will use that Airtable view to drive filtering/sorting.
+// Otherwise, default to active/graded filter.
+async function fetchAllPacks(viewName) {
+  const selectOptions = { maxRecords: 100 };
+  if (viewName && typeof viewName === "string") {
+    selectOptions.view = viewName;
+  } else {
+    // only include packs with status 'active' or 'graded'
+    selectOptions.filterByFormula = `OR({packStatus}='active', {packStatus}='graded')`;
+  }
+
+  const packRecords = await base("Packs").select(selectOptions).all();
 
   const packsData = await Promise.all(packRecords.map(async (record) => {
 	const fields = record.fields;
@@ -171,7 +175,10 @@ export default async function handler(req, res) {
 	const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 	const userIsLoggedIn = !!token;
 
-	let packsData = await fetchAllPacks();
+	// Optional: allow clients to specify an Airtable view name for fetching packs
+	const { view } = req.query;
+
+	let packsData = await fetchAllPacks(view);
 
 	// Attach total take count for each pack.
 	packsData = await attachTotalTakeCount(packsData);

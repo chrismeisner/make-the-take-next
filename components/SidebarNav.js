@@ -9,7 +9,18 @@ export default function SidebarNav({ items = [], collapsed, setCollapsed }) {
   const router = useRouter();
 
   return (
-    <aside className={`hidden lg:flex lg:flex-col lg:border-r lg:border-gray-200 bg-white transition-width duration-200 lg:sticky lg:top-0 lg:h-screen ${collapsed ? 'lg:w-16' : 'lg:w-64'}`}>
+    <aside className={`hidden lg:flex lg:flex-col lg:border-r lg:border-gray-200 bg-white lg:sticky lg:top-0 lg:h-screen ${collapsed ? 'lg:w-16' : 'lg:w-64'}`} style={{ transition: 'width 200ms ease' }}>
+      {/* Sidebar toggle always visible on desktop */}
+      <div className={`px-2 py-2 border-b border-gray-200 flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="text-gray-600 hover:text-gray-900 transition-colors"
+          title={collapsed ? 'Expand' : 'Collapse'}
+        >
+          {collapsed ? '»' : '«'}
+        </button>
+      </div>
       {!collapsed && (
         <div className='flex-1 flex flex-col overflow-hidden'>
           <nav className='flex-1 overflow-y-auto px-2 pt-5 pb-4 space-y-1'>

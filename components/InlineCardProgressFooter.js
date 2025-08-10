@@ -73,6 +73,14 @@ export default function InlineCardProgressFooter() {
       undefined,
       { shallow: true }
     );
+    // Fire-and-forget SMS notification to the user
+    try {
+      fetch("/api/notifyPackSubmitted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packURL: packData.packURL, packTitle: packData.packTitle, receiptId }),
+      });
+    } catch {}
     openModal("packCompleted", { packTitle: packData.packTitle, receiptId, newTakeIDs, selectedChoices, packProps: packData.props });
     setIsSubmitting(false);
   }
