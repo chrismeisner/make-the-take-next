@@ -1,17 +1,19 @@
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import StatusPill from "./StatusPill";
 // Simplified: we will read winner from pack.winnerProfileID (lookup) or pack.packWinnerRecordIds
-import useCountdown from "../hooks/useCountdown";
 
-export default function PackPreview({ pack }) {
+export default function PackPreview({ pack, className = "" }) {
+  const { data: session } = useSession();
   // Determine a common pack identifier
-  const packID = pack.airtableId || pack.id || pack.packID;
+  const packID = pack.packID || pack.id || pack.airtableId;
 
   // Number of props assumed to be provided by pack.propsCount
   const propsCount = pack.propsCount || 0;
   const takeCount = pack.takeCount || 0;
   // User-specific verified take count from API
-  const userTakesCount = pack.userTakesCount || 0;
+  const [userTakesCount, setUserTakesCount] = useState(pack.userTakesCount || 0);
   // Winner: prefer lookup winnerProfileID, fallback to first packWinner linked record id (if your UI uses it)
   const winnerID = pack.winnerProfileID || null;
 
@@ -29,7 +31,6 @@ export default function PackPreview({ pack }) {
   const now = Date.now();
   const futureEventTimes = eventTimes.filter(evt => new Date(evt).getTime() > now);
   const nextEventTime = futureEventTimes.length > 0 ? futureEventTimes[0] : null;
-  const { days, hours, minutes, seconds, isCompleted } = useCountdown(nextEventTime || pack.eventTime);
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -43,18 +44,59 @@ export default function PackPreview({ pack }) {
 	coverUrl = null;
   }
 
+  // Client-side: fetch accurate user progress if logged in
+  useEffect(() => {
+    if (!session || !packID) return;
+    let isActive = true;
+    const controller = new AbortController();
+    async function loadProgress() {
+      try {
+        const res = await fetch(`/api/userPackProgress?packID=${encodeURIComponent(packID)}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!json?.success) return;
+        if (isActive) {
+          const completed = Number(json.completedCount || 0);
+          setUserTakesCount(completed);
+        }
+      } catch (err) {
+        // ignore fetch aborts
+      }
+    }
+    loadProgress();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [session, packID]);
+
+  // Determine target href safely
+  const hasValidSuperProp = Boolean(
+    pack.hasSuperProp && Array.isArray(pack.superProps) && pack.superProps.length > 0
+  );
+  const targetHref = hasValidSuperProp
+    ? `/props/${pack.superProps[0]}`
+    : pack.packURL
+      ? `/packs/${pack.packURL}`
+      : "#";
+  const isDisabled = targetHref === "#";
+
   return (
 	<Link
-	  href={pack.hasSuperProp ? `/props/${pack.superProps[0]}` : `/packs/${pack.packURL}`}
-	  className="w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black"
+	  href={targetHref}
+	  aria-label={(pack.packTitle || "Pack") + " preview"}
+	  aria-disabled={isDisabled}
+	  className={`w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black ${className}`}
 	>
-	  <div
-		className="aspect-square w-full relative bg-blue-600 bg-cover bg-center"
-		style={{
-		  backgroundImage: coverUrl ? `url(${coverUrl})` : undefined,
-		}}
-	  >
-		{!coverUrl && (
+	  <div className="aspect-square w-full relative bg-gray-100">
+		{coverUrl ? (
+		  <img
+			src={coverUrl}
+			alt={`${pack.packTitle || "Pack"} cover`}
+			className="absolute inset-0 w-full h-full object-cover"
+			loading="lazy"
+		  />
+		) : (
 		  <div className="flex items-center justify-center h-full">
 			<span>No Cover</span>
 		  </div>
@@ -72,8 +114,10 @@ export default function PackPreview({ pack }) {
         <StatusPill status={pack.packStatus} eventTime={nextEventTime || earliestEventTime} />
 		<div className="mt-2 text-sm text-gray-600">
 		  <p>Props: {propsCount}</p>
-		  <p>Total takes: {takeCount}</p>
-		  <p>Your takes: {userTakesCount}/{propsCount}</p>
+          <p>Total takes: {takeCount}</p>
+          {session && (
+            <p>Your takes: {userTakesCount}/{propsCount}</p>
+          )}
           {pack.packStatus === "graded" && winnerID && (<p>Winner: @{winnerID}</p>)}
 		</div>
 	  </div>

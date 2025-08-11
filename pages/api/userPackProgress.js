@@ -50,16 +50,30 @@ export default async function handler(req, res) {
 	  return res.status(200).json({ success: true, completedCount: 0, totalCount: 0 });
 	}
 
-	// Build an OR clause to query the Takes table.
-	const orClauses = linkedPropIDs
-	  .map((id) => `({propID} = "${id}")`)
-	  .join(", ");
-	const formula = `AND(
-	  {takeMobile} = "${session.user.phone}",
-	  {takeStatus} = "latest",
-	  OR(${orClauses})
-	)`;
-	console.log("Constructed Takes query formula:", formula);
+    // Look up external propID values for the linked Prop records
+    // so we can match Takes.propID (which stores the external ID, not the Airtable record ID)
+    const propsFormula = `OR(${linkedPropIDs.map((id) => `RECORD_ID() = "${id}"`).join(", ")})`;
+    const propRecords = await base("Props")
+      .select({ filterByFormula: propsFormula, fields: ["propID"], maxRecords: 5000 })
+      .all();
+    const externalPropIDs = propRecords
+      .map((rec) => rec.fields.propID)
+      .filter(Boolean);
+    console.log("Resolved external propIDs:", externalPropIDs);
+
+    if (externalPropIDs.length === 0) {
+      console.log("No external propIDs resolved; returning zero progress.");
+      return res.status(200).json({ success: true, completedCount: 0, totalCount });
+    }
+
+    // Build an OR clause to query the Takes table by external propID values
+    const orClauses = externalPropIDs.map((id) => `({propID} = "${id}")`).join(", ");
+    const formula = `AND(
+      {takeMobile} = "${session.user.phone}",
+      {takeStatus} = "latest",
+      OR(${orClauses})
+    )`;
+    console.log("Constructed Takes query formula:", formula);
 
 	const takesRecords = await base("Takes")
 	  .select({

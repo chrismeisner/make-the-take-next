@@ -65,7 +65,13 @@ export default async function handler(req, res) {
       }
       formatted.push({ id: u.airtableId, fields });
     }
-    await base("Props").update(formatted);
+    // Airtable limits update payloads to 10 records per request
+    const updateChunkSize = 10;
+    for (let i = 0; i < formatted.length; i += updateChunkSize) {
+      const chunk = formatted.slice(i, i + updateChunkSize);
+      // eslint-disable-next-line no-await-in-loop
+      await base("Props").update(chunk);
+    }
 
     // Helper: given a Pack record, if all its Props are graded/pushed,
     // mark the Pack as graded, compute winner, and send SMS notifications.

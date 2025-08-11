@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 	return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  let { phone, team } = req.body;
+  let { phone } = req.body;
 
   if (!phone) {
 	return res.status(400).json({ success: false, error: "Missing phone" });
@@ -30,27 +30,7 @@ export default async function handler(req, res) {
   console.log("[createProfile] Normalized phone:", normalizedPhone);
 
   try {
-	let teamRecordId = null;
-	if (team) {
-	  console.log("[createProfile] Querying Teams table for team with teamID =", team);
-	  const teamRecords = await base("Teams")
-		.select({
-		  filterByFormula: `{teamID} = "${team}"`,
-		  maxRecords: 1,
-		})
-		.firstPage();
-	  if (teamRecords.length === 0) {
-		console.error("[createProfile] Team not found for teamID:", team);
-		return res.status(404).json({
-		  success: false,
-		  error: `Team with identifier "${team}" not found`,
-		});
-	  }
-	  teamRecordId = teamRecords[0].id;
-	  console.log("[createProfile] Found team record id:", teamRecordId);
-	}
-
-	console.log("[createProfile] Looking up existing profile with mobile:", normalizedPhone);
+    console.log("[createProfile] Looking up existing profile with mobile:", normalizedPhone);
 	const profileRecords = await base("Profiles")
 	  .select({
 		filterByFormula: `{profileMobile} = "${normalizedPhone}"`,
@@ -59,9 +39,6 @@ export default async function handler(req, res) {
 	  .firstPage();
 
 	const fieldsToUpdate = { profileMobile: normalizedPhone };
-	if (teamRecordId) {
-	  fieldsToUpdate.profileTeam = [teamRecordId];
-	}
 
 	if (profileRecords.length > 0) {
 	  // Profile exists; update it.

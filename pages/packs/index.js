@@ -20,7 +20,12 @@ export async function getServerSideProps(context) {
   const origin = process.env.SITE_URL || `${proto}://${host}`;
 
   try {
-	const res = await fetch(`${origin}/api/packs`);
+	const res = await fetch(`${origin}/api/packs`, {
+	  headers: {
+		// Forward cookies for user context so API can compute userTakesCount
+		cookie: context.req.headers.cookie || "",
+	  },
+	});
 	const data = await res.json();
 	if (!res.ok || !data.success) {
 	  throw new Error(data.error || "Failed to load packs");

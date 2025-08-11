@@ -10,6 +10,12 @@ export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
   // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
+  // Redirect unauthenticated users to /login on the client
+  useEffect(() => {
+    if (!session?.user) {
+      router.replace("/login");
+    }
+  }, [session, router]);
 
   // States for login flow (when not logged in)
   const [phone, setPhone] = useState("");
@@ -18,11 +24,7 @@ export default function LandingPage() {
   const [step, setStep] = useState("phone"); // "phone" or "code"
   const [code, setCode] = useState("");
 
-  // States for teams (for login flow)
-  const [teamsData, setTeamsData] = useState([]);
-  const [loadingTeams, setLoadingTeams] = useState(true);
-  const [teamError, setTeamError] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState(null);
+  // Removed favorite team selection from signup flow
   const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
 
   // Removed Active Pack Drops on dashboard
@@ -57,36 +59,7 @@ export default function LandingPage() {
     return result.trim();
   }
 
-  // Fetch teams on mount (for login flow)
-  useEffect(() => {
-	async function fetchTeams() {
-	  console.log("🚀 [LandingPage] Loading teams from Airtable...");
-	  setLoadingTeams(true);
-	  setTeamError("");
-	  try {
-		const res = await fetch("/api/teams");
-		const data = await res.json();
-		console.log("📥 [LandingPage] Received teams data:", data);
-		if (data.success) {
-		  const filtered = data.teams.filter((team) => team.teamType !== "league");
-		  const sorted = filtered.sort((a, b) =>
-			a.teamNameFull.localeCompare(b.teamNameFull)
-		  );
-		  setTeamsData(sorted);
-		  console.log("✅ [LandingPage] Teams loaded:", sorted);
-		} else {
-		  setTeamError(data.error || "Failed to load teams");
-		  console.error("❌ [LandingPage] Error loading teams:", data.error);
-		}
-	  } catch (err) {
-		console.error("💥 [LandingPage] Error fetching teams:", err);
-		setTeamError("Error fetching teams");
-	  } finally {
-		setLoadingTeams(false);
-	  }
-	}
-	fetchTeams();
-  }, []);
+  // Removed favorite team fetching
 
   // Removed Active Pack Drops fetching
 
@@ -232,10 +205,10 @@ export default function LandingPage() {
 		setError(data.error || "Verification failed.");
 	  } else {
 		console.log("✅ [handleCodeSubmit] Verification succeeded");
-		const profileRes = await fetch("/api/createProfile", {
+        const profileRes = await fetch("/api/createProfile", {
 		  method: "POST",
 		  headers: { "Content-Type": "application/json" },
-		  body: JSON.stringify({ phone, team: selectedTeam }),
+          body: JSON.stringify({ phone }),
 		});
 		let profileData;
 		try {
@@ -257,18 +230,7 @@ export default function LandingPage() {
 		  const profileID = profileData.profile.profileID;
 		  console.log(`➡️ Redirecting to /profile/${profileID}`);
 		  router.push(`/profile/${profileID}`);
-		  // Optionally, trigger the welcome SMS message.
-		  try {
-			const msgRes = await fetch("/api/sendMessage", {
-			  method: "POST",
-			  headers: { "Content-Type": "application/json" },
-			  body: JSON.stringify({ phone, team: selectedTeam }),
-			});
-			const msgData = await msgRes.json();
-			console.log("📤 [handleCodeSubmit] sendMessage response:", msgData);
-		  } catch (err) {
-			console.error("💥 [handleCodeSubmit] Error sending welcome SMS:", err);
-		  }
+          // Welcome SMS via team removed from signup flow
 		}
 	  }
 	} catch (err) {
@@ -277,10 +239,8 @@ export default function LandingPage() {
 	}
   }
 
-  // Dynamic entry title based on selected team.
-  const entryTitle = selectedTeam
-	? `Receive ${selectedTeam} Pack Challenge SMS notifications`
-	: "Receive Pack Challenge SMS notifications";
+  // Generic entry title (team selection removed)
+  const entryTitle = "Receive Pack Challenge SMS notifications";
 
   // Revised description with dummy legal links.
   const description = (
@@ -298,15 +258,13 @@ export default function LandingPage() {
 	</>
   );
 
-  const consentText = selectedTeam
-	? `Yes, sign me up for ${selectedTeam} SMS updates`
-	: "Yes, sign me up for SMS updates";
+  const consentText = "Yes, sign me up for SMS updates";
 
   return (
-	<div className="bg-white text-gray-900">
-	  <div className="p-4 w-full max-w-4xl mx-auto">
-		{session?.user ? (
-		  <>
+    <div className="bg-white text-gray-900">
+      <div className="p-4 w-full max-w-4xl mx-auto">
+        {session?.user ? (
+          <>
             {/* Active Contest Section */}
             {!loadingContests && activeContest && (
               <div className="mb-10">
@@ -409,64 +367,9 @@ export default function LandingPage() {
             )}
             {/* Active Pack Drops section removed; visit /packs for the full explorer */}
           </>
-		) : (
-		  <>
-			<p className="text-base font-medium mb-4 text-center">{entryTitle}</p>
-			{step === "phone" ? (
-			  <form onSubmit={handlePhoneSubmit} className="max-w-sm mx-auto text-center">
-				<InputMask
-				  mask="(999) 999-9999"
-				  value={phone}
-				  onChange={(e) => setPhone(e.target.value)}
-				>
-				  {() => (
-					<input
-					  type="tel"
-					  placeholder="Enter your mobile number"
-					  autoComplete="tel"
-					  inputMode="numeric"
-					  className="w-full px-3 py-2 mb-4 rounded text-black"
-					/>
-				  )}
-				</InputMask>
-				<div className="flex items-center justify-center mb-4">
-				  <input
-					type="checkbox"
-					checked={agreed}
-					onChange={(e) => setAgreed(e.target.checked)}
-					className="mr-2"
-				  />
-				  <span className="text-sm">{consentText}</span>
-				</div>
-				<button
-				  type="submit"
-				  className="w-full px-4 py-2 bg-white text-black font-semibold rounded hover:bg-gray-300 transition-colors"
-				>
-				  Send Verification Code
-				</button>
-			  </form>
-			) : (
-			  <form onSubmit={handleCodeSubmit} className="max-w-sm mx-auto text-center">
-				<input
-				  type="text"
-				  placeholder="Enter your verification code"
-				  value={code}
-				  onChange={(e) => setCode(e.target.value)}
-				  className="w-full px-3 py-2 mb-4 rounded text-black"
-				/>
-				<button
-				  type="submit"
-				  className="w-full px-4 py-2 bg-white text-black font-semibold rounded hover:bg-gray-300 transition-colors"
-				>
-				  Verify Code
-				</button>
-			  </form>
-			)}
-			{error && <p className="mt-4 text-red-500 text-center">{error}</p>}
-			{message && <p className="mt-4 text-green-500 text-center">{message}</p>}
-			<p className="mt-6 text-sm text-gray-300 max-w-md mx-auto text-center">{description}</p>
-		  </>
-		)}
+        ) : (
+          <p className="text-center">Redirecting to login...</p>
+        )}
 	  </div>
 	</div>
   );

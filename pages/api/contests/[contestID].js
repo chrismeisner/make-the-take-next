@@ -117,6 +117,34 @@ export default async function handler(req, res) {
 		  propsCount: Array.isArray(pf.Props) ? pf.Props.length : 0,
 		};
 	  });
+
+	  // Attach total take counts for these packs using Takes table (latest only)
+	  try {
+		const takeRecords = await base("Takes").select({
+		  filterByFormula: '{takeStatus}="latest"',
+		  maxRecords: 5000,
+		}).all();
+
+		const packIdToCount = {};
+		takeRecords.forEach((takeRec) => {
+		  const packIDValue = takeRec.fields.packID;
+		  if (!packIDValue) return;
+		  if (Array.isArray(packIDValue)) {
+			packIDValue.forEach((pid) => {
+			  packIdToCount[pid] = (packIdToCount[pid] || 0) + 1;
+			});
+		  } else {
+			packIdToCount[packIDValue] = (packIdToCount[packIDValue] || 0) + 1;
+		  }
+		});
+
+		packsData = packsData.map((p) => ({
+		  ...p,
+		  takeCount: packIdToCount[p.packID] || 0,
+		}));
+	  } catch (err) {
+		console.error('[contests/[contestID]] Error attaching total takes =>', err);
+	  }
 	}
 
 	contestData.packs = packsData;

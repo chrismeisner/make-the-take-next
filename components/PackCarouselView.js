@@ -293,6 +293,23 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             <div className="px-4 sm:px-0">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
+              {Array.isArray(packData.contests) && packData.contests.length > 0 && (
+                <div className="mt-2 text-sm text-gray-700">
+                  <div className="font-medium">In contest{packData.contests.length > 1 ? 's' : ''}:</div>
+                  <ul className="mt-1 space-y-1">
+                    {packData.contests.map((c) => (
+                      <li key={c.contestID}>
+                        <Link href={`/contests/${c.contestID}`} className="text-blue-600 underline">
+                          {c.contestTitle || c.contestID}
+                        </Link>
+                        {c.contestPrize ? (
+                          <span className="ml-2 text-gray-500">({c.contestPrize})</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap text-sm text-gray-500 gap-4">
                 {packData.packType === 'event' && packData.eventTime && (
                   <span>

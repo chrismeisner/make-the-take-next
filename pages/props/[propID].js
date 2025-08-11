@@ -305,6 +305,32 @@ if (propData.propCoverStatus !== "generated" || !finalCoverImageUrl) {
             propsCount: Array.isArray(pf.Props) ? pf.Props.length : 0,
           };
         });
+
+        // Attach total take counts to associated packs (latest only)
+        try {
+          const takeRecords = await base("Takes").select({
+            filterByFormula: '{takeStatus}="latest"',
+            maxRecords: 5000,
+          }).all();
+          const packIdToCount = {};
+          takeRecords.forEach((takeRec) => {
+            const value = takeRec.fields.packID;
+            if (!value) return;
+            if (Array.isArray(value)) {
+              value.forEach((pid) => {
+                packIdToCount[pid] = (packIdToCount[pid] || 0) + 1;
+              });
+            } else {
+              packIdToCount[value] = (packIdToCount[value] || 0) + 1;
+            }
+          });
+          associatedPacks = associatedPacks.map((p) => ({
+            ...p,
+            takeCount: packIdToCount[p.packID] || 0,
+          }));
+        } catch (err) {
+          console.error('[PropDetailPage] Error attaching take counts =>', err);
+        }
 	  } catch (err) {
 		console.error("[PropDetailPage] Error fetching packRecords =>", err);
 	  }
