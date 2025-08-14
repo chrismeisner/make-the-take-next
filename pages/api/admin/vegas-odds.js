@@ -32,27 +32,37 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: `No odds found for provider ${providerId}` });
     }
     console.log(`[Vegas Odds] Found odds for providerId=${providerId}`);
-    // Fetch summary endpoint to get team names
+    // Fetch summary endpoint to get team names (robust across shapes)
+    let awayName = null;
+    let homeName = null;
     try {
-      const summaryUrl = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=${eventId}`;
+      const summaryUrl = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${leagueName}/summary?event=${eventId}`;
       console.log(`[Vegas Odds] Fetching summary from: ${summaryUrl}`);
       const sumRes = await fetch(summaryUrl, { headers: { Accept: 'application/json' } });
       if (sumRes.ok) {
         const sumData = await sumRes.json();
-        const competitors = sumData.competitions?.[0]?.competitors || [];
+        const competitions = (sumData && (
+          sumData.header?.competitions ||
+          sumData.competitions ||
+          sumData.game?.competitions
+        )) || [];
+        const competitors = Array.isArray(competitions) && competitions.length
+          ? competitions[0]?.competitors || []
+          : [];
         const awayComp = competitors.find((c) => c.homeAway === 'away');
         const homeComp = competitors.find((c) => c.homeAway === 'home');
-        const awayName = awayComp?.team?.displayName;
-        const homeName = homeComp?.team?.displayName;
-        console.log(`[Vegas Odds] Teams: away="${awayName}", home="${homeName}"`);
-        console.log(`[Vegas Odds] Moneylines: away=${match.awayTeamOdds.moneyLine}, home=${match.homeTeamOdds.moneyLine}`);
+        awayName = awayComp?.team?.displayName || awayComp?.team?.shortDisplayName || null;
+        homeName = homeComp?.team?.displayName || homeComp?.team?.shortDisplayName || null;
       } else {
         console.warn(`[Vegas Odds] Summary fetch failed with status ${sumRes.status}`);
       }
     } catch (err) {
       console.error('[Vegas Odds] Error fetching or parsing summary:', err);
     }
-    return res.status(200).json(match);
+    console.log(`[Vegas Odds] Teams: away="${awayName}", home="${homeName}"`);
+    console.log(`[Vegas Odds] Moneylines: away=${match.awayTeamOdds.moneyLine}, home=${match.homeTeamOdds.moneyLine}`);
+    // Return the odds payload plus team names for debugging/optional use
+    return res.status(200).json({ ...match, teams: { awayName, homeName } });
   } catch (error) {
     console.error('[Vegas Odds] Fetch error', error);
     return res.status(500).json({ error: error.message });

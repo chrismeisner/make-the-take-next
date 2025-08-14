@@ -18,10 +18,11 @@ export default function CreateEventPropPage() {
   const [propSideBShort, setPropSideBShort] = useState('');
   const [propSideBTake, setPropSideBTake] = useState('');
   const [propSideBMoneyline, setPropSideBMoneyline] = useState('');
-  const propType = 'binary';
+  const propType = 'moneyline';
   const [event, setEvent] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
+  const [propCoverSource, setPropCoverSource] = useState('event');
   const [teamOptions, setTeamOptions] = useState([]);
   const [selectedTeams, setSelectedTeams] = useState([]);
 
@@ -261,9 +262,9 @@ export default function CreateEventPropPage() {
     }
     setLoading(true);
     setError(null);
-    // Upload cover image if provided
+    // Upload cover image if provided and source is custom
     let propCoverUrl = null;
-    if (coverFile) {
+    if (propCoverSource === 'custom' && coverFile) {
       const toBase64 = file => new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -305,6 +306,7 @@ export default function CreateEventPropPage() {
           teams: selectedTeams,
           propOpenTime,
           propCloseTime,
+          propCoverSource,
           ...(propCoverUrl ? { propCover: propCoverUrl } : {}),
         }),
       });
@@ -514,23 +516,44 @@ export default function CreateEventPropPage() {
           </div>
         )}
         <div>
-          <label htmlFor="propCover" className="block text-sm font-medium text-gray-700">Prop Cover (optional)</label>
-          <input
-            id="propCover"
-            type="file"
-            accept="image/*"
+          <label htmlFor="propCoverSource" className="block text-sm font-medium text-gray-700">Cover Image Source</label>
+          <select
+            id="propCoverSource"
+            value={propCoverSource}
             onChange={(e) => {
-              if (e.target.files.length) {
-                setCoverFile(e.target.files[0]);
-                setCoverPreview(URL.createObjectURL(e.target.files[0]));
+              const value = e.target.value;
+              setPropCoverSource(value);
+              if (value === 'event') {
+                setCoverFile(null);
+                setCoverPreview(null);
               }
             }}
-            className="mt-1 block w-full"
-          />
-          {coverPreview && (
-            <img src={coverPreview} alt="Cover Preview" className="mt-2 h-32 object-contain" />
-          )}
+            className="mt-1 block w-full border rounded px-2 py-1"
+          >
+            <option value="event">Event</option>
+            <option value="custom">Custom</option>
+          </select>
         </div>
+        {propCoverSource === 'custom' && (
+          <div>
+            <label htmlFor="propCover" className="block text-sm font-medium text-gray-700">Prop Cover (optional)</label>
+            <input
+              id="propCover"
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                if (e.target.files.length) {
+                  setCoverFile(e.target.files[0]);
+                  setCoverPreview(URL.createObjectURL(e.target.files[0]));
+                }
+              }}
+              className="mt-1 block w-full"
+            />
+            {coverPreview && (
+              <img src={coverPreview} alt="Cover Preview" className="mt-2 h-32 object-contain" />
+            )}
+          </div>
+        )}
         {/* Teams selection chips */}
         <div>
           <label className="block text-sm font-medium text-gray-700">Teams</label>

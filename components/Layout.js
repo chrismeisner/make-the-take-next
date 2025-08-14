@@ -11,6 +11,7 @@ export default function Layout({ children }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const profileID = session?.user?.profileID;
+  const isSuperAdmin = Boolean(session?.user?.superAdmin);
   const sidebarItems = [
     { label: "Dashboard", href: "/" },
     { label: "Packs", href: "/packs" },
@@ -45,7 +46,7 @@ export default function Layout({ children }) {
   // Otherwise => original layout (with header, container, padding, etc.)
   return (
     <div className="h-screen flex">
-      {session?.user ? (
+      {session?.user && isSuperAdmin ? (
         <SidebarNav items={sidebarItems} collapsed={collapsed} setCollapsed={setCollapsed} />
       ) : null}
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">

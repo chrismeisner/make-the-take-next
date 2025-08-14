@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     // Destructure core prop fields, including value model and moneylines
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, propStatus, packId, propOrder, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCover,
-            propCloseTime,
+    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, propStatus, packId, propOrder, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCover, propCoverSource,
+            propOpenTime, propCloseTime,
             // Event linkage fields
             eventId, eventTitle, eventTime, eventLeague } = req.body;
     // Parse moneyline inputs to numbers for Airtable numeric fields
@@ -52,6 +52,7 @@ export default async function handler(req, res) {
         ...(moneylineA !== null && !isNaN(moneylineA) ? { PropSideAMoneyline: moneylineA } : {}),
         ...(moneylineB !== null && !isNaN(moneylineB) ? { PropSideBMoneyline: moneylineB } : {}),
         ...(propCover ? { propCover: [{ url: propCover }] } : {}),
+        ...(propCoverSource ? { propCoverSource: String(propCoverSource).toLowerCase() } : {}),
       };
       // Initialize per-pack ordering JSON if we have an order
       if (propOrder !== undefined) {
@@ -81,8 +82,12 @@ export default async function handler(req, res) {
           eventRecordId = packEventLink[0];
         }
       }
-      // Parse and convert propCloseTime to ISO date string
+      // Parse and convert propOpenTime/propCloseTime to ISO date string
+      let openTimeIso = null;
       let closeTimeIso = null;
+      if (propOpenTime) {
+        openTimeIso = new Date(propOpenTime).toISOString();
+      }
       if (propCloseTime) {
         closeTimeIso = new Date(propCloseTime).toISOString();
       }
@@ -90,6 +95,18 @@ export default async function handler(req, res) {
       if (eventRecordId) {
         fieldsToCreate.Event = [eventRecordId];
         console.log('[api/props POST] fieldsToCreate.Event set to', eventRecordId);
+        // Also copy ESPN/league identifiers from the Event for grading and linking
+        try {
+          const evRec = await base('Events').find(eventRecordId);
+          const evf = evRec.fields || {};
+          // Do not write computed fields like propLeagueLookup
+        } catch (e) {
+          console.warn('[api/props POST] Unable to enrich prop with ESPN/league from Event', e?.message || e);
+        }
+      }
+      if (openTimeIso) {
+        fieldsToCreate.propOpenTime = openTimeIso;
+        console.log('[api/props POST] fieldsToCreate.propOpenTime set to', openTimeIso);
       }
       if (closeTimeIso) {
         fieldsToCreate.propCloseTime = closeTimeIso;
@@ -110,7 +127,7 @@ export default async function handler(req, res) {
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
     // Destructure updatable fields, including new ones
-    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime } = req.body;
+    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime, propCoverSource } = req.body;
     // Parse moneyline inputs for updates
     const updMoneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
       ? parseFloat(PropSideAMoneyline)
@@ -172,6 +189,7 @@ export default async function handler(req, res) {
       if (propType       !== undefined) fieldsToUpdate.propType       = propType;
       if (teams          !== undefined) fieldsToUpdate.Teams          = teams;
       if (propValueModel !== undefined) fieldsToUpdate.propValueModel        = propValueModel;
+      if (propCoverSource !== undefined) fieldsToUpdate.propCoverSource = String(propCoverSource).toLowerCase();
       if (updMoneylineA !== null && !isNaN(updMoneylineA)) fieldsToUpdate.PropSideAMoneyline = updMoneylineA;
       if (updMoneylineB !== null && !isNaN(updMoneylineB)) fieldsToUpdate.PropSideBMoneyline = updMoneylineB;
       if (propCloseTime !== undefined) fieldsToUpdate.propCloseTime = updCloseTimeIso;

@@ -1,6 +1,7 @@
 // File: /pages/index.js
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
+import Toast from "../components/Toast";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
 import Link from "next/link";
@@ -9,13 +10,26 @@ import Link from "next/link";
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const [toastMessage, setToastMessage] = useState("");
   // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
   // Redirect unauthenticated users to /login on the client
   useEffect(() => {
+    // Show a success toast if redirected after logout
+    if (router.query.logout === "1") {
+      setToastMessage("Logged out successfully");
+    }
+  }, [router.query.logout]);
+
+  useEffect(() => {
     if (!session?.user) {
+      // If coming from logout, give the toast a moment to display before redirecting
+      if (router.query.logout === "1") {
+        const t = setTimeout(() => router.replace("/login"), 1600);
+        return () => clearTimeout(t);
+      }
       router.replace("/login");
     }
-  }, [session, router]);
+  }, [session, router, router.query.logout]);
 
   // States for login flow (when not logged in)
   const [phone, setPhone] = useState("");
@@ -227,9 +241,8 @@ export default function LandingPage() {
 		  setMessage("Profile updated and verified successfully!");
 		  // Sign in the user to update the session.
 		  await signIn("credentials", { phone, code, redirect: false });
-		  const profileID = profileData.profile.profileID;
-		  console.log(`➡️ Redirecting to /profile/${profileID}`);
-		  router.push(`/profile/${profileID}`);
+          console.log(`➡️ Redirecting to dashboard`);
+          router.push(`/`);
           // Welcome SMS via team removed from signup flow
 		}
 	  }
@@ -263,6 +276,9 @@ export default function LandingPage() {
   return (
     <div className="bg-white text-gray-900">
       <div className="p-4 w-full max-w-4xl mx-auto">
+        {toastMessage && (
+          <Toast message={toastMessage} onClose={() => setToastMessage("")} />
+        )}
         {session?.user ? (
           <>
             {/* Active Contest Section */}

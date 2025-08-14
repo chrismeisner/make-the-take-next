@@ -67,13 +67,8 @@ export default function LoginPage({ superAdminSecret }) {
 	  router.push("/create-username");
 	  return;
 	}
-	const profileID = session?.user?.profileID;
-	// Always redirect to the user's profile page.
-	if (profileID) {
-	  router.push(`/profile/${profileID}`);
-	} else {
-	  router.push("/");
-	}
+  // Send users to dashboard after successful login
+  router.push("/");
   }
 
   return (

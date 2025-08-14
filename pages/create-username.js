@@ -16,7 +16,7 @@ export default function CreateUsernamePage() {
         return;
       }
       if (!session.user.isUsernameMissing) {
-        router.replace(`/profile/${session.user.profileID}`);
+        router.replace(`/`);
         return;
       }
       setLoading(false);
@@ -41,7 +41,7 @@ export default function CreateUsernamePage() {
       if (!res.ok || data.error) {
         throw new Error(data.error || "Failed to set username");
       }
-      router.push(`/profile/${username}`);
+      router.push(`/`);
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong");

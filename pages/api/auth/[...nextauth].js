@@ -35,15 +35,16 @@ async function ensureProfileRecord(phoneE164) {
 	.all();
 
   if (found.length > 0) {
-	const existing = found[0];
-	console.log("[NextAuth] Profile found =>", existing);
-	const hasProfileID = Boolean(existing.fields.profileID);
-	return {
-	  airtableId: existing.id, // Airtable Record ID
-	  profileID: existing.fields.profileID, // e.g. "c_monster"
-	  mobile: existing.fields.profileMobile,
-	  isUsernameMissing: !hasProfileID
-	};
+    const existing = found[0];
+    console.log("[NextAuth] Profile found =>", existing);
+    const hasProfileID = Boolean(existing.fields.profileID);
+    return {
+      airtableId: existing.id, // Airtable Record ID
+      profileID: existing.fields.profileID, // e.g. "c_monster"
+      mobile: existing.fields.profileMobile,
+      superAdmin: Boolean(existing.fields.superAdmin),
+      isUsernameMissing: !hasProfileID
+    };
   }
 
   // If no existing profile is found, create a new one
@@ -53,6 +54,7 @@ async function ensureProfileRecord(phoneE164) {
 	  fields: {
 		profileMobile: phoneE164,
 		profileID: newProfileID,
+        superAdmin: false,
 	  },
 	},
   ]);
@@ -61,10 +63,11 @@ async function ensureProfileRecord(phoneE164) {
   console.log("[NextAuth] Profile created =>", newRec);
   const hasProfileID = Boolean(newRec.fields.profileID);
   return {
-	airtableId: newRec.id,
-	profileID: newRec.fields.profileID,
-	mobile: newRec.fields.profileMobile,
-	isUsernameMissing: !hasProfileID
+    airtableId: newRec.id,
+    profileID: newRec.fields.profileID,
+    mobile: newRec.fields.profileMobile,
+    superAdmin: Boolean(newRec.fields.superAdmin),
+    isUsernameMissing: !hasProfileID
   };
 }
 
@@ -114,6 +117,7 @@ export const authOptions = {
 			phone: e164Phone,
 			profileID: profile.profileID,
 			airtableId: profile.airtableId,
+			superAdmin: Boolean(profile.superAdmin),
 			isUsernameMissing: profile.isUsernameMissing
 		  };
 		} catch (err) {
@@ -155,6 +159,7 @@ export const authOptions = {
             phone,
             profileID: "superadmin",
             airtableId,
+        superAdmin: true,
           };
         }
         return null;
@@ -169,7 +174,8 @@ export const authOptions = {
 		token.phone = user.phone;
 		token.profileID = user.profileID;
 		token.airtableId = user.airtableId;
-		token.isUsernameMissing = user.isUsernameMissing;
+        token.isUsernameMissing = user.isUsernameMissing;
+        token.superAdmin = Boolean(user.superAdmin);
 
 		// Debounce logs
 		const now = Date.now();
@@ -189,7 +195,8 @@ export const authOptions = {
 		  phone: token.phone,
 		  profileID: token.profileID,
 		  airtableId: token.airtableId,
-		  isUsernameMissing: token.isUsernameMissing
+          isUsernameMissing: token.isUsernameMissing,
+          superAdmin: Boolean(token.superAdmin),
 		};
 	  }
 
@@ -202,15 +209,13 @@ export const authOptions = {
 	  return session;
 	},
 
-	// 3) Automatic redirect => /profile/<profileID> or choose username
+	// 3) Automatic redirect => dashboard or choose username
 	async redirect({ url, baseUrl, token }) {
 	  if (token?.isUsernameMissing) {
 		return `${baseUrl}/create-username`;
 	  }
 
-	  if (token?.profileID) {
-		return `${baseUrl}/profile/${token.profileID}`;
-	  }
+	  // After successful login, send users to the dashboard
 	  return baseUrl;
 	},
   },

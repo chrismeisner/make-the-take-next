@@ -7,98 +7,47 @@ import { useSession } from 'next-auth/react';
 export default function LeaderboardPage() {
   const { data: session } = useSession();
   const currentProfileID = session?.user?.profileID;
-  const [subjectIDs, setSubjectIDs] = useState([]);
-  const [selectedSubject, setSelectedSubject] = useState('');
   const [leaderboard, setLeaderboard] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Utility function to obscure the phone
-  function obscurePhone(e164Phone) {
-	const stripped = e164Phone.replace(/\D/g, "");
-	let digits = stripped;
-	if (digits.startsWith("1") && digits.length === 11) {
-	  digits = digits.slice(1);
-	}
-	if (digits.length !== 10) {
-	  return e164Phone;
-	}
-	const area = digits.slice(0, 3);
-	const middle = digits.slice(3, 6);
-	return `(${area}) ${middle} ****`;
-  }
+  const fetchLeaderboard = useCallback(() => {
+    setLoading(true);
+    setError('');
+    setLeaderboard([]);
 
-  useEffect(() => {
-	fetch('/api/subjectIDs')
-	  .then((res) => res.json())
-	  .then((data) => {
-		if (data.success) {
-		  setSubjectIDs(data.subjectIDs || []);
-		}
-	  })
-	  .catch((err) => console.error('[leaderboard] subjectIDs error =>', err));
+    fetch('/api/leaderboard')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) {
+          setError(data.error || 'Unknown error fetching leaderboard');
+        } else {
+          setLeaderboard(data.leaderboard || []);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('[leaderboard] fetch error =>', err);
+        setError('Could not fetch leaderboard');
+        setLoading(false);
+      });
   }, []);
 
-  const fetchLeaderboard = useCallback((subjectID) => {
-	setLoading(true);
-	setError('');
-	setLeaderboard([]);
-
-	let url = '/api/leaderboard';
-	if (subjectID) {
-	  url += `?subjectID=${encodeURIComponent(subjectID)}`;
-	}
-
-	fetch(url)
-	  .then((res) => res.json())
-	  .then((data) => {
-		if (!data.success) {
-		  setError(data.error || 'Unknown error fetching leaderboard');
-		} else {
-		  setLeaderboard(data.leaderboard || []);
-		}
-		setLoading(false);
-	  })
-	  .catch((err) => {
-		console.error('[leaderboard] fetch error =>', err);
-		setError('Could not fetch leaderboard');
-		setLoading(false);
-	  });
-  }, []);
-
-  // On first load, fetch "All"
+  // On first load, fetch aggregate leaderboard
   useEffect(() => {
-	fetchLeaderboard('');
+    fetchLeaderboard();
   }, [fetchLeaderboard]);
-
-  function handleSubjectChange(e) {
-	const val = e.target.value;
-	setSelectedSubject(val);
-	fetchLeaderboard(val);
-  }
 
   return (
 	<div style={{ padding: '2rem' }}>
-	  <h2>Subject Leaderboard</h2>
-
-	  <div style={{ marginBottom: '1rem' }}>
-		<label style={{ marginRight: '0.5rem' }}>Choose Subject:</label>
-		<select value={selectedSubject} onChange={handleSubjectChange}>
-		  <option value="">All</option>
-		  {subjectIDs.map((id) => (
-			<option key={id} value={id}>
-			  {id}
-			</option>
-		  ))}
-		</select>
-	  </div>
+      <h2>Leaderboard</h2>
 
 	  {loading ? (
 		<p>Loading leaderboard...</p>
-	  ) : error ? (
+      ) : error ? (
 		<div style={{ color: 'red' }}>{error}</div>
-	  ) : leaderboard.length === 0 ? (
-		<p>No data found for this subject.</p>
+      ) : leaderboard.length === 0 ? (
+        <p>No data found.</p>
 	  ) : (
 		<table style={{ borderCollapse: 'collapse', width: '100%' }}>
 		  <thead>

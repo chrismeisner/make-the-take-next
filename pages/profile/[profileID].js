@@ -110,7 +110,7 @@ export default function ProfilePage() {
 		</h2>
 		{isOwnProfile && (
 		  <button
-			onClick={() => signOut()}
+			onClick={() => signOut({ callbackUrl: "/?logout=1" })}
 			className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded"
 		  >
 			Log Out

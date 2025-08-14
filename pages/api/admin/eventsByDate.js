@@ -11,14 +11,14 @@ export default async function handler(req, res) {
   if (!token) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
-  const { date, league } = req.query;
+  const { date, league, tz = 'America/New_York' } = req.query;
   if (!date) {
     return res.status(400).json({ success: false, error: 'Missing date parameter' });
   }
   console.log(`[api/admin/eventsByDate] Check events pressed for date=${date}, league=${league}`);
   try {
-    // 1) Load custom events from Airtable
-    let events = await getCustomEventsByDate({ date });
+    // 1) Load custom events from Airtable (timezone-aware)
+    let events = await getCustomEventsByDate({ date, timeZone: tz });
     // 2) Filter by league if provided
     const leagueLower = league?.toLowerCase();
     if (leagueLower) {

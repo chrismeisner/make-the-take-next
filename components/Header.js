@@ -123,6 +123,8 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 	);
   }
 
+  const isSuperAdmin = Boolean(session?.user?.superAdmin);
+
   return (
 	<header className="bg-gray-800 text-white shadow-md border-b border-gray-700">
 	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -130,14 +132,16 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 		<div className="flex items-center justify-between h-12">
 		  {/* Brand and timezone */}
 		  <div className="flex items-center">
-            {/* Mobile hamburger opens nav modal */}
-            <button
-              className="lg:hidden text-gray-200 hover:text-gray-300 transition-colors mr-4"
-              onClick={() => openModal("mobileNav", { items: sidebarItems })}
-              aria-label="Open menu"
-            >
-              ☰
-            </button>
+            {/* Mobile hamburger opens nav modal (only for super admin) */}
+            {isSuperAdmin && (
+              <button
+                className="lg:hidden text-gray-200 hover:text-gray-300 transition-colors mr-4"
+                onClick={() => openModal("mobileNav", { items: sidebarItems })}
+                aria-label="Open menu"
+              >
+                ☰
+              </button>
+            )}
 			<Link href="/" className={linkBaseStyles}>
 			  🏴‍☠️
 			</Link>

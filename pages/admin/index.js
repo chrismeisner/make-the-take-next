@@ -9,12 +9,32 @@ export default function AdminPage({ superAdminSecret }) {
   const { openModal } = useModal();
   // Render Twilio webhook settings on main Admin page
   const [timezone, setTimezone] = useState("");
+  // Auto-grade moneyline props UI state
+  const [gradingLeagues, setGradingLeagues] = useState([]);
+  const [gradingLeague, setGradingLeague] = useState("");
+  const [gradingDate, setGradingDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [gradingDryRun, setGradingDryRun] = useState(true);
+  const [gradingLoading, setGradingLoading] = useState(false);
+  const [gradingResult, setGradingResult] = useState(null);
 
   useEffect(() => {
     if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       setTimezone(tz);
     }
+  }, []);
+
+  // Load leagues for grading dropdown
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/eventLeagues');
+        const data = await res.json();
+        if (data.success) {
+          setGradingLeagues(data.leagues || []);
+        }
+      } catch {}
+    })();
   }, []);
 
   async function handleSwitchSuperAdmin() {
@@ -104,6 +124,28 @@ export default function AdminPage({ superAdminSecret }) {
       }
     } catch (err) {
       console.error("packsWithoutWinners fetch failed:", err);
+    }
+  };
+
+  // Run auto-grade job for moneyline props
+  const handleAutoGradeMoneylineProps = async () => {
+    setGradingLoading(true);
+    setGradingResult(null);
+    try {
+      const params = new URLSearchParams();
+      params.set('date', gradingDate);
+      if (gradingLeague) params.set('league', gradingLeague.toLowerCase());
+      params.set('type', 'moneyline');
+      params.set('dryRun', gradingDryRun ? 'true' : 'false');
+      // Pass browser timezone so backend can filter Events by local day correctly
+      if (timezone) params.set('tz', timezone);
+      const res = await fetch(`/api/admin/jobs/gradeMoneylineProps?${params.toString()}`, { method: 'POST' });
+      const data = await res.json();
+      setGradingResult(data);
+    } catch (e) {
+      setGradingResult({ success: false, error: e.message });
+    } finally {
+      setGradingLoading(false);
     }
   };
 
@@ -460,6 +502,73 @@ export default function AdminPage({ superAdminSecret }) {
             </button>
           </div>
           {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
+
+          {/* Auto Grade Props */}
+          <div className="mt-4 border-t pt-4">
+            <h3 className="text-md font-semibold mb-2">Auto Grade Props</h3>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">League</label>
+                <select
+                  value={gradingLeague}
+                  onChange={(e) => setGradingLeague(e.target.value)}
+                  className="mt-1 px-3 py-2 border rounded"
+                >
+                  <option value="">Select league</option>
+                  {gradingLeagues.map((lg) => (
+                    <option key={lg} value={lg}>{lg}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Date</label>
+                <input
+                  type="date"
+                  value={gradingDate}
+                  onChange={(e) => setGradingDate(e.target.value)}
+                  className="mt-1 px-3 py-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Type</label>
+                <select value="moneyline" disabled className="mt-1 px-3 py-2 border rounded">
+                  <option value="moneyline">Moneyline</option>
+                </select>
+              </div>
+              <label className="inline-flex items-center text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={gradingDryRun}
+                  onChange={(e) => setGradingDryRun(e.target.checked)}
+                />
+                Dry run
+              </label>
+              <button
+                type="button"
+                disabled={gradingLoading || !gradingLeague || !gradingDate}
+                onClick={handleAutoGradeMoneylineProps}
+                className={`px-3 py-2 rounded text-white ${gradingLoading ? 'bg-gray-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+              >
+                {gradingLoading ? 'Grading…' : 'Auto Grade Moneyline Props'}
+              </button>
+            </div>
+            {gradingResult && (
+              <div className="mt-2 text-sm">
+                {gradingResult.success ? (
+                  <p className="text-green-700">
+                    {gradingResult.dryRun ? (
+                      <>Dry run: {gradingResult.affectedCount || 0} props would be updated.</>
+                    ) : (
+                      <>Updated {gradingResult.updatedCount || 0} props.</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-red-700">Error: {gradingResult.error}</p>
+                )}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Messaging */}

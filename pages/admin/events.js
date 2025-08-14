@@ -2,6 +2,20 @@ import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+const oddsmakerOptions = [
+  { label: 'ESPN BET (58)', value: '58' },
+  { label: 'Caesars (38)', value: '38' },
+  { label: 'William Hill (31)', value: '31' },
+  { label: 'SugarHouse (41)', value: '41' },
+  { label: 'Unibet (36)', value: '36' },
+  { label: 'Bet365 (2000)', value: '2000' },
+  { label: 'Westgate (25)', value: '25' },
+  { label: 'Accuscore (1001)', value: '1001' },
+  { label: 'Consensus (1004)', value: '1004' },
+  { label: 'Numberfire (1003)', value: '1003' },
+  { label: 'TeamRankings (1002)', value: '1002' },
+];
+
 export default function AdminEventsPage() {
   const { data: session, status } = useSession();
   const [events, setEvents] = useState([]);
@@ -9,6 +23,12 @@ export default function AdminEventsPage() {
   const [filterText, setFilterText] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedLeague, setSelectedLeague] = useState('');
+  const [jobRunningProps, setJobRunningProps] = useState(false);
+  const [jobResultProps, setJobResultProps] = useState(null);
+  const [jobRunningPack, setJobRunningPack] = useState(false);
+  const [jobResultPack, setJobResultPack] = useState(null);
+  const [dryRun, setDryRun] = useState(true);
+  const [providerId, setProviderId] = useState('58');
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -48,6 +68,114 @@ export default function AdminEventsPage() {
   return (
     <div className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-4">Events Management</h1>
+      <div className="mb-4 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={jobRunningProps}
+          onClick={async () => {
+            setJobRunningProps(true);
+            setJobResultProps(null);
+            try {
+              const params = new URLSearchParams();
+              if (selectedLeague) params.set('league', selectedLeague.toLowerCase());
+              else params.set('league', 'mlb');
+              params.set('date', selectedDate || new Date().toLocaleDateString('en-CA'));
+              params.set('tz', 'America/New_York');
+              params.set('providerId', providerId || '58');
+              params.set('dryRun', dryRun ? 'true' : 'false');
+              params.set('mode', 'props');
+              const res = await fetch(`/api/admin/jobs/createMoneylinePack?${params.toString()}`, { method: 'POST' });
+              const data = await res.json();
+              setJobResultProps(data);
+            } catch (e) {
+              setJobResultProps({ success: false, error: e.message });
+            } finally {
+              setJobRunningProps(false);
+            }
+          }}
+          className={`px-3 py-2 rounded text-white ${jobRunningProps ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+        >
+          {jobRunningProps ? 'Running…' : 'Make Moneyline Props'}
+        </button>
+        <button
+          type="button"
+          disabled={jobRunningPack}
+          onClick={async () => {
+            setJobRunningPack(true);
+            setJobResultPack(null);
+            try {
+              const params = new URLSearchParams();
+              if (selectedLeague) params.set('league', selectedLeague.toLowerCase());
+              else params.set('league', 'mlb');
+              params.set('date', selectedDate || new Date().toLocaleDateString('en-CA'));
+              params.set('tz', 'America/New_York');
+              params.set('providerId', providerId || '58');
+              params.set('dryRun', dryRun ? 'true' : 'false');
+              params.set('mode', 'pack');
+              const res = await fetch(`/api/admin/jobs/createMoneylinePack?${params.toString()}`, { method: 'POST' });
+              const data = await res.json();
+              setJobResultPack(data);
+            } catch (e) {
+              setJobResultPack({ success: false, error: e.message });
+            } finally {
+              setJobRunningPack(false);
+            }
+          }}
+          className={`px-3 py-2 rounded text-white ${jobRunningPack ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+        >
+          {jobRunningPack ? 'Running…' : 'Make Moneyline Pack'}
+        </button>
+        <label className="inline-flex items-center text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className="mr-2"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+          />
+          Dry run
+        </label>
+        <label className="inline-flex items-center text-sm text-gray-700 ml-2">
+          <span className="mr-2">Oddsmaker</span>
+          <select
+            value={providerId}
+            onChange={(e) => setProviderId(e.target.value)}
+            className="px-2 py-1 border rounded bg-white"
+          >
+            {oddsmakerOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+        {jobResultProps && (
+          <span className={`text-sm ${jobResultProps.success ? 'text-green-700' : 'text-red-700'}`}>
+            {jobResultProps.success
+              ? (dryRun
+                ? `Props dry run: ${jobResultProps.results?.filter(r => r.status === 'dryRun').length || 0} would be created`
+                : `Created ${jobResultProps.createdPropCount || 0} props`)
+              : jobResultProps.error}
+          </span>
+        )}
+        {jobResultPack && (
+          <span className={`text-sm ${jobResultPack.success ? 'text-green-700' : 'text-red-700'}`}>
+            {jobResultPack.success
+              ? (dryRun
+                ? `Pack dry run: no changes made`
+                : (
+                  jobResultPack.pack?.packURL
+                    ? (
+                      <>Pack {jobResultPack.pack.packURL} created/updated (
+                        <a className="underline" href={`/admin/packs/${jobResultPack.pack.id}`} target="_blank" rel="noreferrer">Admin</a>
+                        <span> · </span>
+                        <a className="underline" href={`/packs/${jobResultPack.pack.packURL}`} target="_blank" rel="noreferrer">Public</a>
+                      )</>
+                    )
+                    : 'Pack created/updated'
+                  )
+                )
+              : jobResultPack.error}
+          </span>
+        )}
+      </div>
       <div className="mb-4 flex flex-col md:flex-row md:items-end md:space-x-4">
         <div className="mb-2 md:mb-0">
           <label className="block text-sm font-medium text-gray-700">Filter Date</label>

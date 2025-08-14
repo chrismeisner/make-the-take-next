@@ -132,14 +132,22 @@ export default async function handler(req, res) {
 		  const url = contentURLs[i] || "#";
 		  return { title, url };
 		});
-      // Map propCover field from Airtable
-      let propCover = [];
-      if (Array.isArray(f.propCover)) {
-        propCover = f.propCover.map((img) => ({
-          url: img.url,
-          filename: img.filename,
-        }));
-      }
+			// Resolve prop cover based on propCoverSource
+			// - "custom": use attachment field on Props: propCover
+			// - "event": use lookup field on Props: eventCover (attachments from linked Event)
+			let propCover = [];
+			const coverSource = String(f.propCoverSource || 'custom').toLowerCase();
+			if (coverSource === 'event' && Array.isArray(f.eventCover) && f.eventCover.length > 0) {
+				propCover = f.eventCover.map((img) => ({
+					url: img.url,
+					filename: img.filename,
+				}));
+			} else if (Array.isArray(f.propCover)) {
+				propCover = f.propCover.map((img) => ({
+					url: img.url,
+					filename: img.filename,
+				}));
+			}
 
 		return {
 		  airtableId: record.id,
