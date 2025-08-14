@@ -110,7 +110,11 @@ export default function ProfilePage() {
 		</h2>
 		{isOwnProfile && (
 		  <button
-			onClick={() => signOut({ callbackUrl: "/?logout=1" })}
+            onClick={() => {
+              const origin = typeof window !== 'undefined' ? window.location.origin : '';
+              const callbackUrl = origin ? `${origin}/?logout=1` : "/?logout=1";
+              signOut({ callbackUrl });
+            }}
 			className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded"
 		  >
 			Log Out

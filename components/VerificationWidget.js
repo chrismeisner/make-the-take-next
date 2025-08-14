@@ -247,6 +247,15 @@ function PhoneNumberForm({
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
 
+  // Normalize autofill/typed numbers to 10-digit US
+  const sanitizeUSPhoneInput = (value) => {
+    const numeric = String(value || "").replace(/\D/g, "");
+    if (numeric.length >= 11 && numeric.startsWith("1")) {
+      return numeric.slice(-10);
+    }
+    return numeric.slice(0, 10);
+  };
+
   async function handleSendCode() {
 	setError("");
 	setIsSending(true);
@@ -287,15 +296,19 @@ function PhoneNumberForm({
 		<InputMask
 		  mask="(999) 999-9999"
 		  alwaysShowMask
-		  value={localPhone}
-		  onChange={(e) => setLocalPhone(e.target.value)}
+        value={localPhone}
+        onChange={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
 		>
 		  {() => (
 			<input
-			  type="tel"
-			  inputMode="numeric" // numeric keypad on mobile
-			  pattern="[0-9]*"
-			  autoComplete="tel"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            name="user_phone"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            onBlur={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
 			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
 			  placeholder="(555) 555-1234"
 			/>

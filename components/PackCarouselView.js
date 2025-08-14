@@ -116,6 +116,11 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   // Compute and apply a uniform card height across all slides
   const adjustCardHeight = () => {
     if (!swiperRef.current) return;
+    // Only apply equal heights on narrow (mobile) viewports
+    if (window.innerWidth >= 768) {
+      setCardHeight(0);
+      return;
+    }
     const slideEls = swiperRef.current.el.querySelectorAll('.swiper-slide');
     let maxH = 0;
     slideEls.forEach((slide) => {

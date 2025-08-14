@@ -13,6 +13,15 @@ export default function LoginRequiredModal({ isOpen, onClose, receiptId, packTit
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // Normalize autofill/typed numbers into 10-digit US format
+  const sanitizeUSPhoneInput = (value) => {
+    const numeric = String(value || "").replace(/\D/g, "");
+    if (numeric.length >= 11 && numeric.startsWith("1")) {
+      return numeric.slice(-10);
+    }
+    return numeric.slice(0, 10);
+  };
+
   const handleSendCode = async (e) => {
     e.preventDefault();
     setError("");
@@ -86,13 +95,18 @@ export default function LoginRequiredModal({ isOpen, onClose, receiptId, packTit
           <InputMask
             mask="(999) 999-9999"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
           >
             {() => (
               <input
-                type="tel"
-                name="phone"
-                autoComplete="tel"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                name="user_phone"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                onBlur={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="(555) 555-1234"
               />

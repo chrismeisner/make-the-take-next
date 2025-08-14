@@ -94,7 +94,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   }
 
   return (
-    <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] mx-auto flex flex-col justify-center p-4">
+    <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">
       {/* HEADER_HEIGHT: adjust this value (160px) to tweak status/title/overview block height */}
       <div className="mb-4 flex">
         {/* Left column: flex column to match image height and center content */}
