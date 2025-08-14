@@ -149,11 +149,16 @@ export default async function handler(req, res) {
     let achievementsValueTotal = 0;
     let achievements = [];
     try {
-      // Prefer matching by profileID text field if present on Achievements
-      const achFormula = `{profileID}="${profileID}"`;
-      const achRecs = await base('Achievements')
-        .select({ filterByFormula: achFormula, maxRecords: 5000 })
+      // Prefer matching by profileID text field if present on Achievements; fallback to link field
+      let achRecs = await base('Achievements')
+        .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 5000 })
         .all();
+      if (achRecs.length === 0) {
+        const fallbackFormula = `FIND('${profRec.id}', ARRAYJOIN({achievementProfile}))>0`;
+        achRecs = await base('Achievements')
+          .select({ filterByFormula: fallbackFormula, maxRecords: 5000 })
+          .all();
+      }
       achievements = achRecs.map((r) => ({
         id: r.id,
         achievementKey: r.fields.achievementKey || '',
@@ -183,7 +188,7 @@ export default async function handler(req, res) {
 
     // 7.5) Compute tokens summary consistent with Marketplace
     const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
-    const tokensEarned = Math.floor(Math.round(totalPoints || 0) / 1000);
+    const tokensEarned = achievementsValueTotal; // Achievements-based diamonds (includes signup bonus)
     const tokensBalance = tokensEarned - tokensSpent;
 
     // 8) Return the aggregated data

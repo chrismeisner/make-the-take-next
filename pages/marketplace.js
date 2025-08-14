@@ -51,13 +51,8 @@ export default function MarketplacePage() {
       try {
         const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
         const profileData = await profileRes.json();
-        if (profileData?.success) {
-          const totalPoints = Math.round(profileData.totalPoints || 0);
-          const tokensEarned = Math.floor(totalPoints / 1000);
-          const tokensSpent = Array.isArray(profileData.userExchanges)
-            ? profileData.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
-            : 0;
-          setTokenBalance(tokensEarned - tokensSpent);
+        if (profileData?.success && typeof profileData.tokensBalance === 'number') {
+          setTokenBalance(profileData.tokensBalance);
         } else {
           setTokenBalance(0);
         }
@@ -90,13 +85,8 @@ export default function MarketplacePage() {
       // Fallback: refetch profile to recompute balance
       const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
       const profileData = await profileRes.json();
-      if (profileData?.success) {
-        const totalPoints = Math.round(profileData.totalPoints || 0);
-        const tokensEarned = Math.floor(totalPoints / 1000);
-        const tokensSpent = Array.isArray(profileData.userExchanges)
-          ? profileData.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
-          : 0;
-        setTokenBalance(tokensEarned - tokensSpent);
+      if (profileData?.success && typeof profileData.tokensBalance === 'number') {
+        setTokenBalance(profileData.tokensBalance);
       }
     }
     closeModal();

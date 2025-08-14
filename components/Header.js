@@ -56,30 +56,28 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 	}
   }, [session, status]);
   
-  // Compute token balance based on points and exchanges
+  // Compute token balance based on achievements (diamonds) minus exchanges
   useEffect(() => {
-    if (userPoints == null || !session?.user?.profileID) {
+    if (!session?.user?.profileID) {
       setTokenBalance(null);
       return;
     }
     async function fetchTokenBalance() {
       try {
-        const res = await fetch(
-          `/api/profile/${encodeURIComponent(session.user.profileID)}`
-        );
+        const res = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
         const data = await res.json();
-        const tokensEarned = Math.floor(userPoints / 1000);
-        const tokensSpent = data.success
-          ? data.userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0)
-          : 0;
-        setTokenBalance(tokensEarned - tokensSpent);
+        if (data.success && typeof data.tokensBalance === 'number') {
+          setTokenBalance(data.tokensBalance);
+        } else {
+          setTokenBalance(null);
+        }
       } catch (err) {
         console.error("[Header] Error fetching token balance:", err);
         setTokenBalance(null);
       }
     }
     fetchTokenBalance();
-  }, [userPoints, session]);
+  }, [session]);
 
   // timezone detection removed; now only in admin page
 

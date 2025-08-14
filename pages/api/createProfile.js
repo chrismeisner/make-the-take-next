@@ -65,6 +65,38 @@ export default async function handler(req, res) {
 		},
 	  ]);
 	  console.log("[createProfile] Profile created:", createdRecords[0].fields);
+
+      // Create signup bonus achievement (idempotent check)
+      try {
+        const newProfileRecord = createdRecords[0];
+        const profileRecordId = newProfileRecord.id;
+        // Check if signup bonus already exists (should not for a new profile, but be safe)
+        const existing = await base("Achievements")
+          .select({
+            filterByFormula: `AND({achievementKey} = "signup_bonus", FIND('${profileRecordId}', ARRAYJOIN({achievementProfile}))>0)`,
+            maxRecords: 1,
+          })
+          .firstPage();
+        if (existing.length === 0) {
+          await base("Achievements").create([
+            {
+              fields: {
+                achievementProfile: [profileRecordId],
+                achievementKey: "signup_bonus",
+                achievementTitle: "Signup Bonus",
+                achievementDescription: "Welcome! Enjoy 1 free diamond.",
+                achievementValue: 1,
+              },
+            },
+          ]);
+          console.log("[createProfile] Signup bonus achievement created for", profileRecordId);
+        } else {
+          console.log("[createProfile] Signup bonus achievement already exists for", profileRecordId);
+        }
+      } catch (achErr) {
+        console.error("[createProfile] Error creating signup bonus achievement =>", achErr);
+        // Do not fail the profile creation because of achievement error
+      }
 	  return res.status(200).json({
 		success: true,
 		message: "Profile created",

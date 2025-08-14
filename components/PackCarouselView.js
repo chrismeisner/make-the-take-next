@@ -116,11 +116,6 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   // Compute and apply a uniform card height across all slides
   const adjustCardHeight = () => {
     if (!swiperRef.current) return;
-    // Only apply equal heights on narrow (mobile) viewports
-    if (window.innerWidth >= 768) {
-      setCardHeight(0);
-      return;
-    }
     const slideEls = swiperRef.current.el.querySelectorAll('.swiper-slide');
     let maxH = 0;
     slideEls.forEach((slide) => {
@@ -226,8 +221,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     <>
       {/* Removed sticky footer; using inline footer below pagination */}
       <div className="p-4 overflow-x-visible pb-32 md:pb-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-2">
-          <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {/* Left column wrapper: details + tabs */}
+          <div className="flex flex-col space-y-6">
             {/* Pack details header */}
             <div className="px-4 sm:px-0">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
@@ -317,9 +313,42 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </div>
               </div>
             )}
+
+            {/* Tabs moved inside left column wrapper to avoid affecting right column height */}
+            <div className="px-4 sm:px-0">
+              <div className="border-b border-gray-200">
+                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                  <button
+                    onClick={() => setActiveTab('leaderboard')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'leaderboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Leaderboard
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('activity')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Activity
+                  </button>
+                </nav>
+              </div>
+              <div className="pt-4">
+                {activeTab === 'leaderboard' ? (
+                  <LeaderboardTable leaderboard={leaderboard} />
+                ) : activeTab === 'activity' ? (
+                  <ul className="space-y-2">
+                    {activity.map((act) => (
+                      <li key={act.id} className="text-sm text-gray-700">
+                        <span className="font-medium">{act.profileID}</span> took <span className="italic">{act.propTitle}</span> – {new Date(act.createdTime).toLocaleString()}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
           </div>
-          {/* Swiper and Inline Footer section */}
-          <div className="md:col-start-2 md:row-span-2 flex justify-center">
+          {/* Swiper and Inline Footer section (right column) */}
+          <div className="flex justify-center">
             <div className="w-full max-w-[520px] mx-auto overflow-visible">
               {/* Narrower wrapper for the card stack */}
               <div className="mx-auto max-w-[420px] overflow-visible">
@@ -359,46 +388,6 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </button>
               </div>
               <InlineCardProgressFooter />
-            </div>
-          </div>
-          {/* Tabs for Leaderboard, Activity, and Prizes */}
-          <div className="px-4 sm:px-0">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                <button
-                  onClick={() => setActiveTab('leaderboard')}
-                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'leaderboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  Leaderboard
-                </button>
-                <button
-                  onClick={() => setActiveTab('activity')}
-                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  Activity
-                </button>
-                <button
-                  onClick={() => setActiveTab('prizes')}
-                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'prizes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  Prizes
-                </button>
-              </nav>
-            </div>
-            <div className="pt-4">
-              {activeTab === 'leaderboard' ? (
-                <LeaderboardTable leaderboard={leaderboard} />
-              ) : activeTab === 'activity' ? (
-                <ul className="space-y-2">
-                  {activity.map((act) => (
-                    <li key={act.id} className="text-sm text-gray-700">
-                      <span className="font-medium">{act.profileID}</span> took <span className="italic">{act.propTitle}</span> – {new Date(act.createdTime).toLocaleString()}
-                    </li>
-                  ))}
-                </ul>
-              ) : activeTab === 'prizes' ? (
-                <p className="text-gray-500">Prizes content coming soon.</p>
-              ) : null}
             </div>
           </div>
         </div>

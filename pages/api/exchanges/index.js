@@ -60,8 +60,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Compute user's available token balance
-    //    Replicate profile logic: totalPoints -> tokensEarned = floor(totalPoints/1000)
+    // 2) Compute user's available token balance (Achievements-based)
+    //    tokensEarned = sum(achievementValue) including signup bonus
     //    tokensSpent = sum(exchangeTokens), balance = earned - spent
     const profs = await base("Profiles")
       .select({
@@ -77,15 +77,27 @@ export default async function handler(req, res) {
     const profRec = profs[0];
     const pf = profRec.fields || {};
 
-    let totalPoints = 0;
-    if (Array.isArray(pf.Takes) && pf.Takes.length > 0) {
-      const takeFilter = `OR(${pf.Takes.map((id) => `RECORD_ID()="${id}"`).join(
-        ","
-      )})`;
-      const takeRecords = await base("Takes")
-        .select({ filterByFormula: takeFilter, maxRecords: 5000 })
+    // Fetch achievements linked to this profile (prefer profileID string match, then link fallback)
+    let achievementsValueTotal = 0;
+    try {
+      const achByProfileID = await base("Achievements")
+        .select({ filterByFormula: `{profileID} = "${token.profileID}"`, maxRecords: 5000 })
         .all();
-      totalPoints = sumTakePoints(takeRecords);
+      let achRecs = achByProfileID;
+      if (achRecs.length === 0) {
+        achRecs = await base("Achievements")
+          .select({
+            filterByFormula: `FIND('${profRec.id}', ARRAYJOIN({achievementProfile}))>0`,
+            maxRecords: 5000,
+          })
+          .all();
+      }
+      achievementsValueTotal = achRecs.reduce(
+        (sum, r) => sum + Number(r.fields.achievementValue || 0),
+        0
+      );
+    } catch (_) {
+      achievementsValueTotal = 0;
     }
 
     const exchFilter = `{profileID} = "${token.profileID}"`;
@@ -96,7 +108,7 @@ export default async function handler(req, res) {
       (sum, r) => sum + Number(r.fields.exchangeTokens || 0),
       0
     );
-    const tokensEarned = Math.floor(Math.round(totalPoints || 0) / 1000);
+    const tokensEarned = achievementsValueTotal;
     const availableBalance = tokensEarned - tokensSpent;
 
     if (availableBalance < itemTokens) {
