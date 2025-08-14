@@ -1,6 +1,8 @@
 import GlobalModal from "./GlobalModal";
+import { useModal } from "../../contexts/ModalContext";
 
 export default function ShareContestModal({ isOpen, onClose, contestTitle, contestSummary, contestUrl }) {
+  const { openModal } = useModal();
   const url = contestUrl || (typeof window !== 'undefined' ? window.location.href : '');
 
   const handleCopy = async () => {
@@ -25,6 +27,11 @@ export default function ShareContestModal({ isOpen, onClose, contestTitle, conte
     }
   };
 
+  const handleGenerateQR = () => {
+    // Replace this modal with a full-screen QR modal
+    openModal('qrCode', { url });
+  };
+
   return (
     <GlobalModal isOpen={isOpen} onClose={onClose}>
       <h2 className="text-xl font-bold mb-2">Share Contest</h2>
@@ -39,6 +46,12 @@ export default function ShareContestModal({ isOpen, onClose, contestTitle, conte
           className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
           Share via System
+        </button>
+        <button
+          onClick={handleGenerateQR}
+          className="w-full px-4 py-2 bg-black text-white rounded hover:bg-gray-900"
+        >
+          Generate QR
         </button>
         <button
           onClick={handleCopy}

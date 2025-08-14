@@ -132,21 +132,25 @@ export default async function handler(req, res) {
 		  const url = contentURLs[i] || "#";
 		  return { title, url };
 		});
-			// Resolve prop cover based on propCoverSource
-			// - "custom": use attachment field on Props: propCover
-			// - "event": use lookup field on Props: eventCover (attachments from linked Event)
+			// Resolve prop cover based on propCoverSource with graceful fallback
+			// - "custom": prefer Props.propCover, fallback to Props.eventCover
+			// - "event": prefer Props.eventCover, fallback to Props.propCover
 			let propCover = [];
 			const coverSource = String(f.propCoverSource || 'custom').toLowerCase();
-			if (coverSource === 'event' && Array.isArray(f.eventCover) && f.eventCover.length > 0) {
-				propCover = f.eventCover.map((img) => ({
-					url: img.url,
-					filename: img.filename,
-				}));
-			} else if (Array.isArray(f.propCover)) {
-				propCover = f.propCover.map((img) => ({
-					url: img.url,
-					filename: img.filename,
-				}));
+			const hasEventCover = Array.isArray(f.eventCover) && f.eventCover.length > 0;
+			const hasCustomCover = Array.isArray(f.propCover) && f.propCover.length > 0;
+			if (coverSource === 'event') {
+				if (hasEventCover) {
+					propCover = f.eventCover.map((img) => ({ url: img.url, filename: img.filename }));
+				} else if (hasCustomCover) {
+					propCover = f.propCover.map((img) => ({ url: img.url, filename: img.filename }));
+				}
+			} else {
+				if (hasCustomCover) {
+					propCover = f.propCover.map((img) => ({ url: img.url, filename: img.filename }));
+				} else if (hasEventCover) {
+					propCover = f.eventCover.map((img) => ({ url: img.url, filename: img.filename }));
+				}
 			}
 
 		return {

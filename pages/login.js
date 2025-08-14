@@ -2,10 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import InputMask from "react-input-mask";
-import { signIn, getSession } from "next-auth/react";
+import Link from "next/link";
+import { signIn, getSession, useSession, signOut } from "next-auth/react";
 
 export default function LoginPage({ superAdminSecret }) {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [step, setStep] = useState("phone"); // "phone" -> "code"
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -69,6 +71,44 @@ export default function LoginPage({ superAdminSecret }) {
 	}
   // Send users to dashboard after successful login
   router.push("/");
+  }
+
+  // If session is loading, show a simple loader
+  if (status === "loading") {
+    return (
+	  <div className="max-w-md mx-auto mt-10 p-4 border rounded shadow-sm">
+		<h1 className="text-2xl font-bold mb-4">Phone Login</h1>
+		<p>Loading...</p>
+	  </div>
+    );
+  }
+
+  // If already logged in, show profile link and logout
+  if (session?.user) {
+    const profileID = session.user.profileID;
+    const displayUser = profileID || session.user.phone || "user";
+    return (
+	  <div className="max-w-md mx-auto mt-10 p-4 border rounded shadow-sm">
+		<h1 className="text-2xl font-bold mb-4">You're already logged in</h1>
+		<p className="mb-4">Logged in as <span className="font-semibold">{displayUser}</span>.</p>
+		<div className="flex items-center gap-3">
+		  {profileID && (
+			<Link
+			  href={`/profile/${encodeURIComponent(profileID)}`}
+			  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+			>
+			  View Profile
+			</Link>
+		  )}
+		  <button
+			onClick={() => signOut({ callbackUrl: "/?logout=1" })}
+			className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+		  >
+			Log Out
+		  </button>
+		</div>
+	  </div>
+    );
   }
 
   return (

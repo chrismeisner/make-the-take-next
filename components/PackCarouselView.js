@@ -65,68 +65,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   useEffect(() => {
     setIsClient(true);
   }, []);
-  // Stores an array of { challenge, takes } objects
-  const [acceptedTakes, setAcceptedTakes] = useState([]);
-  const [loadingChallenges, setLoadingChallenges] = useState(false);
-  const [errorChallenges, setErrorChallenges] = useState(null);
-
-  // Fetch all challenges when 'Challenges' tab is active
-  useEffect(() => {
-    if (activeTab !== 'challenges') return;
-    const initiatorProfileID = session?.user?.profileID;
-    if (!initiatorProfileID) return;
-    setLoadingChallenges(true);
-    setErrorChallenges(null);
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/challenges?packURL=${encodeURIComponent(packData.packURL)}`
-        );
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
-        const raw = data.challenges || [];
-        // include challenges where user is initiator or challenger, and has been accepted
-        const accepted = raw.filter(r => {
-          const initiatorIDs = r.fields.initiatorProfileID || [];
-          const challengerIDs = r.fields.challengerProfileID || [];
-          const isInitiator = initiatorIDs.includes(initiatorProfileID);
-          const isChallenger = challengerIDs.includes(initiatorProfileID);
-          return r.fields.challengerReceiptID && (isInitiator || isChallenger);
-        });
-      // fetch both initiator and challenger takes for each challenge
-      const entries = await Promise.all(
-        accepted.map(async (r) => {
-          const isInitiator = (r.fields.initiatorProfileID || []).includes(initiatorProfileID);
-          const entry = { challenge: r, initiatorTakes: [], challengerTakes: [], isInitiator };
-          // initiator's takes
-          try {
-            const ires = await fetch(`/api/takes/${encodeURIComponent(r.fields.initiatorReceiptID)}`);
-            const idata = await ires.json();
-            if (idata.success) entry.initiatorTakes = idata.takes;
-            else console.error('[PackCarouselView] initiator fetch error:', idata.error);
-          } catch (ie) {
-            console.error('[PackCarouselView] initiator exception:', ie);
-          }
-          // challenger's takes
-          try {
-            const cres = await fetch(`/api/takes/${encodeURIComponent(r.fields.challengerReceiptID)}`);
-            const cdata = await cres.json();
-            if (cdata.success) entry.challengerTakes = cdata.takes;
-            else console.error('[PackCarouselView] challenger fetch error:', cdata.error);
-          } catch (ce) {
-            console.error('[PackCarouselView] challenger exception:', ce);
-          }
-          return entry;
-        })
-      );
-        setAcceptedTakes(entries);
-      } catch (err) {
-        setErrorChallenges(err.message);
-      } finally {
-        setLoadingChallenges(false);
-      }
-    })();
-  }, [activeTab, packData.packURL, session?.user?.profileID]);
+  // Challenges UI temporarily removed
   // Add keyboard navigation for desktop: left/right arrows to switch cards
   useEffect(() => {
     const handleKey = (e) => {
@@ -422,7 +361,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <InlineCardProgressFooter />
             </div>
           </div>
-          {/* Tabs for Leaderboard, Activity, Prizes, and Challengers */}
+          {/* Tabs for Leaderboard, Activity, and Prizes */}
           <div className="px-4 sm:px-0">
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-4" aria-label="Tabs">
@@ -444,13 +383,6 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 >
                   Prizes
                 </button>
-                {/* Added Challenges tab */}
-                <button
-                  onClick={() => setActiveTab('challenges')}
-                  className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'challenges' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  Challenges
-                </button>
               </nav>
             </div>
             <div className="pt-4">
@@ -466,60 +398,6 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </ul>
               ) : activeTab === 'prizes' ? (
                 <p className="text-gray-500">Prizes content coming soon.</p>
-              ) : activeTab === 'challenges' ? (
-                !hasReceipts ? (
-                  <p className="text-gray-500">Make your takes on this pack to challenge your friends.</p>
-                ) : loadingChallenges ? (
-                  <p>Loading challenges…</p>
-                ) : errorChallenges ? (
-                  <p className="text-red-500">Error: {errorChallenges}</p>
-                ) : acceptedTakes.length === 0 ? (
-                  <p className="text-gray-500">No accepted challenges found.</p>
-                ) : (
-                  <ul className="space-y-6">
-                    {acceptedTakes.map(({ challenge, initiatorTakes, challengerTakes, isInitiator }) => {
-                      // determine which side is 'you' and opponent
-                      const myTakes = isInitiator ? initiatorTakes : challengerTakes;
-                      const theirTakes = isInitiator ? challengerTakes : initiatorTakes;
-                      const opponentName = isInitiator
-                        ? challenge.fields.challengerProfileID?.[0]
-                        : challenge.fields.initiatorProfileID?.[0];
-                      return (
-                      <li key={challenge.id}>
-                        <div className="font-bold mb-2">
-                          Challenge ID: {challenge.fields.challengeID || challenge.id}
-                        </div>
-                        <Link
-                          href={`/challenges/${challenge.fields.challengeID || challenge.id}`}
-                          className="text-sm text-blue-600 underline mb-2 block"
-                        >
-                          View challenge details
-                        </Link>
-                        <div className="mb-2">
-                          <div className="font-semibold">Your takes:</div>
-                          <ul className="pl-4 list-disc space-y-1">
-                            {myTakes.map((t) => (
-                              <li key={t.id} className="text-sm">
-                                {t.propTitle}: <em>{t.propSide === 'A' ? t.propSideAShort : t.propSideBShort}</em>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <div className="font-semibold">{opponentName || 'Opponent'}'s takes:</div>
-                          <ul className="pl-4 list-disc space-y-1">
-                            {theirTakes.map((t) => (
-                              <li key={t.id} className="text-sm">
-                                {t.propTitle}: <em>{t.propSide === 'A' ? t.propSideAShort : t.propSideBShort}</em>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </li>
-                      );
-                    })}
-                  </ul>
-                )
               ) : null}
             </div>
           </div>

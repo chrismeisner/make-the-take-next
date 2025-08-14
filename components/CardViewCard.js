@@ -83,14 +83,14 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     : propSummary;
 
   function handleShare() {
-    let challengeUrl = `${window.location.origin}/packs/${packData.packURL}?prop=${slideIndex}`;
+    // Neutral share: copy link to this pack/prop with optional ref, no challenge modal
+    let shareUrl = `${window.location.origin}/packs/${packData.packURL}?prop=${slideIndex}`;
     if (currentReceiptId) {
-      challengeUrl += `&ref=${currentReceiptId}`;
+      shareUrl += `&ref=${currentReceiptId}`;
     }
-    const sideLabel = selected === "A" ? prop.sideALabel : prop.sideBLabel;
-    const sideTake = selected === "A" ? prop.propSideATake : prop.propSideBTake;
-    const propQuestion = prop.propShort;
-    openModal("challengeShare", { packTitle: packData.packTitle, picksText: sideLabel, challengeUrl, propQuestion, sideTake });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).catch(() => {});
+    }
   }
 
   return (
@@ -194,7 +194,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
         </Link>
         {alreadyTookSide ? (
           <button onClick={handleShare} className="text-blue-600 underline">
-            Challenge
+            Share
           </button>
         ) : (
           <span className="text-gray-600">Make The Take</span>

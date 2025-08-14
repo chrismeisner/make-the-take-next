@@ -5,11 +5,13 @@ import Toast from "../components/Toast";
 import { useSession, signIn, getSession } from "next-auth/react";
 import InputMask from "react-input-mask";
 import Link from "next/link";
+import { useModal } from "../contexts/ModalContext";
 // import PackPreview from "../components/PackPreview"; // removed with Active Pack Drops section
 
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { openModal } = useModal();
   const [toastMessage, setToastMessage] = useState("");
   // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
   // Redirect unauthenticated users to /login on the client
@@ -30,6 +32,21 @@ export default function LandingPage() {
       router.replace("/login");
     }
   }, [session, router, router.query.logout]);
+
+  // Show welcome modal once per session for logged-in users
+  useEffect(() => {
+    if (!session?.user) return;
+    try {
+      const storageKey = "welcomeModalShown_v1";
+      const alreadyShown = sessionStorage.getItem(storageKey);
+      if (!alreadyShown) {
+        openModal("welcome", { contestHref: "/" });
+        sessionStorage.setItem(storageKey, "1");
+      }
+    } catch (_) {
+      // safe no-op if storage is unavailable
+    }
+  }, [session, openModal]);
 
   // States for login flow (when not logged in)
   const [phone, setPhone] = useState("");

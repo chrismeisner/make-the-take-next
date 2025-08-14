@@ -24,6 +24,7 @@ import ExchangeConfirmModal from "./modals/ExchangeConfirmModal";
 import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
+import WelcomeModal from "./modals/WelcomeModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -33,6 +34,16 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "welcome": {
+      const { contestHref } = modalConfig.modalProps;
+      return (
+        <WelcomeModal
+          isOpen={true}
+          onClose={closeModal}
+          contestHref={contestHref}
+        />
+      );
+    }
     case "shareContest": {
       const { contestTitle, contestSummary, contestUrl } = modalConfig.modalProps;
       return (

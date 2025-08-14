@@ -46,28 +46,7 @@ export default function InlineCardProgressFooter() {
     }
     setIsSubmitting(true);
     const newTakeIDs = await submitAllTakes(receiptId);
-    // If this is a friend acceptance (ref query present), create or update a challenge record
-    if (router.query.ref) {
-      try {
-        console.log("[InlineCardProgressFooter] Attempting to create/update challenge record with:", {
-          packURL: packData.packURL,
-          initiatorReceiptId: router.query.ref,
-          challengerReceiptId: receiptId,
-        });
-        await fetch("/api/challenges", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            packURL: packData.packURL,
-            initiatorReceiptId: router.query.ref,
-            challengerReceiptId: receiptId,
-          }),
-        });
-        console.log("[InlineCardProgressFooter] Challenge API call completed");
-      } catch (err) {
-        console.error("[InlineCardProgressFooter] Error creating challenge record:", err);
-      }
-    }
+    // Temporarily removing challenge creation on ref; keeping backend logic intact
     router.replace(
       { pathname: router.pathname, query: { ...router.query, userReceiptId: receiptId } },
       undefined,
