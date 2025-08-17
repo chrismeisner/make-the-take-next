@@ -301,7 +301,6 @@ function PhoneNumberForm({
         onBlur={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
           type="text"
           inputMode="numeric"
-          pattern="[0-9]*"
           name="user_phone"
           autoComplete="off"
           autoCorrect="off"
@@ -423,7 +422,6 @@ function VerificationForm({
 		  onChange={(e) => setCode(e.target.value)}
 		  type="text"
 		  inputMode="numeric"
-		  pattern="[0-9]*"
 		  autoComplete="one-time-code"
 		  name="verificationCode"
 		  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"

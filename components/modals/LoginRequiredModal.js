@@ -99,7 +99,6 @@ export default function LoginRequiredModal({ isOpen, onClose, receiptId, packTit
             onBlur={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
             type="text"
             inputMode="numeric"
-            pattern="[0-9]*"
             name="user_phone"
             autoComplete="off"
             autoCorrect="off"
