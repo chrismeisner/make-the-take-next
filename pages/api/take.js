@@ -15,11 +15,11 @@ export default async function handler(req, res) {
 
   // 1) Validate user token
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  console.log("[/api/take] Decoded token:", token);
-  console.log("[/api/take] profileRecId (token.airtableId):", token.airtableId);
+  console.log("[/api/take] Decoded token:", token ? { hasToken: true } : { hasToken: false });
   if (!token || !token.phone) {
 	return res.status(401).json({ success: false, error: "Unauthorized" });
   }
+  console.log("[/api/take] profileRecId (token.airtableId):", token.airtableId);
 
   // 2) Extract propID and propSide (receiptId optional) from request body
   const { propID, propSide, receiptId } = req.body;
