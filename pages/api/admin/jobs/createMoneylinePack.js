@@ -125,7 +125,7 @@ export default async function handler(req, res) {
 					// Use Event cover by default for moneyline props
 					propCoverSource: 'event',
 					// ensure Airtable can compute lookups
-					eventLeague,
+					eventLeague: evt.eventLeague,
 					eventTitle: evt.eventTitle,
 				};
 

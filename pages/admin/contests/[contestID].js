@@ -2,11 +2,13 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useModal } from "../../../contexts/ModalContext";
 
 export default function AdminContestDetailPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { contestID } = router.query;
+  const { openModal } = useModal();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -115,7 +117,37 @@ export default function AdminContestDetailPage() {
           <section className="border rounded p-4">
             <h2 className="text-lg font-semibold mb-3">Actions</h2>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-600">Edit actions coming next.</p>
+              <button
+                onClick={() => {
+                  const initialSelected = Array.isArray(contest.packs) ? contest.packs.map((p) => p.packURL) : [];
+                  openModal("addPacksToContest", {
+                    initialSelected,
+                    onConfirm: async (selectedPackURLs) => {
+                      try {
+                        const resp = await fetch(`/api/contests/${contestID}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ packURLs: selectedPackURLs }),
+                        });
+                        const data = await resp.json();
+                        if (!resp.ok || !data.success) {
+                          throw new Error(data.error || "Failed to update contest packs");
+                        }
+                        // Reload contest data
+                        const res = await fetch(`/api/contests/${contestID}`);
+                        const json = await res.json();
+                        if (json.success) setContest(json.contest);
+                      } catch (e) {
+                        console.error("[AdminContestDetail] failed to update packs", e);
+                        alert(e.message || "Failed to update contest packs");
+                      }
+                    },
+                  });
+                }}
+                className="px-3 py-2 bg-blue-600 text-white rounded"
+              >
+                Add/Update Packs
+              </button>
               {contest.contestID && (
                 <Link href={`/contests/${contest.contestID}`} className="text-blue-600 hover:underline">View Public Page</Link>
               )}

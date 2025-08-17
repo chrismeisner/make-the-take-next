@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import Toast from "../components/Toast";
 import { useSession, signIn, getSession } from "next-auth/react";
-import InputMask from "react-input-mask";
 import Link from "next/link";
 import { useModal } from "../contexts/ModalContext";
 // import PackPreview from "../components/PackPreview"; // removed with Active Pack Drops section

@@ -89,6 +89,11 @@ export default function AdminPage({ superAdminSecret }) {
   const [nflEventsResult, setNflEventsResult] = useState(null);
   // State for fetching NFL events
   const [nflDate, setNflDate] = useState(() => new Date().toISOString().slice(0,10));
+  // State for generating Event Covers
+  const [coverLeague, setCoverLeague] = useState("");
+  const [coverDate, setCoverDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [coverLoading, setCoverLoading] = useState(false);
+  const [coverResult, setCoverResult] = useState(null);
   const [sendingHello, setSendingHello] = useState(false);
   const [helloResult, setHelloResult] = useState("");
   const [closingProps, setClosingProps] = useState(false);
@@ -363,6 +368,69 @@ export default function AdminPage({ superAdminSecret }) {
                     <p className="text-green-600">Successfully processed {eventsResult.processedCount} events.</p>
                   ) : (
                     <p className="text-red-600">Error: {eventsResult.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Generate Event Covers */}
+            <div className="pt-3 border-t mt-3">
+              <h3 className="text-md font-semibold mb-2">Generate Event Covers</h3>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">League</label>
+                  <select
+                    value={coverLeague}
+                    onChange={(e) => setCoverLeague(e.target.value)}
+                    className="mt-1 px-3 py-2 border rounded"
+                  >
+                    <option value="">Select league</option>
+                    {gradingLeagues.map((lg) => (
+                      <option key={lg} value={lg}>{lg}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Date</label>
+                  <input
+                    type="date"
+                    value={coverDate}
+                    onChange={(e) => setCoverDate(e.target.value)}
+                    className="mt-1 px-3 py-2 border rounded"
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    setCoverLoading(true);
+                    setCoverResult(null);
+                    try {
+                      const params = new URLSearchParams();
+                      params.set('date', coverDate);
+                      if (coverLeague) params.set('league', String(coverLeague).toLowerCase());
+                      if (timezone) params.set('tz', timezone);
+                      console.log('[Admin] Generate Event Covers →', Object.fromEntries(params.entries()));
+                      const res = await fetch(`/api/admin/jobs/generateEventCovers?${params.toString()}`, { method: 'POST' });
+                      const data = await res.json();
+                      console.log('[Admin] Generate Event Covers result →', data);
+                      setCoverResult(data);
+                    } catch (e) {
+                      setCoverResult({ success: false, error: e.message });
+                    } finally {
+                      setCoverLoading(false);
+                    }
+                  }}
+                  disabled={coverLoading || !coverLeague || !coverDate}
+                  className={`px-3 py-2 rounded text-white ${coverLoading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                  {coverLoading ? 'Generating…' : 'Generate Covers'}
+                </button>
+              </div>
+              {coverResult && (
+                <div className="mt-2 text-sm">
+                  {coverResult.success ? (
+                    <p className="text-green-700">Updated {coverResult.updatedCount} of {coverResult.count} events.</p>
+                  ) : (
+                    <p className="text-red-700">Error: {coverResult.error}</p>
                   )}
                 </div>
               )}

@@ -1,6 +1,7 @@
 // File: /pages/api/contests/[contestID].js
 
 import Airtable from "airtable";
+import { getToken } from "next-auth/jwt";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -13,6 +14,55 @@ export default async function handler(req, res) {
 	  success: false,
 	  error: "Missing contestID in the query",
 	});
+  }
+
+  // Admin: update linked Packs on a contest
+  if (req.method === "PATCH") {
+    try {
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+      if (!token) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { packRecordIds, packURLs } = req.body || {};
+      if (!Array.isArray(packRecordIds) && !Array.isArray(packURLs)) {
+        return res.status(400).json({ success: false, error: "Must provide packRecordIds or packURLs array" });
+      }
+
+      // Find contest record
+      const contestRecords = await base("Contests")
+        .select({
+          filterByFormula: `{contestID} = "${contestID}"`,
+          maxRecords: 1,
+        })
+        .firstPage();
+
+      if (!contestRecords || contestRecords.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: `Contest not found for contestID="${contestID}"`,
+        });
+      }
+
+      const contestRec = contestRecords[0];
+
+      // Resolve record IDs if only URLs provided
+      let finalPackRecordIds = Array.isArray(packRecordIds) ? packRecordIds : [];
+      if (!finalPackRecordIds.length && Array.isArray(packURLs) && packURLs.length) {
+        const formula = `OR(${packURLs.map((u) => `{packURL} = "${u}"`).join(",")})`;
+        const packRecs = await base("Packs").select({ filterByFormula: formula, maxRecords: 100 }).all();
+        finalPackRecordIds = packRecs.map((r) => r.id);
+      }
+
+      const updated = await base("Contests").update([
+        { id: contestRec.id, fields: { Packs: finalPackRecordIds } },
+      ]);
+
+      return res.status(200).json({ success: true, record: updated[0] });
+    } catch (err) {
+      console.error("[contests/[contestID] PATCH] Error =>", err);
+      return res.status(500).json({ success: false, error: "Internal server error" });
+    }
   }
 
   try {

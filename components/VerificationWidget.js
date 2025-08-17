@@ -298,22 +298,17 @@ function PhoneNumberForm({
 		  alwaysShowMask
         value={localPhone}
         onChange={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
-		>
-		  {() => (
-			<input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            name="user_phone"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            onBlur={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
-			  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-			  placeholder="(555) 555-1234"
-			/>
-		  )}
-		</InputMask>
+        onBlur={(e) => setLocalPhone(sanitizeUSPhoneInput(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          name="user_phone"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="(555) 555-1234"
+		/>
 
 		<button
 		  onClick={handleSendCode}
@@ -423,23 +418,18 @@ function VerificationForm({
 	  <div className="flex items-center gap-2">
 		<InputMask
 		  mask="999999"
-		  maskChar="" // Important for desktop keystrokes
+		  maskChar=""
 		  value={code}
 		  onChange={(e) => setCode(e.target.value)}
-		>
-		  {() => (
-			<input
-			  type="text"
-			  inputMode="numeric"
-			  pattern="[0-9]*"
-			  autoComplete="one-time-code"
-			  name="verificationCode"
-			  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-			  placeholder="123456"
-			  maxLength={6}
-			/>
-		  )}
-		</InputMask>
+		  type="text"
+		  inputMode="numeric"
+		  pattern="[0-9]*"
+		  autoComplete="one-time-code"
+		  name="verificationCode"
+		  className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+		  placeholder="123456"
+		  maxLength={6}
+		/>
 		<button
 		  onClick={handleVerify}
 		  disabled={isVerifying || code.length < 6}

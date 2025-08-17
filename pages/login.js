@@ -135,22 +135,16 @@ export default function LoginPage({ superAdminSecret }) {
 			mask="(999) 999-9999"
             value={phone}
             onChange={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
-		  >
-			{() => (
-			  <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                name="user_phone"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                onBlur={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
-				className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-				placeholder="(555) 555-1234"
-			  />
-			)}
-		  </InputMask>
+            onBlur={(e) => setPhone(sanitizeUSPhoneInput(e.target.value))}
+            type="text"
+            inputMode="numeric"
+            name="user_phone"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="(555) 555-1234"
+		  />
 
 		  <div className="mt-4">
 			<button
@@ -173,19 +167,14 @@ export default function LoginPage({ superAdminSecret }) {
 			value={code}
 			onChange={(e) => setCode(e.target.value)}
 			maskChar=""
-		  >
-			{() => (
-			  <input
-				type="text"
-				name="verificationCode"
-				autoComplete="one-time-code"
-				inputMode="numeric"
-				maxLength={6}
-				className="w-32 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-				placeholder="123456"
-			  />
-			)}
-		  </InputMask>
+			type="text"
+			name="verificationCode"
+			autoComplete="one-time-code"
+			inputMode="numeric"
+			maxLength={6}
+			className="w-32 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+			placeholder="123456"
+		  />
 
 		  <div className="mt-4">
 			<button
