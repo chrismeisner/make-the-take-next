@@ -113,19 +113,49 @@ async function attachTotalTakeCount(packsData) {
 
 export default async function handler(req, res) {
   if (req.method === "PATCH") {
-    // Update packStatus for a specific pack
-    const { packId, packStatus } = req.body;
-    if (!packId || !packStatus) {
-      return res.status(400).json({ success: false, error: "Missing packId or packStatus" });
+    // Update pack fields
+    const { packId } = req.body;
+    if (!packId) {
+      return res.status(400).json({ success: false, error: "Missing packId" });
     }
     try {
+      const {
+        packTitle,
+        packSummary,
+        packURL,
+        packType,
+        packLeague,
+        packStatus,
+        packCoverUrl,
+        props,
+      } = req.body;
+
+      const fields = {};
+      if (packTitle !== undefined) fields.packTitle = packTitle;
+      if (packSummary !== undefined) fields.packSummary = packSummary;
+      if (packURL !== undefined) fields.packURL = packURL;
+      if (packType !== undefined) fields.packType = packType;
+      if (packLeague !== undefined) fields.packLeague = packLeague;
+      if (packStatus !== undefined) fields.packStatus = packStatus;
+      if (packCoverUrl !== undefined && packCoverUrl) {
+        fields.packCover = [{ url: packCoverUrl }];
+      }
+      if (Array.isArray(props)) {
+        fields.Props = props;
+      }
+
+      if (Object.keys(fields).length === 0) {
+        return res.status(400).json({ success: false, error: "No updatable fields provided" });
+      }
+
       const updated = await base("Packs").update([
-        { id: packId, fields: { packStatus } }
-      ]);
+        { id: packId, fields }
+      ], { typecast: true });
       return res.status(200).json({ success: true, record: updated[0] });
     } catch (error) {
       console.error("[api/packs PATCH] Error =>", error);
-      return res.status(500).json({ success: false, error: "Failed to update packStatus" });
+      const msg = error.message || "Failed to update pack";
+      return res.status(500).json({ success: false, error: msg });
     }
   }
   if (req.method === "POST") {

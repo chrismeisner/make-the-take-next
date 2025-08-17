@@ -1,6 +1,6 @@
 // File: /pages/contests/[contestID].js
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import useLeaderboard from '../../hooks/useLeaderboard';
 import { useSession } from "next-auth/react"; // <-- Import useSession
 import Head from "next/head";
@@ -79,6 +79,32 @@ export default function ContestDetailPage({ contestData, error }) {
 	contestCover = [],
 	packs = [],
   } = contestData;
+
+	// Sort packs: active first, then by soonest upcoming event time
+	const sortedPacks = useMemo(() => {
+		const now = Date.now();
+		function getNextEventMs(pack) {
+			const times = Array.isArray(pack.propEventRollup) ? pack.propEventRollup : [];
+			const allTimes = [...times];
+			if (pack.eventTime) allTimes.push(pack.eventTime);
+			const futureTimes = allTimes
+				.map((t) => new Date(t).getTime())
+				.filter((ms) => isFinite(ms) && ms > now)
+				.sort((a, b) => a - b);
+			return futureTimes.length > 0 ? futureTimes[0] : Number.POSITIVE_INFINITY;
+		}
+
+		const arr = Array.isArray(packs) ? [...packs] : [];
+		return arr.sort((a, b) => {
+			const aActive = String(a.packStatus || '').toLowerCase() === 'active';
+			const bActive = String(b.packStatus || '').toLowerCase() === 'active';
+			if (aActive !== bActive) return aActive ? -1 : 1;
+			const aMs = getNextEventMs(a);
+			const bMs = getNextEventMs(b);
+			if (aMs === bMs) return 0;
+			return aMs - bMs;
+		});
+	}, [packs]);
 
   const coverUrl = Array.isArray(contestCover) && contestCover.length > 0 ? contestCover[0].url : null;
 
@@ -243,7 +269,7 @@ export default function ContestDetailPage({ contestData, error }) {
             <p className="text-gray-600">No Packs linked yet.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {packs.map((pack) => (
+              {sortedPacks.map((pack) => (
                 <PackPreview key={pack.packID || pack.airtableId || pack.id} pack={pack} />
               ))}
             </div>

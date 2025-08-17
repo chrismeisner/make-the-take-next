@@ -26,6 +26,7 @@ export default function Layout({ children }) {
         { label: "Events", href: "/admin/events" },
         { label: "Contests", href: "/admin/contests" },
         { label: "Packs", href: "/admin/packs" },
+        { label: "Props", href: "/admin/props" },
       ],
     },
   ];

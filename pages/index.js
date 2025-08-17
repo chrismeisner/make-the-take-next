@@ -13,24 +13,12 @@ export default function LandingPage() {
   const { openModal } = useModal();
   const [toastMessage, setToastMessage] = useState("");
   // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
-  // Redirect unauthenticated users to /login on the client
   useEffect(() => {
-    // Show a success toast if redirected after logout
+    // Show a success toast when coming from logout
     if (router.query.logout === "1") {
       setToastMessage("Logged out successfully");
     }
   }, [router.query.logout]);
-
-  useEffect(() => {
-    if (!session?.user) {
-      // If coming from logout, give the toast a moment to display before redirecting
-      if (router.query.logout === "1") {
-        const t = setTimeout(() => router.replace("/login"), 1600);
-        return () => clearTimeout(t);
-      }
-      router.replace("/login");
-    }
-  }, [session, router, router.query.logout]);
 
   // Show welcome modal once per session for logged-in users
   useEffect(() => {
@@ -400,7 +388,10 @@ export default function LandingPage() {
             {/* Active Pack Drops section removed; visit /packs for the full explorer */}
           </>
         ) : (
-          <p className="text-center">Redirecting to login...</p>
+          <div className="text-center">
+            <p className="mb-2">You are not logged in.</p>
+            <a href="/login" className="text-blue-600 underline">Go to login</a>
+          </div>
         )}
 	  </div>
 	</div>

@@ -227,6 +227,32 @@ export default async function handler(req, res) {
 			}
 			if (packRecord) {
 				packInfo = { id: packRecord.id, packURL: packRecord.fields?.packURL || null, packTitle: packRecord.fields?.packTitle || null };
+				// After ensuring the pack exists and contains the collected Props, persist a per-pack order
+				// by updating each Prop's propOrder / propOrderByPack mapping via our props API.
+				// This ensures consistent ordering when rendering the pack later.
+				if (Array.isArray(propIdsForPack) && propIdsForPack.length > 0) {
+					try {
+						console.log('[createMoneylinePack] Persisting per-pack prop order for pack', packRecord.id);
+						for (let i = 0; i < propIdsForPack.length; i++) {
+							const propId = propIdsForPack[i];
+							try {
+								const resp = await fetch(`${baseUrl}/api/props`, {
+									method: 'PATCH',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({ propId, packId: packRecord.id, propOrder: i }),
+								});
+								if (!resp.ok) {
+									const txt = await resp.text();
+									console.warn('[createMoneylinePack] Failed to set propOrder', { propId, index: i, status: resp.status, txt });
+								}
+							} catch (e) {
+								console.warn('[createMoneylinePack] Error setting propOrder', { propId, index: i, error: e.message });
+							}
+						}
+					} catch (e) {
+						console.warn('[createMoneylinePack] Failed while persisting per-pack prop order', e.message);
+					}
+				}
 			}
 		}
 

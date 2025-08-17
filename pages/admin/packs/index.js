@@ -96,6 +96,9 @@ export default function AdminPacksPage() {
                   <Link href={`/admin/packs/${pack.airtableId}`}>
                     <button className="px-2 py-1 text-blue-600 hover:underline">Details</button>
                   </Link>
+                  <Link href={`/admin/packs/${pack.airtableId}/edit`}>
+                    <button className="ml-2 px-2 py-1 text-green-600 hover:underline">Edit</button>
+                  </Link>
                   <Link href={`/admin/grade/${pack.packURL}`}>
                     <button className="ml-2 px-2 py-1 text-purple-600 hover:underline">Grade</button>
                   </Link>

@@ -73,11 +73,6 @@ export default function PackListView({ packData, leaderboard, debugLogs }) {
             {props.map((prop) => (
               <div key={prop.propID} className="relative">
                 <PropCard prop={prop} />
-                <div className="mt-2 text-sm">
-                  <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
-                    See prop detail
-                  </Link>
-                </div>
               </div>
             ))}
           </div>

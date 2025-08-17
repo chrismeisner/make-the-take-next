@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { usePackContext } from "../contexts/PackContext";
 import { useModal } from "../contexts/ModalContext";
 import { PropChoices } from "./VerificationWidget";
@@ -189,9 +188,6 @@ export default function CardViewCard({ prop, currentReceiptId }) {
       </p>
 
       <div className="mt-1 text-sm flex items-center space-x-4">
-        <Link href={`/props/${prop.propID}`} className="text-blue-600 underline">
-          See prop detail
-        </Link>
         {alreadyTookSide ? (
           <button onClick={handleShare} className="text-blue-600 underline">
             Share

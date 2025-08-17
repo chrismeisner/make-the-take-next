@@ -12,7 +12,8 @@ export default function CreateUsernamePage() {
     async function checkAuth() {
       const session = await getSession();
       if (!session?.user) {
-        router.replace("/login");
+        // Do not auto-redirect; allow manual navigation to login
+        setLoading(false);
         return;
       }
       if (!session.user.isUsernameMissing) {
@@ -53,6 +54,11 @@ export default function CreateUsernamePage() {
   return (
     <div className="max-w-md mx-auto mt-10 p-4 border rounded shadow-sm">
       <h1 className="text-2xl font-bold mb-4">Choose Your Username</h1>
+      {!username && (
+        <p className="text-sm text-gray-600 mb-3">
+          Not logged in? <a href="/login" className="text-blue-600 underline">Go to login</a>
+        </p>
+      )}
       {error && <p className="text-red-600 mb-2">{error}</p>}
       <form onSubmit={handleSubmit}>
         <label className="block mb-2 font-semibold text-gray-700">Username</label>

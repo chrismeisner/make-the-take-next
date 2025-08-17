@@ -320,6 +320,11 @@ export default function AdminPage({ superAdminSecret }) {
                 Create Super Prop
               </button>
             </Link>
+            <Link href="/admin/props">
+              <button className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                Manage Props
+              </button>
+            </Link>
             <Link href="/admin/vegas">
               <button className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
                 Vegas Odds Viewer
