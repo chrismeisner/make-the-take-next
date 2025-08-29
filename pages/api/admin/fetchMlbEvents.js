@@ -67,13 +67,13 @@ export default async function handler(req, res) {
       let awayTeamLink = [];
       if (homeTeamId) {
         const homeRecs = await base("Teams")
-          .select({ filterByFormula: `AND({teamID}="${homeTeamId}", {teamLeague}="MLB")`, maxRecords: 1 })
+          .select({ filterByFormula: `AND({teamID}="${homeTeamId}", LOWER({teamLeague})="mlb")`, maxRecords: 1 })
           .firstPage();
         if (homeRecs.length) homeTeamLink = [homeRecs[0].id];
       }
       if (awayTeamId) {
         const awayRecs = await base("Teams")
-          .select({ filterByFormula: `AND({teamID}="${awayTeamId}", {teamLeague}="MLB")`, maxRecords: 1 })
+          .select({ filterByFormula: `AND({teamID}="${awayTeamId}", LOWER({teamLeague})="mlb")`, maxRecords: 1 })
           .firstPage();
         if (awayRecs.length) awayTeamLink = [awayRecs[0].id];
       }

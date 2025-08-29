@@ -29,7 +29,9 @@ export default async function handler(req, res) {
 
     let allRecords = [];
     for (const chunk of chunks) {
-      const formula = `OR(${chunk.map((pid) => `{propID} = "${pid}"`).join(',')})`;
+      // Match against either business propID or Airtable RECORD_ID
+      const orClauses = chunk.map((pid) => `OR({propID} = "${pid}", RECORD_ID() = "${pid}")`);
+      const formula = orClauses.length === 1 ? orClauses[0] : `OR(${orClauses.join(',')})`;
       const records = await base("Props")
         .select({
           filterByFormula: formula,
@@ -54,6 +56,10 @@ export default async function handler(req, res) {
         propSummary: f.propSummary || "",
         propStatus: f.propStatus || "open",
         propResult: f.propResult || "",
+        gradingMode: f.gradingMode ? String(f.gradingMode).toLowerCase() : "manual",
+        formulaKey: f.formulaKey || "",
+        // Read as string to avoid object mismatch; UI can display raw JSON
+        formulaParams: (typeof f.formulaParams === 'string') ? f.formulaParams : (f.formulaParams ? JSON.stringify(f.formulaParams) : ""),
         sideCount,
         sideLabels,
         propESPNLookup: f.propESPNLookup || null,

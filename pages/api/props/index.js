@@ -19,6 +19,7 @@ export default async function handler(req, res) {
     // Destructure core prop fields, including value model and moneylines
     const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, propStatus, packId, propOrder, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCover, propCoverSource,
             propOpenTime, propCloseTime,
+            gradingMode, formulaKey, formulaParams,
             // Event linkage fields
             eventId, eventTitle, eventTime, eventLeague } = req.body;
     // Parse moneyline inputs to numbers for Airtable numeric fields
@@ -53,6 +54,9 @@ export default async function handler(req, res) {
         ...(moneylineB !== null && !isNaN(moneylineB) ? { PropSideBMoneyline: moneylineB } : {}),
         ...(propCover ? { propCover: [{ url: propCover }] } : {}),
         ...(propCoverSource ? { propCoverSource: String(propCoverSource).toLowerCase() } : {}),
+        ...(formulaKey ? { formulaKey: String(formulaKey) } : {}),
+        ...(formulaParams ? { formulaParams: typeof formulaParams === 'string' ? formulaParams : JSON.stringify(formulaParams) } : {}),
+        ...(gradingMode ? { gradingMode: String(gradingMode) } : {}),
       };
       // Initialize per-pack ordering JSON if we have an order
       if (propOrder !== undefined) {
@@ -127,7 +131,9 @@ export default async function handler(req, res) {
   // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
     // Destructure updatable fields, including new ones
-    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime, propCoverSource } = req.body;
+    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime, propCoverSource,
+      // event link
+      eventId, gradingMode, formulaKey, formulaParams, gradedAt } = req.body;
     // Parse moneyline inputs for updates
     const updMoneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
       ? parseFloat(PropSideAMoneyline)
@@ -137,6 +143,7 @@ export default async function handler(req, res) {
       : null;
     // Parse and convert propCloseTime to ISO for updates
     const updCloseTimeIso = propCloseTime ? new Date(propCloseTime).toISOString() : null;
+    const updGradedAtIso = gradedAt ? new Date(gradedAt).toISOString() : null;
     if (!propId) {
       return res.status(400).json({ success: false, error: "Missing propId" });
     }
@@ -150,10 +157,20 @@ export default async function handler(req, res) {
       propType=== undefined
       && PropSideATake === undefined
       && PropSideBTake === undefined
+      && gradingMode === undefined
+      && formulaKey === undefined
+      && formulaParams === undefined
+      && eventId === undefined
     ) {
       return res.status(400).json({ success: false, error: "No fields provided to update" });
     }
     try {
+      console.log('[api/props PATCH] Incoming payload:', {
+        propId,
+        hasPropShort: propShort !== undefined,
+        hasPropSummary: propSummary !== undefined,
+        // grading removed
+      });
       const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
       const fieldsToUpdate = {};
       // If order is being updated, merge into propOrderByPack JSON
@@ -190,12 +207,26 @@ export default async function handler(req, res) {
       if (teams          !== undefined) fieldsToUpdate.Teams          = teams;
       if (propValueModel !== undefined) fieldsToUpdate.propValueModel        = propValueModel;
       if (propCoverSource !== undefined) fieldsToUpdate.propCoverSource = String(propCoverSource).toLowerCase();
+      if (gradingMode      !== undefined) fieldsToUpdate.gradingMode      = gradingMode;
+      if (formulaKey       !== undefined) fieldsToUpdate.formulaKey       = formulaKey;
+      if (formulaParams    !== undefined) fieldsToUpdate.formulaParams    = typeof formulaParams === 'string' ? formulaParams : JSON.stringify(formulaParams);
+      if (updGradedAtIso   !== null)      fieldsToUpdate.gradedAt         = updGradedAtIso;
+      console.log('[api/props PATCH] fieldsToUpdate:', fieldsToUpdate);
+      if (eventId !== undefined) {
+        // Accept Airtable record id (rec...) to link Event
+        if (typeof eventId === 'string' && eventId.startsWith('rec')) {
+          fieldsToUpdate.Event = [eventId];
+        } else if (eventId === null) {
+          fieldsToUpdate.Event = [];
+        }
+      }
       if (updMoneylineA !== null && !isNaN(updMoneylineA)) fieldsToUpdate.PropSideAMoneyline = updMoneylineA;
       if (updMoneylineB !== null && !isNaN(updMoneylineB)) fieldsToUpdate.PropSideBMoneyline = updMoneylineB;
       if (propCloseTime !== undefined) fieldsToUpdate.propCloseTime = updCloseTimeIso;
       const updated = await base("Props").update([
         { id: propId, fields: fieldsToUpdate }
       ], { typecast: true });
+      console.log('[api/props PATCH] Updated record id:', updated?.[0]?.id);
       return res.status(200).json({ success: true, record: updated[0] });
     } catch (err) {
       console.error("[api/props PATCH] Error =>", err);

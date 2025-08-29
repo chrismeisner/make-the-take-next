@@ -33,6 +33,12 @@ export default async function handler(req, res) {
   // Determine if this take is part of a challenge by inspecting the referer URL
   const refHeader = req.headers.referer || req.headers.referrer || "";
   const isChallenge = refHeader.includes("?ref=");
+  // Extract takeRef from the referer query if present (e.g., /packs/slug?ref=abcd123)
+  let takeRef = null;
+  try {
+    const refUrl = new URL(refHeader);
+    takeRef = refUrl.searchParams.get("ref");
+  } catch {}
   console.log(
     `[ /api/take ] ${isChallenge ? "🎯 Challenge submission detected" : "📦 Standard submission"}` +
       ` -> propID=${propID}, receiptId=${receiptId}`
@@ -118,6 +124,8 @@ export default async function handler(req, res) {
 	};
 	// Include receiptID if provided
 	if (receiptId) takeFields.receiptID = receiptId;
+	// Include takeRef if present in referer URL
+	if (takeRef) takeFields.takeRef = takeRef;
 	const takeResp = await base("Takes").create([
 	  { fields: takeFields }
 	]);

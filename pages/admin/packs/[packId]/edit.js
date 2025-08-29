@@ -24,6 +24,12 @@ export default function AdminEditPackPage() {
   const [statusOptions, setStatusOptions] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [propsList, setPropsList] = useState([]);
+  const [packOpenTime, setPackOpenTime] = useState('');
+  const [packCloseTime, setPackCloseTime] = useState('');
+  const [packEventId, setPackEventId] = useState('');
+  const [packEventIds, setPackEventIds] = useState([]);
+  const [packEventTimeISO, setPackEventTimeISO] = useState('');
+  const [eventInfoById, setEventInfoById] = useState({});
 
   // Load leagues
   useEffect(() => {
@@ -43,6 +49,7 @@ export default function AdminEditPackPage() {
         if (!data.success) throw new Error(data.error || 'Failed to load packs');
         const statuses = Array.from(new Set(data.packs.map(p => p.packStatus)));
         if (!statuses.includes('active')) statuses.unshift('active');
+        if (!statuses.includes('draft')) statuses.unshift('draft');
         setStatusOptions(statuses.sort());
         const found = data.packs.find(p => p.airtableId === packId);
         if (!found) {
@@ -54,21 +61,78 @@ export default function AdminEditPackPage() {
         setPackSummary(found.packSummary || '');
         setPackLeague((found.packLeague || '').toString());
         setPackCoverUrl(found.packCover || '');
+        if (found.packCover) setCoverPreviewUrl(found.packCover);
         setPackStatus(found.packStatus || 'active');
+        // Initialize open time if present on detail payload
+        if (found.packURL) {
+          try {
+            const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL)}`);
+            const detailJson = await detailRes.json();
+            if (detailRes.ok && detailJson.success && detailJson.pack) {
+              const ot = detailJson.pack.packOpenTime;
+              if (ot) {
+                // Convert ISO to local datetime-local value
+                const d = new Date(ot);
+                const pad = (n) => String(n).padStart(2, '0');
+                const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                setPackOpenTime(local);
+              }
+              const ct = detailJson.pack.packCloseTime;
+              if (ct) {
+                const d2 = new Date(ct);
+                const pad2 = (n) => String(n).padStart(2, '0');
+                const local2 = `${d2.getFullYear()}-${pad2(d2.getMonth()+1)}-${pad2(d2.getDate())}T${pad2(d2.getHours())}:${pad2(d2.getMinutes())}`;
+                setPackCloseTime(local2);
+              }
+              if (detailJson.pack.packEventId) {
+                setPackEventId(detailJson.pack.packEventId);
+              }
+              if (Array.isArray(detailJson.pack.packEventIds)) {
+                setPackEventIds(detailJson.pack.packEventIds);
+              } else if (detailJson.pack.packEventId) {
+                setPackEventIds([detailJson.pack.packEventId]);
+              }
+            }
+          } catch {}
+        }
         // Use packURL to fetch full details including props
         if (found.packURL) {
           const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL)}`);
           const detailJson = await detailRes.json();
           if (detailRes.ok && detailJson.success && detailJson.pack) {
             const props = Array.isArray(detailJson.pack.props) ? detailJson.pack.props : [];
-            const normalized = props.map((p) => ({
-              airtableId: p.airtableId,
-              propID: p.propID,
-              propShort: p.propShort || p.propTitle || '',
-              eventTitle: p.propEventTitleLookup || p.propEventMatchup || '',
-              eventTime: p.propEventTimeLookup || null,
-            }));
+            const normalized = props.map((p) => {
+              // Resolve cover URL from attachments or string value
+              let coverUrl = null;
+              try {
+                const fieldVal = p.propCover;
+                if (Array.isArray(fieldVal) && fieldVal.length > 0) {
+                  for (const entry of fieldVal) {
+                    if (entry && typeof entry === 'object') {
+                      if (typeof entry.url === 'string' && entry.url.startsWith('http')) { coverUrl = entry.url; break; }
+                      const thumb = entry?.thumbnails?.large?.url || entry?.thumbnails?.full?.url;
+                      if (typeof thumb === 'string' && thumb.startsWith('http')) { coverUrl = thumb; break; }
+                    } else if (typeof entry === 'string' && entry.startsWith('http')) {
+                      coverUrl = entry; break;
+                    }
+                  }
+                } else if (typeof fieldVal === 'string' && fieldVal.startsWith('http')) {
+                  coverUrl = fieldVal;
+                }
+              } catch {}
+              return {
+                airtableId: p.airtableId,
+                propID: p.propID,
+                propShort: p.propShort || p.propTitle || '',
+                eventTitle: p.propEventTitleLookup || p.propEventMatchup || '',
+                eventTime: p.propEventTimeLookup || null,
+                propCoverUrl: coverUrl,
+              };
+            });
             setPropsList(normalized);
+            if (detailJson.pack.packEventId) {
+              setPackEventId(detailJson.pack.packEventId);
+            }
           }
         }
       } catch (e) {
@@ -77,6 +141,51 @@ export default function AdminEditPackPage() {
       }
     })();
   }, [status, packId]);
+
+  useEffect(() => {
+    const loadEventTime = async () => {
+      if (!packEventId) return;
+      try {
+        const evRes = await fetch(`/api/admin/events/${packEventId}`);
+        const evJson = await evRes.json();
+        if (evRes.ok && evJson.success && evJson.event?.eventTime) {
+          setPackEventTimeISO(evJson.event.eventTime);
+        }
+      } catch {}
+    };
+    loadEventTime();
+  }, [packEventId]);
+
+  useEffect(() => {
+    const ids = Array.from(new Set([...(packEventIds || []), packEventId].filter(Boolean)));
+    const missing = ids.filter((id) => !eventInfoById[id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          missing.map(async (id) => {
+            try {
+              const res = await fetch(`/api/admin/events/${id}`);
+              const json = await res.json();
+              if (res.ok && json.success && json.event) {
+                return { id, title: json.event.eventTitle || id, time: json.event.eventTime || null };
+              }
+            } catch {}
+            return { id, title: id, time: null };
+          })
+        );
+        if (!cancelled) {
+          setEventInfoById((prev) => {
+            const next = { ...prev };
+            results.forEach(({ id, title, time }) => { next[id] = { eventTitle: title, eventTime: time }; });
+            return next;
+          });
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [packEventIds, packEventId]);
 
   const handleCoverChange = async (e) => {
     const file = e.target.files[0];
@@ -116,6 +225,62 @@ export default function AdminEditPackPage() {
     });
   };
 
+  // Helper to get first attachment URL from Airtable-like attachment arrays
+  const getFirstAttachmentUrl = (fieldVal) => {
+    try {
+      if (Array.isArray(fieldVal) && fieldVal.length > 0) {
+        for (const entry of fieldVal) {
+          if (entry && typeof entry === 'object') {
+            if (typeof entry.url === 'string' && entry.url.startsWith('http')) return entry.url;
+            const thumbUrl = entry?.thumbnails?.large?.url || entry?.thumbnails?.full?.url;
+            if (typeof thumbUrl === 'string' && thumbUrl.startsWith('http')) return thumbUrl;
+          } else if (typeof entry === 'string' && entry.startsWith('http')) {
+            return entry;
+          }
+        }
+      }
+    } catch {}
+    return null;
+  };
+
+  const handleUseEventCover = async () => {
+    try {
+      // Prefer linked Event on the pack
+      let evId = packEventId;
+      if (!evId) {
+        if (!propsList || propsList.length === 0) {
+          setError('Link an event to this pack or select a prop to derive the event cover.');
+          return;
+        }
+        const first = propsList[0];
+        if (!first?.airtableId) return;
+        const propRes = await fetch(`/api/admin/props/${first.airtableId}`);
+        const propJson = await propRes.json();
+        if (!propRes.ok || !propJson.success || !propJson.prop?.event?.airtableId) {
+          setError('Could not resolve event for the selected prop.');
+          return;
+        }
+        evId = propJson.prop.event.airtableId;
+      }
+      const evRes = await fetch(`/api/admin/events/${evId}`);
+      const evJson = await evRes.json();
+      if (!evRes.ok || !evJson.success || !evJson.event) {
+        setError('Failed to load event details for cover.');
+        return;
+      }
+      const url = getFirstAttachmentUrl(evJson.event.eventCover);
+      if (url) {
+        setPackCoverUrl(url);
+        setCoverPreviewUrl(url);
+        setError(null);
+      } else {
+        setError('Event has no cover image.');
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to use event cover.');
+    }
+  };
+
   if (status === 'loading') {
     return <div className="container mx-auto px-4 py-6">Loading...</div>;
   }
@@ -134,7 +299,14 @@ export default function AdminEditPackPage() {
       if (packLeague) payload.packLeague = packLeague.toLowerCase();
       if (packCoverUrl) payload.packCoverUrl = packCoverUrl;
       if (packStatus) payload.packStatus = packStatus;
+      if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
+      if (packCloseTime) payload.packCloseTime = new Date(packCloseTime).toISOString();
       if (propsList.length) payload.props = propsList.map(p => p.airtableId);
+      if (Array.isArray(packEventIds) && packEventIds.length > 0) {
+        payload.events = packEventIds;
+      } else if (packEventId) {
+        payload.events = [packEventId];
+      }
 
       const res = await fetch('/api/packs', {
         method: 'PATCH',
@@ -172,6 +344,87 @@ export default function AdminEditPackPage() {
       <h1 className="text-2xl font-bold mb-4">Edit Pack</h1>
       {error && <p className="text-red-600 mb-4">{error}</p>}
       <form onSubmit={handleSubmit} className="space-y-4 max-w-4xl mx-auto">
+        {/* Linked Events */}
+        <div className="p-4 border rounded">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Linked Events</label>
+              <div className="text-sm text-gray-800">
+                <div className="font-medium">
+                  Primary: {packEventId ? (eventInfoById[packEventId]?.eventTitle || packEventId) : '—'}
+                </div>
+                {packEventIds.length > 1 && (
+                  <div className="text-gray-600">
+                    Additional:
+                    <ul className="list-disc list-inside">
+                      {packEventIds.filter(id => id !== packEventId).map((id) => (
+                        <li key={id}>{eventInfoById[id]?.eventTitle || id}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={() => openModal('addEvent', {
+                  allowMultiSelect: true,
+                  onEventSelected: (ev) => {
+                    try {
+                      if (Array.isArray(ev)) {
+                        const ids = ev.map(e => e.id).filter(Boolean);
+                        setPackEventIds(prev => Array.from(new Set([...(prev || []), ...ids])));
+                        if (!packEventId && ids.length) setPackEventId(ids[0]);
+                        // Seed titles from selection
+                        setEventInfoById(prev => {
+                          const next = { ...prev };
+                          ev.forEach(e => { if (e?.id) next[e.id] = { eventTitle: e.eventTitle || e.id, eventTime: null }; });
+                          return next;
+                        });
+                      } else {
+                        if (!ev || !ev.id) return;
+                        setPackEventId(ev.id);
+                        setPackEventIds(prev => Array.from(new Set([...(prev || []), ev.id])));
+                        setEventInfoById(prev => ({ ...prev, [ev.id]: { eventTitle: ev.eventTitle || ev.id, eventTime: null } }));
+                      }
+                    } catch {}
+                  },
+                })}
+              >
+                Select Events
+              </button>
+              {(packEventId || packEventIds.length > 0) && (
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                  onClick={() => { setPackEventId(''); setPackEventIds([]); }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          {packEventIds.length > 0 && (
+            <div className="mt-2 text-sm text-gray-700">
+              <ul className="list-disc list-inside">
+                {packEventIds.filter(id => id !== packEventId).map((id) => (
+                  <li key={id} className="flex items-center space-x-2">
+                    <span>{eventInfoById[id]?.eventTitle || id}</span>
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs bg-gray-200 rounded"
+                      onClick={() => setPackEventIds(prev => prev.filter(eid => eid !== id))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Pack Title</label>
           <input
@@ -191,6 +444,30 @@ export default function AdminEditPackPage() {
             className="mt-1 px-3 py-2 border rounded w-full"
             required
           />
+          <div className="mt-2 flex space-x-2">
+            <button
+              type="button"
+              onClick={() => {
+                const baseSlug = packTitle
+                  .toLowerCase()
+                  .trim()
+                  .replace(/[^a-z0-9]+/g, '-')
+                  .replace(/^-+|-+$/g, '');
+                const now = new Date();
+                const YY = String(now.getFullYear() % 100).padStart(2, '0');
+                const MM = String(now.getMonth() + 1).padStart(2, '0');
+                const DD = String(now.getDate()).padStart(2, '0');
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                const timestamp = `${YY}${MM}${DD}${hh}${mm}`;
+                setPackURL(`${baseSlug}-${timestamp}`);
+              }}
+              disabled={!packTitle}
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+            >
+              Generate from Title
+            </button>
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Summary</label>
@@ -201,18 +478,145 @@ export default function AdminEditPackPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">League</label>
-          <select
-            value={packLeague}
-            onChange={(e) => setPackLeague(e.target.value)}
+          <label className="block text-sm font-medium text-gray-700">Open Time</label>
+          <input
+            type="datetime-local"
+            value={packOpenTime}
+            onChange={(e) => setPackOpenTime(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
-          >
-            <option value="">Select a league</option>
-            {leagues.map((lg) => (
-              <option key={lg} value={lg}>{lg}</option>
-            ))}
-          </select>
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventTimeISO}
+              onClick={() => {
+                try {
+                  const d = new Date(packEventTimeISO);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                  setPackOpenTime(local);
+                } catch {}
+              }}
+            >
+              Event time
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventTimeISO}
+              onClick={() => {
+                try {
+                  const d = new Date(packEventTimeISO);
+                  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 0, 0);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                  setPackOpenTime(local);
+                } catch {}
+              }}
+            >
+              1pm event day
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventTimeISO}
+              onClick={() => {
+                try {
+                  const d = new Date(packEventTimeISO);
+                  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 16, 0, 0);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                  setPackOpenTime(local);
+                } catch {}
+              }}
+            >
+              4pm event day
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventTimeISO}
+              onClick={() => {
+                try {
+                  const d = new Date(packEventTimeISO);
+                  const dt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                  setPackOpenTime(local);
+                } catch {}
+              }}
+            >
+              3 hours before event
+            </button>
+          </div>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Close Time (optional)</label>
+          <input
+            type="datetime-local"
+            value={packCloseTime}
+            onChange={(e) => setPackCloseTime(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+          />
+          <div className="mt-2">
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!([packEventId, ...(packEventIds||[])].filter(Boolean).length)}
+              onClick={async () => {
+                try {
+                  const ids = Array.from(new Set([packEventId, ...(packEventIds||[])].filter(Boolean)));
+                  if (ids.length === 0) return;
+                  const times = await Promise.all(ids.map(async (id) => {
+                    try {
+                      const res = await fetch(`/api/admin/events/${id}`);
+                      const json = await res.json();
+                      return res.ok && json.success && json.event?.eventTime ? new Date(json.event.eventTime).getTime() : NaN;
+                    } catch { return NaN; }
+                  }));
+                  const valid = times.filter((t) => Number.isFinite(t));
+                  if (valid.length === 0) return;
+                  const earliest = Math.min(...valid);
+                  const d = new Date(earliest);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                  setPackCloseTime(local);
+                } catch {}
+              }}
+            >
+              Earliest event start time
+            </button>
+            <button
+              type="button"
+              className="ml-2 px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!([packEventId, ...(packEventIds||[])].filter(Boolean).length)}
+              onClick={async () => {
+                try {
+                  const ids = Array.from(new Set([packEventId, ...(packEventIds||[])].filter(Boolean)));
+                  if (ids.length === 0) return;
+                  const times = await Promise.all(ids.map(async (id) => {
+                    try {
+                      const res = await fetch(`/api/admin/events/${id}`);
+                      const json = await res.json();
+                      return res.ok && json.success && json.event?.eventTime ? new Date(json.event.eventTime).getTime() : NaN;
+                    } catch { return NaN; }
+                  }));
+                  const valid = times.filter((t) => Number.isFinite(t));
+                  if (valid.length === 0) return;
+                  const latest = Math.max(...valid);
+                  const d = new Date(latest);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                  setPackCloseTime(local);
+                } catch {}
+              }}
+            >
+              Latest event start time
+            </button>
+          </div>
+        </div>
+        
         <div className="mt-6">
           <h2 className="text-lg font-medium mb-2">Props in this Pack</h2>
           <div className="mb-2">
@@ -223,6 +627,14 @@ export default function AdminEditPackPage() {
             >
               Add Prop
             </button>
+            <Link href={`/admin/packs/${encodeURIComponent(packId)}/create-prop`}>
+              <button
+                type="button"
+                className="ml-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                New Prop
+              </button>
+            </Link>
           </div>
           <div className="overflow-x-auto mb-4">
             <table className="min-w-full bg-white">
@@ -231,7 +643,9 @@ export default function AdminEditPackPage() {
                   <th className="px-4 py-2 border">Prop Short</th>
                   <th className="px-4 py-2 border">Event</th>
                   <th className="px-4 py-2 border">Event Time</th>
+                  <th className="px-4 py-2 border">Cover</th>
                   <th className="px-4 py-2 border">Order</th>
+                  <th className="px-4 py-2 border">Reorder</th>
                   <th className="px-4 py-2 border">Actions</th>
                 </tr>
               </thead>
@@ -241,6 +655,14 @@ export default function AdminEditPackPage() {
                     <td className="px-4 py-2 border">{prop.propShort || prop.propID || prop.airtableId}</td>
                     <td className="px-4 py-2 border">{prop.eventTitle || '-'}</td>
                     <td className="px-4 py-2 border">{prop.eventTime ? new Date(prop.eventTime).toLocaleString() : '-'}</td>
+                    <td className="px-4 py-2 border">
+                      {prop.propCoverUrl ? (
+                        <img src={prop.propCoverUrl} alt="prop cover" className="h-12 w-12 object-cover rounded" />
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 border text-center">{idx + 1}</td>
                     <td className="px-4 py-2 border whitespace-nowrap">
                       <button
                         type="button"
@@ -260,19 +682,24 @@ export default function AdminEditPackPage() {
                       </button>
                     </td>
                     <td className="px-4 py-2 border">
-                      <button
-                        type="button"
-                        onClick={() => setPropsList(pl => pl.filter((_, i) => i !== idx))}
-                        className="px-2 py-1 text-red-600"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/admin/props/${encodeURIComponent(prop.airtableId)}`}>
+                          <button type="button" className="px-2 py-1 text-blue-600 hover:underline">Edit</button>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setPropsList(pl => pl.filter((_, i) => i !== idx))}
+                          className="px-2 py-1 text-red-600"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {propsList.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-2 text-center text-gray-500">No props</td>
+                    <td colSpan={7} className="px-4 py-2 text-center text-gray-500">No props</td>
                   </tr>
                 )}
               </tbody>
@@ -287,6 +714,15 @@ export default function AdminEditPackPage() {
             onChange={handleCoverChange}
             className="mt-1"
           />
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleUseEventCover}
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+            >
+              Use event cover
+            </button>
+          </div>
           {coverUploading && <p className="text-gray-600 mt-2">Uploading cover...</p>}
           {(coverPreviewUrl || packCoverUrl) && (
             <img src={coverPreviewUrl || packCoverUrl} alt="Cover preview" className="mt-2 h-32 object-contain" />
@@ -322,6 +758,29 @@ export default function AdminEditPackPage() {
               Cancel
             </button>
           </Link>
+          <button
+            type="button"
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            onClick={async () => {
+              try {
+                if (!packId) return;
+                const ok = window.confirm('Delete this pack? This cannot be undone.');
+                if (!ok) return;
+                setLoading(true);
+                setError(null);
+                const res = await fetch(`/api/packs?packId=${encodeURIComponent(packId)}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete pack');
+                router.push('/admin/packs');
+              } catch (e) {
+                setError(e.message || 'Failed to delete pack');
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            Delete Pack
+          </button>
         </div>
       </form>
     </div>

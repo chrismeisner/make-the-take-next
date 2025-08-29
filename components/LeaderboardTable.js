@@ -19,9 +19,7 @@ import { useSession } from "next-auth/react";
 export default function LeaderboardTable({ leaderboard }) {
   const { data: session } = useSession();
   const currentProfileID = session?.user?.profileID;
-  if (!leaderboard || leaderboard.length === 0) {
-	return <p>No participants yet.</p>;
-  }
+  const hasEntries = Array.isArray(leaderboard) && leaderboard.length > 0;
 
   // Helper to obscure phone
   function obscurePhone(e164Phone) {
@@ -45,35 +43,43 @@ export default function LeaderboardTable({ leaderboard }) {
 		  </tr>
 		</thead>
 		<tbody>
-		  {leaderboard.map((item, idx) => (
-			<tr key={idx} className="border-b">
-			  <td className="py-2 px-3">
-				{item.profileID ? (
-				  <Link href={"/profile/" + item.profileID}>
-					<span className="text-blue-600 underline">
-					  {obscurePhone(item.phone)}
-					</span>
-				  </Link>
-				) : (
-				  obscurePhone(item.phone)
-				)}
+		  {!hasEntries ? (
+			<tr>
+			  <td colSpan={5} className="py-6 px-3 text-center text-gray-500">
+				No participants yet. Be the first to make a take!
 			  </td>
-			  <td className="py-2 px-3">
-				{item.profileID ? (
-				  <Link href={"/profile/" + item.profileID}>
-					<span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
-					  {item.profileID}
-					</span>
-				  </Link>
-				) : (
-				  'Unknown'
-				)}
-			  </td>
-			  <td className="py-2 px-3">{item.takes}</td>
-			  <td className="py-2 px-3">{item.won || 0}-{item.lost || 0}-{item.pushed || 0}</td>
-			  <td className="py-2 px-3">{Math.round(item.points)}</td>
 			</tr>
-		  ))}
+		  ) : (
+			leaderboard.map((item, idx) => (
+			  <tr key={idx} className="border-b">
+				<td className="py-2 px-3">
+				  {item.profileID ? (
+					<Link href={"/profile/" + item.profileID}>
+					  <span className="text-blue-600 underline">
+						{obscurePhone(item.phone)}
+					  </span>
+					</Link>
+				  ) : (
+					obscurePhone(item.phone)
+				  )}
+				</td>
+				<td className="py-2 px-3">
+				  {item.profileID ? (
+					<Link href={"/profile/" + item.profileID}>
+					  <span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
+						{item.profileID}
+					  </span>
+					</Link>
+				  ) : (
+					'Unknown'
+				  )}
+				</td>
+				<td className="py-2 px-3">{item.takes}</td>
+				<td className="py-2 px-3">{item.won || 0}-{item.lost || 0}-{item.pushed || 0}</td>
+				<td className="py-2 px-3">{Math.round(item.points)}</td>
+			  </tr>
+			))
+		  )}
 		</tbody>
 	  </table>
 	</div>

@@ -87,8 +87,12 @@ export default function AdminPage({ superAdminSecret }) {
   // State for fetching NFL events
   const [loadingNflEvents, setLoadingNflEvents] = useState(false);
   const [nflEventsResult, setNflEventsResult] = useState(null);
-  // State for fetching NFL events
-  const [nflDate, setNflDate] = useState(() => new Date().toISOString().slice(0,10));
+  // State for fetching NFL events (year/week)
+  const [nflYear, setNflYear] = useState(2025);
+  const [nflWeek, setNflWeek] = useState(1);
+  // State for generating NFL Covers
+  const [nflCoverLoading, setNflCoverLoading] = useState(false);
+  const [nflCoverResult, setNflCoverResult] = useState(null);
   // State for generating Event Covers
   const [coverLeague, setCoverLeague] = useState("");
   const [coverDate, setCoverDate] = useState(() => new Date().toISOString().slice(0,10));
@@ -186,11 +190,10 @@ export default function AdminPage({ superAdminSecret }) {
   const handleFetchNflEvents = async () => {
     setLoadingNflEvents(true);
     try {
-      const dateStr = nflDate.replace(/-/g, "");
       const res = await fetch("/api/admin/fetchNflEvents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: dateStr }),
+        body: JSON.stringify({ year: Number(nflYear), week: Number(nflWeek) }),
       });
       const data = await res.json();
       setNflEventsResult(data);
@@ -335,9 +338,15 @@ export default function AdminPage({ superAdminSecret }) {
                 Odds API Test
               </button>
             </Link>
+            {/* Formula Builder removed */}
             <Link href="/admin/test-ai">
               <button className="px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900">
                 Test AI (Prompts)
+              </button>
+            </Link>
+            <Link href="/admin/api-tester">
+              <button className="px-3 py-2 bg-blue-950 text-white rounded hover:bg-blue-900">
+                API Tester
               </button>
             </Link>
           </div>
@@ -444,18 +453,58 @@ export default function AdminPage({ superAdminSecret }) {
             {/* NFL Events */}
             <div>
               <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={nflDate}
-                  onChange={(e) => setNflDate(e.target.value)}
-                  className="px-2 py-2 border rounded"
-                />
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700">Year</label>
+                  <input
+                    type="number"
+                    min={2000}
+                    max={2100}
+                    value={nflYear}
+                    onChange={(e) => setNflYear(e.target.value)}
+                    className="px-2 py-2 border rounded w-24"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700">Week</label>
+                  <select
+                    value={nflWeek}
+                    onChange={(e) => setNflWeek(e.target.value)}
+                    className="px-2 py-2 border rounded"
+                  >
+                    {Array.from({ length: 23 }, (_, i) => i + 1).map((w) => (
+                      <option key={w} value={w}>{`Week ${w}`}</option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   onClick={handleFetchNflEvents}
-                  disabled={loadingNflEvents || !nflDate}
+                  disabled={loadingNflEvents || !nflWeek || !nflYear}
                   className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   {loadingNflEvents ? "Fetching..." : "Get NFL Events"}
+                </button>
+                <button
+                  onClick={async () => {
+                    setNflCoverLoading(true);
+                    setNflCoverResult(null);
+                    try {
+                      const res = await fetch('/api/admin/jobs/generateNflCovers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ year: Number(nflYear), week: Number(nflWeek) }),
+                      });
+                      const data = await res.json();
+                      setNflCoverResult(data);
+                    } catch (e) {
+                      setNflCoverResult({ success: false, error: e.message });
+                    } finally {
+                      setNflCoverLoading(false);
+                    }
+                  }}
+                  disabled={nflCoverLoading || !nflWeek || !nflYear}
+                  className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {nflCoverLoading ? 'Generating...' : 'Generate NFL Covers'}
                 </button>
               </div>
               {nflEventsResult && (
@@ -480,6 +529,15 @@ export default function AdminPage({ superAdminSecret }) {
                     </>
                   ) : (
                     <p className='text-red-600'>Error: {nflEventsResult.error}</p>
+                  )}
+                </div>
+              )}
+              {nflCoverResult && (
+                <div className="mt-2">
+                  {nflCoverResult.success ? (
+                    <p className='text-green-600'>Updated {nflCoverResult.updatedCount} of {nflCoverResult.count} events for week {nflCoverResult.week}.</p>
+                  ) : (
+                    <p className='text-red-600'>Error: {nflCoverResult.error}</p>
                   )}
                 </div>
               )}
@@ -576,72 +634,7 @@ export default function AdminPage({ superAdminSecret }) {
           </div>
           {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
 
-          {/* Auto Grade Props */}
-          <div className="mt-4 border-t pt-4">
-            <h3 className="text-md font-semibold mb-2">Auto Grade Props</h3>
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">League</label>
-                <select
-                  value={gradingLeague}
-                  onChange={(e) => setGradingLeague(e.target.value)}
-                  className="mt-1 px-3 py-2 border rounded"
-                >
-                  <option value="">Select league</option>
-                  {gradingLeagues.map((lg) => (
-                    <option key={lg} value={lg}>{lg}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Date</label>
-                <input
-                  type="date"
-                  value={gradingDate}
-                  onChange={(e) => setGradingDate(e.target.value)}
-                  className="mt-1 px-3 py-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Type</label>
-                <select value="moneyline" disabled className="mt-1 px-3 py-2 border rounded">
-                  <option value="moneyline">Moneyline</option>
-                </select>
-              </div>
-              <label className="inline-flex items-center text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={gradingDryRun}
-                  onChange={(e) => setGradingDryRun(e.target.checked)}
-                />
-                Dry run
-              </label>
-              <button
-                type="button"
-                disabled={gradingLoading || !gradingLeague || !gradingDate}
-                onClick={handleAutoGradeMoneylineProps}
-                className={`px-3 py-2 rounded text-white ${gradingLoading ? 'bg-gray-400' : 'bg-purple-600 hover:bg-purple-700'}`}
-              >
-                {gradingLoading ? 'Grading…' : 'Auto Grade Moneyline Props'}
-              </button>
-            </div>
-            {gradingResult && (
-              <div className="mt-2 text-sm">
-                {gradingResult.success ? (
-                  <p className="text-green-700">
-                    {gradingResult.dryRun ? (
-                      <>Dry run: {gradingResult.affectedCount || 0} props would be updated.</>
-                    ) : (
-                      <>Updated {gradingResult.updatedCount || 0} props.</>
-                    )}
-                  </p>
-                ) : (
-                  <p className="text-red-700">Error: {gradingResult.error}</p>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Auto Grade Props removed */}
         </section>
 
         {/* Messaging */}

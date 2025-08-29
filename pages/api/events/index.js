@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       let homeTeamLink = null, awayTeamLink = null, homeTeamLogo = null, awayTeamLogo = null;
       if (homeTeamId) {
         const recs = await base('Teams').select({
-          filterByFormula: `AND({teamID}="${homeTeamId}", {teamLeague}="MLB")`,
+          filterByFormula: `AND({teamID}="${homeTeamId}", LOWER({teamLeague})="mlb")`,
           maxRecords: 1
         }).firstPage();
         if (recs.length) {
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       }
       if (awayTeamId) {
         const recs = await base('Teams').select({
-          filterByFormula: `AND({teamID}="${awayTeamId}", {teamLeague}="MLB")`,
+          filterByFormula: `AND({teamID}="${awayTeamId}", LOWER({teamLeague})="mlb")`,
           maxRecords: 1
         }).firstPage();
         if (recs.length) {

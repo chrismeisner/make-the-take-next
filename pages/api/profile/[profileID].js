@@ -1,8 +1,13 @@
 import Airtable from 'airtable';
 import { sumTakePoints, isVisibleTake } from '../../../lib/points';
+import { aggregateTakeStats } from '../../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
+
+// Cache creator leaderboard for 12 hours per profile
+const CREATOR_LEADERBOARD_TTL_MS = 12 * 60 * 60 * 1000;
+const creatorLeaderboardCache = new Map(); // key: profileID -> { leaderboard, updatedAtMs }
 
 export default async function handler(req, res) {
   // Only allow GET requests
@@ -11,6 +16,8 @@ export default async function handler(req, res) {
   }
 
   const { profileID } = req.query;
+  const includeExchanges = String(req.query.includeExchanges || '').toLowerCase() === '1' || String(req.query.includeExchanges || '').toLowerCase() === 'true';
+  const refreshBypass = String(req.query.refresh || '').toLowerCase() === '1' || String(req.query.refresh || '').toLowerCase() === 'true';
 
   try {
 	// 1) Fetch the profile record from the Profiles table
@@ -124,6 +131,7 @@ export default async function handler(req, res) {
 	}
 
 	// 5) Build the profile data object
+	const isCreator = Boolean(pf.creator || pf.Creator || pf.profileCreator || pf.isCreator);
 	const profileData = {
 	  airtableRecordId: profRec.id,
 	  profileID: pf.profileID,
@@ -131,6 +139,7 @@ export default async function handler(req, res) {
 	  profileUsername: pf.profileUsername || '',
 	  profileAvatar: pf.profileAvatar || [],
 	  profileTeamData, // Contains favorite team info
+	  isCreator,
 	  createdTime: profRec._rawJson.createdTime,
 	};
     // 6) Compute Awards: number of graded packs this profile has won
@@ -171,20 +180,102 @@ export default async function handler(req, res) {
     } catch (achErr) {
       console.error('[profile] Error fetching achievements =>', achErr);
     }
-	// Fetch Exchange records for this profile by matching the 'profileID' lookup field in Exchanges
-	const exchangeFilter = `{profileID}="${profileID}"`;
-	console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
-	let userExchanges = [];
-	const exchRecs = await base('Exchanges')
-	  .select({ filterByFormula: exchangeFilter, maxRecords: 5000 })
-	  .all();
-	console.log(`[profile] Retrieved ${exchRecs.length} Exchanges rows for profileID ${profileID}`);
-	userExchanges = exchRecs.map((r) => ({
-	  exchangeID: r.id,
-	  exchangeTokens: r.fields.exchangeTokens || 0,
-	  exchangeItem: r.fields.exchangeItem || [],
-	  createdTime: r._rawJson.createdTime,
-	}));
+    // Fetch packs created by this profile (influencer) via packCreator link
+    let creatorPacks = [];
+    try {
+      // Pull packs that have any creator link, then filter by record ID membership in Node
+      const hasCreatorFormula = `OR(LEN({packCreator})>0, LEN({PackCreator})>0)`;
+      const candidateRecs = await base('Packs')
+        .select({ filterByFormula: hasCreatorFormula, maxRecords: 5000 })
+        .all();
+      const profileRecordId = profRec.id;
+      creatorPacks = candidateRecs
+        .filter((rec) => {
+          const f = rec.fields || {};
+          const linksA = Array.isArray(f.packCreator) ? f.packCreator : [];
+          const linksB = Array.isArray(f.PackCreator) ? f.PackCreator : [];
+          return linksA.includes(profileRecordId) || linksB.includes(profileRecordId);
+        })
+        .map((rec) => {
+        const f = rec.fields || {};
+        const coverUrl = Array.isArray(f.packCover) && f.packCover.length > 0 ? f.packCover[0].url : null;
+        return {
+          airtableId: rec.id,
+          packID: f.packID || rec.id,
+          packURL: f.packURL || '',
+          packTitle: f.packTitle || '',
+          packStatus: f.packStatus || '',
+          packCover: coverUrl,
+          eventTime: f.eventTime || rec._rawJson?.createdTime || null,
+        };
+      });
+    } catch (cpErr) {
+      console.error('[profile] Error fetching creatorPacks =>', cpErr);
+    }
+    // 7.2) Build all-time leaderboard across props/takes from creator's packs (with cache)
+    let creatorLeaderboard = [];
+    let creatorLeaderboardUpdatedAt = null;
+    try {
+      if (creatorPacks.length > 0) {
+        const cacheKey = profileID;
+        const cached = creatorLeaderboardCache.get(cacheKey);
+        const nowMs = Date.now();
+        if (!refreshBypass && cached && (nowMs - cached.updatedAtMs) < CREATOR_LEADERBOARD_TTL_MS) {
+          creatorLeaderboard = cached.leaderboard;
+          creatorLeaderboardUpdatedAt = new Date(cached.updatedAtMs).toISOString();
+        } else {
+        const packRecordIds = creatorPacks.map(p => p.airtableId);
+        if (packRecordIds.length > 0) {
+          const packFilter = `OR(${packRecordIds.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+          const packsFull = await base('Packs').select({ filterByFormula: packFilter, maxRecords: packRecordIds.length }).all();
+          const propRecordIds = [];
+          packsFull.forEach((pr) => {
+            const f = pr.fields || {};
+            const props = Array.isArray(f.Props) ? f.Props : [];
+            propRecordIds.push(...props);
+          });
+          const uniquePropRecordIds = [...new Set(propRecordIds)].filter(Boolean);
+          if (uniquePropRecordIds.length > 0) {
+            // Fetch Props to resolve their textual propID values
+            const propsFilter = `OR(${uniquePropRecordIds.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+            const propsFull = await base('Props')
+              .select({ filterByFormula: propsFilter, maxRecords: uniquePropRecordIds.length })
+              .all();
+            const allowedPropIds = propsFull
+              .map((r) => r.fields?.propID)
+              .filter((v) => typeof v === 'string' && v.trim());
+            if (allowedPropIds.length > 0) {
+              const takesFilter = `AND({takeStatus}='latest', OR(${allowedPropIds.map(pid => `{propID}='${pid}'`).join(',')}))`;
+              const takeRecs = await base('Takes')
+                .select({ filterByFormula: takesFilter, maxRecords: 5000 })
+                .all();
+              creatorLeaderboard = aggregateTakeStats(takeRecs);
+              creatorLeaderboardUpdatedAt = new Date().toISOString();
+              creatorLeaderboardCache.set(cacheKey, { leaderboard: creatorLeaderboard, updatedAtMs: nowMs });
+            }
+          }
+        }
+        }
+      }
+    } catch (clErr) {
+      console.error('[profile] Error building creatorLeaderboard =>', clErr);
+    }
+    // Fetch Exchange records only when requested
+    let userExchanges = [];
+    if (includeExchanges) {
+      const exchangeFilter = `{profileID}="${profileID}"`;
+      console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
+      const exchRecs = await base('Exchanges')
+        .select({ filterByFormula: exchangeFilter, maxRecords: 5000 })
+        .all();
+      console.log(`[profile] Retrieved ${exchRecs.length} Exchanges rows for profileID ${profileID}`);
+      userExchanges = exchRecs.map((r) => ({
+        exchangeID: r.id,
+        exchangeTokens: r.fields.exchangeTokens || 0,
+        exchangeItem: r.fields.exchangeItem || [],
+        createdTime: r._rawJson.createdTime,
+      }));
+    }
 
     // 7.5) Compute tokens summary consistent with Marketplace
     const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
@@ -206,6 +297,9 @@ export default async function handler(req, res) {
       tokensEarned,
       tokensSpent,
       tokensBalance,
+      creatorPacks,
+      creatorLeaderboard,
+      creatorLeaderboardUpdatedAt,
 	});
   } catch (err) {
 	console.error('[GET /api/profile/:profileID] Error:', err);

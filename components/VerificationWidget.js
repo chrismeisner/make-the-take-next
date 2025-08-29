@@ -157,25 +157,27 @@ function Choice({
       />
       {/* Content wrapper */}
       <div className="relative z-10 flex items-center">
-    {/* Grading icon, title, and percentage on the left */}
-    <div className="flex items-center space-x-2">
-      {gradingIcon && <div className="choice-grading-icon">{gradingIcon}</div>}
-      <div className="choice-label font-medium">{label}</div>
-      {showResults && (
-        <div className="choice-percentage text-sm text-gray-700">
-          {`${percentage}%`}
-        </div>
-      )}
-    </div>
-    <div className="flex-1" />
-    {/* Preview value always */}
-    {previewValue && (
-      <div className="choice-preview-container ml-4 flex items-center">
-        <div className="choice-preview-number">{previewNumber}</div>
-        <div className="choice-preview-bone ml-1">{previewBone}</div>
-      </div>
-    )}
-  </div>
+	{/* Grading icon, title, and percentage on the left */}
+	<div className="flex items-center space-x-2">
+	  {gradingIcon && <div className="choice-grading-icon">{gradingIcon}</div>}
+	  <div className="choice-label font-medium">{label}</div>
+	  {/*
+	  {showResults && (
+		<div className="choice-percentage text-sm text-gray-700">
+		  {`${percentage}%`}
+		</div>
+	  )}
+	  */}
+	</div>
+	<div className="flex-1" />
+	{/* Preview value always */}
+	{previewValue && (
+	  <div className="choice-preview-container ml-4 flex items-center">
+		<div className="choice-preview-number">{previewNumber}</div>
+		<div className="choice-preview-bone ml-1">{previewBone}</div>
+	  </div>
+	)}
+	</div>
 	</div>
   );
 }

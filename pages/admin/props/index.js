@@ -78,12 +78,7 @@ export default function AdminPropsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  if (status === 'loading') {
-    return <div className="container mx-auto px-4 py-6">Loading...</div>;
-  }
-  if (!session) {
-    return <div className="container mx-auto px-4 py-6">Not authorized</div>;
-  }
+  const isAuthLoading = status === 'loading';
 
   const statusOptions = useMemo(() => {
     const vals = new Set();
@@ -157,6 +152,14 @@ export default function AdminPropsPage() {
 
   return (
     <div className="container mx-auto px-4 py-6">
+      {isAuthLoading && (
+        <div>Loading...</div>
+      )}
+      {!isAuthLoading && !session && (
+        <div>Not authorized</div>
+      )}
+      {!isAuthLoading && session && (
+        <>
       <h1 className="text-2xl font-bold mb-4">Props Management</h1>
 
       <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -314,6 +317,8 @@ export default function AdminPropsPage() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }

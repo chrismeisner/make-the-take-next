@@ -1,6 +1,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 export default function AdminEventDetail() {
   const { data: session, status } = useSession();
@@ -9,6 +10,7 @@ export default function AdminEventDetail() {
   const [event, setEvent] = useState(null);
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(false);
+  
 
   useEffect(() => {
     if (status !== 'authenticated' || !eventId) return;
@@ -67,6 +69,14 @@ export default function AdminEventDetail() {
         <dd>{event.eventLeague}</dd>
       </dl>
 
+      <div className="mt-4">
+        <Link href={`/admin/events/${eventId}/create-prop`}>
+          <button className="px-2 py-1 text-green-600 hover:underline">
+            New prop for this event
+          </button>
+        </Link>
+      </div>
+
       <div className="mt-6">
         <h2 className="text-xl font-semibold mb-2">Props for this event</h2>
         {loadingProps ? (
@@ -79,6 +89,7 @@ export default function AdminEventDetail() {
                 <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Short</th>
                 <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Summary</th>
                 <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Status</th>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -88,6 +99,14 @@ export default function AdminEventDetail() {
                   <td className="px-2 py-1 text-sm">{p.propShort}</td>
                   <td className="px-2 py-1 text-sm">{p.propSummary}</td>
                   <td className="px-2 py-1 text-sm">{p.propStatus}</td>
+                  <td className="px-2 py-1 text-sm">
+                    <Link href={`/admin/props/${p.airtableId}`}>
+                      <button className="px-2 py-1 text-blue-600 hover:underline">Edit</button>
+                    </Link>
+                    <Link href={`/admin/gradeProps?ids=${p.airtableId}`}>
+                      <button className="ml-2 px-2 py-1 text-blue-600 hover:underline">Grade</button>
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -15,6 +15,7 @@ import PropDetailPage from '../props/[propID]';
 import InlineCardProgressFooter from '../../components/InlineCardProgressFooter';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
+import Link from 'next/link';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -279,6 +280,17 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           ]}
         />
         <PageContainer>
+          {packData.packCreatorID && (
+            <p className="text-sm text-gray-600 mb-2">
+              Creator: {" "}
+              <Link
+                href={`/profile/${encodeURIComponent(packData.packCreatorID)}`}
+                className="text-blue-600 underline"
+              >
+                {packData.packCreatorUsername || packData.packCreatorID}
+              </Link>
+            </p>
+          )}
           <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
             <PropDetailPage
               propData={superProp}

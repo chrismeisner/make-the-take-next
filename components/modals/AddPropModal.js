@@ -7,8 +7,8 @@ export default function AddPropModal({ isOpen, onClose, onPropsAdded, initialLea
   const [loadingProps, setLoadingProps] = useState(false);
   const [leagueFilter, setLeagueFilter] = useState(initialLeague || '');
   const [leagues, setLeagues] = useState([]);
-  // Default to no date filter so users see more options initially
-  const [filterDate, setFilterDate] = useState('');
+  // Default Event Day filter to today (YYYY-MM-DD)
+  const [filterDate, setFilterDate] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [searchTerm, setSearchTerm] = useState('');
   const [sortKey, setSortKey] = useState('eventTime'); // 'eventTime' | 'propShort' | 'eventTitle'
   const [sortDir, setSortDir] = useState('asc'); // 'asc' | 'desc'
@@ -48,6 +48,8 @@ export default function AddPropModal({ isOpen, onClose, onPropsAdded, initialLea
 
   useEffect(() => {
     if (!isOpen) return;
+    // Reset Event Day to today each time the modal opens
+    setFilterDate(new Date().toLocaleDateString('en-CA'));
     loadProps({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, viewName]);
@@ -249,7 +251,17 @@ export default function AddPropModal({ isOpen, onClose, onPropsAdded, initialLea
                   <th className="px-4 py-2 border">Event</th>
                   <th className="px-4 py-2 border">League</th>
                   <th className="px-4 py-2 border">Event Time</th>
-                  <th className="px-4 py-2 border">Select</th>
+                  <th className="px-4 py-2 border text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <span>Select</span>
+                      <input
+                        type="checkbox"
+                        checked={allSelectableVisible}
+                        onChange={handleSelectAllVisible}
+                        aria-label="Select all visible props"
+                      />
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>

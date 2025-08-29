@@ -27,6 +27,7 @@ export default function Layout({ children }) {
         { label: "Contests", href: "/admin/contests" },
         { label: "Packs", href: "/admin/packs" },
         { label: "Props", href: "/admin/props" },
+        { label: "API Tester", href: "/admin/api-tester" },
       ],
     },
   ];
@@ -50,7 +51,7 @@ export default function Layout({ children }) {
       {session?.user && isSuperAdmin ? (
         <SidebarNav items={sidebarItems} collapsed={collapsed} setCollapsed={setCollapsed} />
       ) : null}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 pt-12">
         <Header collapsed={collapsed} setCollapsed={setCollapsed} sidebarItems={sidebarItems} />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}

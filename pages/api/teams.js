@@ -31,8 +31,11 @@ export default async function handler(req, res) {
 		teamID: fields.teamID || record.id,
 		teamName: fields.teamName || "Unknown Team",
 		teamNameFull: fields.teamNameFull || (fields.teamName || "Unknown Team"),
+		teamAbbreviation: fields.teamAbbreviation || "",
+		teamLeague: fields.teamLeague || "",
 		teamType: fields.teamType || "",
-		teamLogo
+		teamLogo,
+		teamLogoURL: fields.teamLogoURL || null
 	  };
 	});
 	

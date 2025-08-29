@@ -29,6 +29,10 @@ export default async function handler(req, res) {
           eventTitle: ev.fields.eventTitle || '',
           eventTime: ev.fields.eventTime || null,
           eventLeague: ev.fields.eventLeague || '',
+          homeTeamAbbreviation: ev.fields.homeTeamAbbreviation || '',
+          awayTeamAbbreviation: ev.fields.awayTeamAbbreviation || '',
+          tankGameID: ev.fields.tankGameID || '',
+          espnGameID: ev.fields.espnGameID || '',
         };
       } catch {}
     }
@@ -37,6 +41,9 @@ export default async function handler(req, res) {
       propID: f.propID || rec.id,
       propShort: f.propShort || '',
       propSummary: f.propSummary || '',
+      gradingMode: f.gradingMode ? String(f.gradingMode).toLowerCase() : 'manual',
+      formulaKey: f.formulaKey || '',
+      formulaParams: (typeof f.formulaParams === 'string') ? f.formulaParams : (f.formulaParams ? JSON.stringify(f.formulaParams) : ''),
       PropSideAShort: f.PropSideAShort || '',
       PropSideATake: f.PropSideATake || '',
       PropSideAMoneyline: f.PropSideAMoneyline ?? null,
@@ -50,6 +57,8 @@ export default async function handler(req, res) {
       propOpenTime: f.propOpenTime || null,
       propCloseTime: f.propCloseTime || null,
       propCoverSource: f.propCoverSource || 'event',
+      propESPNLookup: f.propESPNLookup || '',
+      propLeagueLookup: f.propLeagueLookup || '',
       event,
     };
     return res.status(200).json({ success: true, prop });

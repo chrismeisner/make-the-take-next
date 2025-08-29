@@ -74,7 +74,14 @@ export default async function handler(req, res) {
 
 	// 4) Create new take
 	const packLinks = propRec.fields.Packs || [];
-	console.log("📦📝 [api/takeCombined] Submitting combined take:", { propID, propSide, phone: e164Phone, code, packLinks, teams, takePopularity });
+	// Extract ref from referer if present
+	const refHeader = req.headers.referer || req.headers.referrer || "";
+	let takeRef = null;
+	try {
+	  const refUrl = new URL(refHeader);
+	  takeRef = refUrl.searchParams.get("ref");
+	} catch {}
+	console.log("📦📝 [api/takeCombined] Submitting combined take:", { propID, propSide, phone: e164Phone, code, packLinks, teams, takePopularity, takeRef });
 	const created = await base("Takes").create([
 	  {
 		fields: {
@@ -85,6 +92,7 @@ export default async function handler(req, res) {
 		  takeLivePopularity: takePopularity,
 		  // Link the same teams to the Take record
 		  Teams: teams,
+		  ...(takeRef ? { takeRef } : {}),
 		},
 	  },
 	]);

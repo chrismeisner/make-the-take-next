@@ -1,399 +1,101 @@
 // File: /pages/index.js
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect } from "react";
+import Head from "next/head";
 import { useRouter } from "next/router";
 import Toast from "../components/Toast";
-import { useSession, signIn, getSession } from "next-auth/react";
-import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useModal } from "../contexts/ModalContext";
-// import PackPreview from "../components/PackPreview"; // removed with Active Pack Drops section
+import PackExplorer from "../components/PackExplorer";
+import PageContainer from "../components/PageContainer";
 
-export default function LandingPage() {
+export default function LandingPage({ packsData = [] }) {
   const router = useRouter();
   const { data: session } = useSession();
   const { openModal } = useModal();
   const [toastMessage, setToastMessage] = useState("");
-  // const hasFetchedPacks = useRef(false); // removed with Active Pack Drops section
+
   useEffect(() => {
-    // Show a success toast when coming from logout
     if (router.query.logout === "1") {
       setToastMessage("Logged out successfully");
     }
   }, [router.query.logout]);
 
-  // Show welcome modal once per session for logged-in users
   useEffect(() => {
-    if (!session?.user) return;
     try {
-      const storageKey = "welcomeModalShown_v1";
-      const alreadyShown = sessionStorage.getItem(storageKey);
-      if (!alreadyShown) {
-        openModal("welcome", { contestHref: "/" });
-        sessionStorage.setItem(storageKey, "1");
-      }
-    } catch (_) {
-      // safe no-op if storage is unavailable
-    }
-  }, [session, openModal]);
-
-  // States for login flow (when not logged in)
-  const [phone, setPhone] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [step, setStep] = useState("phone"); // "phone" or "code"
-  const [code, setCode] = useState("");
-
-  // Removed favorite team selection from signup flow
-  const [agreed, setAgreed] = useState(true); // Fix for "agreed is not defined" error
-
-  // Removed Active Pack Drops on dashboard
-
-  // State for contests (for logged-in users)
-  const [activeContest, setActiveContest] = useState(null);
-  const [activeContestPacks, setActiveContestPacks] = useState([]);
-  const [loadingContests, setLoadingContests] = useState(true);
-
-  // State for user takes (for logged-in users)
-  const [userTakes, setUserTakes] = useState([]);
-  // Removed Active Pack Drops sorting/filter state and helpers
-
-  // Removed Active Pack Drops derived lists
-
-  // Helper: compute countdown like "Xd Xh Xm Xs" or "Ended!"
-  function computeContestTimeLeft(endTime) {
-    if (!endTime) return "";
-    const now = Date.now();
-    const end = new Date(endTime).getTime();
-    const diff = end - now;
-    if (diff <= 0) return "Ended!";
-    const secs = Math.floor(diff / 1000) % 60;
-    const mins = Math.floor(diff / (1000 * 60)) % 60;
-    const hrs = Math.floor(diff / (1000 * 60 * 60)) % 24;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    let result = "";
-    if (days > 0) result += `${days}d `;
-    if (hrs > 0 || days > 0) result += `${hrs}h `;
-    if (mins > 0 || hrs > 0 || days > 0) result += `${mins}m `;
-    result += `${secs}s`;
-    return result.trim();
-  }
-
-  // Removed favorite team fetching
-
-  // Removed Active Pack Drops fetching
-
-  // Fetch contests if user is logged in
-  useEffect(() => {
-    if (!session?.user) return;
-    let isActive = true;
-    async function fetchContests() {
-      setLoadingContests(true);
-      try {
-        const res = await fetch('/api/contests');
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.contests)) {
-          const openContests = data.contests.filter((c) => String(c.contestStatus).toLowerCase() === 'open');
-          // sort by soonest end time first
-          openContests.sort((a, b) => {
-            const ta = a.contestEndTime ? new Date(a.contestEndTime).getTime() : Infinity;
-            const tb = b.contestEndTime ? new Date(b.contestEndTime).getTime() : Infinity;
-            return ta - tb;
-          });
-          if (isActive) setActiveContest(openContests[0] || null);
-        } else if (isActive) {
-          setActiveContest(null);
-        }
-      } catch (err) {
-        if (isActive) setActiveContest(null);
-      } finally {
-        if (isActive) setLoadingContests(false);
-      }
-    }
-    fetchContests();
-    return () => { isActive = false; };
-  }, [session]);
-
-  // Fetch packs for the active contest (for dashboard card listing)
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchActiveContestPacks() {
-      setActiveContestPacks([]);
-      const id = activeContest?.contestID;
-      if (!id) return;
-      try {
-        const res = await fetch(`/api/contests/${encodeURIComponent(id)}`);
-        const data = await res.json();
-        if (isMounted && res.ok && data.success && data.contest?.packs) {
-          setActiveContestPacks(Array.isArray(data.contest.packs) ? data.contest.packs : []);
-        }
-      } catch (_) {
-        if (isMounted) setActiveContestPacks([]);
-      }
-    }
-    fetchActiveContestPacks();
-    return () => { isMounted = false; };
-  }, [activeContest?.contestID]);
-
-  // Fetch user takes if logged in
-  useEffect(() => {
-	if (session?.user?.profileID) {
-	  async function fetchUserTakes() {
-		try {
-		  const res = await fetch(`/api/userTakes?profileID=${session.user.profileID}`);
-		  const data = await res.json();
-		  if (data.success) {
-			setUserTakes(data.takes);
-			console.log("✅ [LandingPage] User takes:", data.takes);
-		  } else {
-			console.error("❌ [LandingPage] Error fetching user takes:", data.error);
-		  }
-		} catch (err) {
-		  console.error("💥 [LandingPage] Error fetching user takes:", err);
-		}
-	  }
-	  fetchUserTakes();
-	}
-  }, [session]);
-
-  async function handlePhoneSubmit(e) {
-	e.preventDefault();
-	setError("");
-	setMessage("");
-	console.log("📞 [handlePhoneSubmit] Submitting phone:", phone);
-
-	if (!phone) {
-	  setError("Please enter your mobile number.");
-	  return;
-	}
-
-	try {
-	  // Normalize phone to E.164
-	  const numeric = phone.replace(/\D/g, "");
-	  let formattedPhone;
-	  if (numeric.length === 10) {
-		formattedPhone = `+1${numeric}`;
-	  } else if (numeric.length === 11 && numeric.startsWith("1")) {
-		formattedPhone = `+${numeric}`;
-	  } else if (phone.startsWith("+")) {
-		formattedPhone = phone;
-	  } else {
-		formattedPhone = phone;
-	  }
-	  console.log("🔄 [handlePhoneSubmit] Normalized phone:", formattedPhone);
-
-	  const res = await fetch("/api/sendCode", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ phone: formattedPhone }),
-	  });
-	  const data = await res.json();
-	  if (!data.success) {
-		console.error("❌ [handlePhoneSubmit] Error response:", data);
-		setError(data.error || "Failed to send verification code.");
-	  } else {
-		console.log("✅ [handlePhoneSubmit] Verification code sent successfully");
-		setMessage("Verification code sent. Please check your SMS.");
-		setStep("code");
-	  }
-	} catch (err) {
-	  console.error("💥 [handlePhoneSubmit] Exception:", err);
-	  setError("Error sending verification code. Please try again later.");
-	}
-  }
-
-  async function handleCodeSubmit(e) {
-	e.preventDefault();
-	setError("");
-	setMessage("");
-	console.log("🔑 [handleCodeSubmit] Submitting verification code:", code);
-
-	if (!code) {
-	  setError("Please enter the verification code.");
-	  return;
-	}
-	try {
-	  const res = await fetch("/api/verifyCode", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ phone, code }),
-	  });
-	  const data = await res.json();
-	  console.log("📥 [handleCodeSubmit] verifyCode response:", data);
-	  if (!data.success) {
-		console.error("❌ [handleCodeSubmit] Verification failed:", data);
-		setError(data.error || "Verification failed.");
-	  } else {
-		console.log("✅ [handleCodeSubmit] Verification succeeded");
-        const profileRes = await fetch("/api/createProfile", {
-		  method: "POST",
-		  headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone }),
-		});
-		let profileData;
-		try {
-		  profileData = await profileRes.json();
-		} catch (parseError) {
-		  console.error("💥 [handleCodeSubmit] Error parsing profile response:", parseError);
-		  setError("Server returned invalid response for profile creation.");
-		  return;
-		}
-		console.log("📥 [handleCodeSubmit] createProfile response:", profileData);
-		if (!profileData.success) {
-		  console.error("❌ [handleCodeSubmit] Failed to create/update profile:", profileData);
-		  setError(profileData.error || "Failed to create/update profile.");
-		} else {
-		  console.log("✅ [handleCodeSubmit] Profile updated/created successfully");
-		  setMessage("Profile updated and verified successfully!");
-		  // Sign in the user to update the session.
-		  await signIn("credentials", { phone, code, redirect: false });
-          console.log(`➡️ Redirecting to dashboard`);
-          router.push(`/`);
-          // Welcome SMS via team removed from signup flow
-		}
-	  }
-	} catch (err) {
-	  console.error("💥 [handleCodeSubmit] Exception:", err);
-	  setError("Error verifying code. Please try again later.");
-	}
-  }
-
-  // Generic entry title (team selection removed)
-  const entryTitle = "Receive Pack Challenge SMS notifications";
-
-  // Revised description with dummy legal links.
-  const description = (
-	<>
-	  Enter your phone number to receive Pack Challenge SMS notifications for your chance to win!
-	  Each challenge gives you a chance to showcase your predictions and win exciting prizes determined by us.
-	  No purchase necessary. By signing up, you agree to our{" "}
-	  <a href="/terms" className="underline text-blue-500">
-		Terms of Service
-	  </a>{" "}
-	  and{" "}
-	  <a href="/privacy" className="underline text-blue-500">
-		Privacy Policy
-	  </a>.
-	</>
-  );
-
-  const consentText = "Yes, sign me up for SMS updates";
+      openModal("welcome", { contestHref: "/" });
+    } catch (_) {}
+  }, [openModal]);
 
   return (
     <div className="bg-white text-gray-900">
+      <Head>
+        <title>Packs | Make the Take</title>
+      </Head>
       <div className="p-4 w-full max-w-4xl mx-auto">
         {toastMessage && (
           <Toast message={toastMessage} onClose={() => setToastMessage("")} />
         )}
-        {session?.user ? (
-          <>
-            {/* Active Contest Section */}
-            {!loadingContests && activeContest && (
-              <div className="mb-10">
-                <h2 className="text-2xl font-bold mb-4 text-center">Active Contest</h2>
-                {activeContest.contestID ? (
-                  <Link
-                    href={`/contests/${activeContest.contestID}`}
-                    className="block group"
-                  >
-                    <div className="flex flex-col sm:flex-row gap-4 items-stretch border rounded-md shadow-sm overflow-hidden group-hover:shadow-md transition-shadow">
-                      {/* Cover */}
-                      <div className="w-full sm:w-1/3 aspect-square bg-gray-900">
-                        {activeContest.contestCover?.length ? (
-                          <img
-                            src={activeContest.contestCover[0].url}
-                            alt={activeContest.contestTitle}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-800" />
-                        )}
-                      </div>
-                      {/* Content */}
-                      <div className="flex-1 p-4 flex flex-col">
-                        <h3 className="text-xl font-semibold mb-1">{activeContest.contestTitle || 'Untitled Contest'}</h3>
-                        {activeContest.contestSummary && (
-                          <p className="text-sm text-gray-700 mb-2">{activeContest.contestSummary}</p>
-                        )}
-                        <div className="flex items-center justify-between mb-3">
-                          {activeContest.contestPrize ? (
-                            <p className="text-sm text-green-700 font-medium">Prize: {activeContest.contestPrize}</p>
-                          ) : <span />}
-                          {activeContest.contestEndTime && (
-                            <p className="text-sm text-red-600 font-semibold">
-                              {computeContestTimeLeft(activeContest.contestEndTime)}
-                            </p>
-                          )}
-                        </div>
-                        {activeContestPacks.length > 0 && (
-                          <div className="mt-1">
-                            <p className="text-sm font-medium mb-1">Packs</p>
-                            <div className="flex flex-wrap gap-2">
-                              {activeContestPacks.map((p) => (
-                                <span key={p.packURL || p.airtableId} className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
-                                  {p.packTitle}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                ) : (
-                  <div className="flex flex-col sm:flex-row gap-4 items-stretch border rounded-md shadow-sm overflow-hidden">
-                  {/* Cover */}
-                  <div className="w-full sm:w-1/3 aspect-square bg-gray-900">
-                    {activeContest.contestCover?.length ? (
-                        <img
-                          src={activeContest.contestCover[0].url}
-                          alt={activeContest.contestTitle}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gray-800" />
-                      )}
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 p-4 flex flex-col">
-                    <h3 className="text-xl font-semibold mb-1">{activeContest.contestTitle || 'Untitled Contest'}</h3>
-                    {activeContest.contestSummary && (
-                      <p className="text-sm text-gray-700 mb-2">{activeContest.contestSummary}</p>
-                    )}
-                    <div className="flex items-center justify-between mb-3">
-                      {activeContest.contestPrize ? (
-                        <p className="text-sm text-green-700 font-medium">Prize: {activeContest.contestPrize}</p>
-                      ) : <span />}
-                      {activeContest.contestEndTime && (
-                        <p className="text-sm text-red-600 font-semibold">
-                          {computeContestTimeLeft(activeContest.contestEndTime)}
-                        </p>
-                      )}
-                    </div>
-                    {activeContestPacks.length > 0 && (
-                      <div className="mt-1">
-                        <p className="text-sm font-medium mb-1">Packs</p>
-                        <div className="flex flex-wrap gap-2">
-                          {activeContestPacks.map((p) => (
-                            <span key={p.packURL || p.airtableId} className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
-                              {p.packTitle}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                )}
-              </div>
-            )}
-            {/* Active Pack Drops section removed; visit /packs for the full explorer */}
-          </>
-        ) : (
-          <div className="text-center">
+        {!session?.user && (
+          <div className="text-center mb-6">
             <p className="mb-2">You are not logged in.</p>
             <a href="/login" className="text-blue-600 underline">Go to login</a>
           </div>
         )}
-	  </div>
-	</div>
+        <PageContainer>
+          <h1 className="text-2xl font-bold mb-4">All Packs</h1>
+          <PackExplorer packs={packsData} />
+        </PageContainer>
+      </div>
+    </div>
   );
+}
+
+export async function getServerSideProps(context) {
+  const proto = context.req.headers["x-forwarded-proto"] || "http";
+  const host =
+    context.req.headers["x-forwarded-host"] || context.req.headers.host;
+  const origin = process.env.SITE_URL || `${proto}://${host}`;
+
+  try {
+    const res = await fetch(`${origin}/api/packs`, {
+      headers: {
+        cookie: context.req.headers.cookie || "",
+      },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to load packs");
+    }
+    // Hide packs with status: draft, archived, graded
+    const allPacks = Array.isArray(data.packs) ? data.packs : [];
+    const filteredPacks = allPacks.filter((p) => {
+      const status = String(p?.packStatus || '').toLowerCase();
+      return status !== 'draft' && status !== 'archived' && status !== 'graded';
+    });
+    // Sort: open/active first, then by packCloseTime ascending (soonest closing first).
+    // Packs without close time go last within their status grouping.
+    const statusRank = (p) => {
+      const s = String(p?.packStatus || '').toLowerCase();
+      if (s === 'open' || s === 'active') return 0;
+      if (s === 'coming up') return 1;
+      if (s === 'closed') return 2;
+      if (s === 'completed') return 3;
+      if (s === 'graded') return 4;
+      return 5;
+    };
+    const getCloseMs = (p) => {
+      const t = p?.packCloseTime;
+      const ms = t ? new Date(t).getTime() : NaN;
+      return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+    };
+    const sorted = filteredPacks.slice().sort((a, b) => {
+      const sr = statusRank(a) - statusRank(b);
+      if (sr !== 0) return sr;
+      return getCloseMs(a) - getCloseMs(b);
+    });
+    return { props: { packsData: sorted } };
+  } catch (error) {
+    console.error("[HomePage] Error fetching packs:", error);
+    return { props: { packsData: [] } };
+  }
 }

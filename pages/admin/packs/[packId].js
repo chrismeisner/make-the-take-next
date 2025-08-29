@@ -33,7 +33,15 @@ export default function AdminPackDetail() {
 
   return (
     <div className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4">{pack.packTitle}</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">{pack.packTitle}</h1>
+        <button
+          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          onClick={() => router.push(`/admin/packs/${pack.airtableId}/edit`)}
+        >
+          Edit
+        </button>
+      </div>
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <dt className="font-medium">ID</dt>

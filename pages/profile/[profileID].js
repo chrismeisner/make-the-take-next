@@ -21,6 +21,9 @@ export default function ProfilePage() {
   const [tokensEarned, setTokensEarned] = useState(0);
   const [tokensSpent, setTokensSpent] = useState(0);
   const [tokensBalance, setTokensBalance] = useState(0);
+  const [creatorPacks, setCreatorPacks] = useState([]);
+  const [creatorLeaderboard, setCreatorLeaderboard] = useState([]);
+  const [creatorLeaderboardUpdatedAt, setCreatorLeaderboardUpdatedAt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -29,7 +32,7 @@ export default function ProfilePage() {
 	if (!profileID) return;
 	async function fetchProfile() {
 	  try {
-		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
+		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}?includeExchanges=1`);
 		const data = await res.json();
 		if (data.success) {
 		  setProfile(data.profile);
@@ -57,6 +60,21 @@ export default function ProfilePage() {
           setTokensEarned(Number.isFinite(data.tokensEarned) ? data.tokensEarned : 0);
           setTokensSpent(Number.isFinite(data.tokensSpent) ? data.tokensSpent : 0);
           setTokensBalance(Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0);
+          // Cache tokensBalance for header consumers
+          try {
+            const key = `mt_tokensBalance:${data?.profile?.profileID || profileID}`;
+            if (typeof window !== 'undefined' && key) {
+              localStorage.setItem(key, String(Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0));
+              if (typeof window.CustomEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('mt_tokensBalanceUpdated', {
+                  detail: { profileID: data?.profile?.profileID || profileID, tokensBalance: Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0 }
+                }));
+              }
+            }
+          } catch {}
+          setCreatorPacks(Array.isArray(data.creatorPacks) ? data.creatorPacks : []);
+          setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
+          setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
@@ -105,9 +123,17 @@ export default function ProfilePage() {
     <PageContainer>
 	  {/* Profile Header */}
 	  <div className="flex items-center justify-between mb-4">
-		<h2 className="text-2xl font-bold">
-		  {isOwnProfile ? "Your Profile" : "User Profile"}
-		</h2>
+		<div className="flex items-center gap-3">
+		  <h2 className="text-2xl font-bold">
+			{isOwnProfile ? "Your Profile" : "User Profile"}
+		  </h2>
+		  {profile?.isCreator && (
+			<span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+			  <span role="img" aria-label="sparkles">✨</span>
+			  Influencer
+			</span>
+		  )}
+		</div>
 		{isOwnProfile && (
 		  <button
 			onClick={() => signOut({ callbackUrl: "/?logout=1" })}
@@ -184,6 +210,86 @@ export default function ProfilePage() {
           </div>
         </div>
 	  </div>
+
+	  {/* Creator Packs */}
+	  {Array.isArray(creatorPacks) && creatorPacks.length > 0 && (
+	    <div className="mt-8">
+	      <h3 className="text-xl font-bold mb-2">Packs</h3>
+	      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+	        {creatorPacks.map((p) => (
+	          <Link key={p.packID} href={`/packs/${encodeURIComponent(p.packURL || p.packID)}`} className="block border rounded overflow-hidden bg-white hover:shadow">
+	            <div className="w-full aspect-square relative bg-gray-100">
+	              {/* eslint-disable-next-line @next/next/no-img-element */}
+	              {p.packCover ? (
+	                <img src={p.packCover} alt="Pack cover" className="absolute inset-0 w-full h-full object-cover" />
+	              ) : (
+	                <div className="absolute inset-0 w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
+	              )}
+	            </div>
+	            <div className="p-3">
+	              <div className="font-medium truncate">{p.packTitle || p.packURL || 'Untitled Pack'}</div>
+	              <div className="text-xs text-gray-600 mt-1">{p.packStatus || ''}</div>
+	              {p.eventTime && (
+	                <div className="text-xs text-gray-600">{new Date(p.eventTime).toLocaleString()}</div>
+	              )}
+	            </div>
+	          </Link>
+	        ))}
+	      </div>
+	    </div>
+	  )}
+
+	  {/* Creator All-time Leaderboard */}
+	  {Array.isArray(creatorLeaderboard) && creatorLeaderboard.length > 0 && (
+	    <div className="mt-8">
+	      <h3 className="text-xl font-bold mb-2">All-time leaderboard (their packs)</h3>
+	      <div className="flex items-center justify-between mb-2">
+	        {creatorLeaderboardUpdatedAt ? (
+	          <div className="text-xs text-gray-600">Last updated: {new Date(creatorLeaderboardUpdatedAt).toLocaleString()}</div>
+	        ) : <div />}
+	        <button
+	          type="button"
+	          className="text-xs text-blue-600 underline"
+	          onClick={async () => {
+	            try {
+	              const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}?refresh=1`);
+	              const data = await res.json();
+	              if (data.success) {
+	                setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
+	                setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
+	              }
+	            } catch {}
+	          }}
+	        >
+	          Refresh now
+	        </button>
+	      </div>
+	      <div className="overflow-x-auto">
+	        <table className="min-w-full bg-white">
+	          <thead>
+	            <tr>
+	              <th className="px-4 py-2 text-left">Rank</th>
+	              <th className="px-4 py-2 text-left">User</th>
+	              <th className="px-4 py-2 text-left">Bones</th>
+	              <th className="px-4 py-2 text-left">W-L-P</th>
+	              <th className="px-4 py-2 text-left">Takes</th>
+	            </tr>
+	          </thead>
+	          <tbody>
+	            {creatorLeaderboard.map((row, idx) => (
+	              <tr key={row.phone || idx}>
+	                <td className="border px-4 py-2">{idx + 1}</td>
+	                <td className="border px-4 py-2">{row.phone}</td>
+	                <td className="border px-4 py-2">{Math.round(row.points)}</td>
+	                <td className="border px-4 py-2">{row.won}-{row.lost}-{row.pushed}</td>
+	                <td className="border px-4 py-2">{row.takes}</td>
+	              </tr>
+	            ))}
+	          </tbody>
+	        </table>
+	      </div>
+	    </div>
+	  )}
 
       
 

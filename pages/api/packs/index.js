@@ -16,8 +16,8 @@ async function fetchAllPacks(viewName) {
   if (viewName && typeof viewName === "string") {
     selectOptions.view = viewName;
   } else {
-    // only include packs with status 'active' or 'graded'
-    selectOptions.filterByFormula = `OR({packStatus}='active', {packStatus}='graded')`;
+    // include active, graded, and coming-soon (case-insensitive)
+    selectOptions.filterByFormula = `OR(LOWER({packStatus})='active', LOWER({packStatus})='graded', LOWER({packStatus})='coming-soon')`;
   }
 
   const packRecords = await base("Packs").select(selectOptions).all();
@@ -47,6 +47,8 @@ async function fetchAllPacks(viewName) {
 	  packType: fields.packType || "unknown",
 	  packLeague: fields.packLeague || null,
 	  packStatus: fields.packStatus || "Unknown",
+	  packOpenTime: fields.packOpenTime || null,
+	  packCloseTime: fields.packCloseTime || null,
 	  eventTime: fields.eventTime || null,
 	  createdAt: record._rawJson.createdTime,
 	  propsCount: (fields.Props || []).length,
@@ -112,6 +114,20 @@ async function attachTotalTakeCount(packsData) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "DELETE") {
+    try {
+      const packId = req.query.packId || req.body?.packId;
+      if (!packId || typeof packId !== 'string' || !packId.startsWith('rec')) {
+        return res.status(400).json({ success: false, error: 'Missing or invalid packId' });
+      }
+      const deleted = await base('Packs').destroy([packId]);
+      return res.status(200).json({ success: true, deleted: deleted?.[0]?.id || packId });
+    } catch (error) {
+      console.error('[api/packs DELETE] Error =>', error);
+      const msg = error.message || 'Failed to delete pack';
+      return res.status(500).json({ success: false, error: msg });
+    }
+  }
   if (req.method === "PATCH") {
     // Update pack fields
     const { packId } = req.body;
@@ -126,8 +142,11 @@ export default async function handler(req, res) {
         packType,
         packLeague,
         packStatus,
+        packOpenTime,
+        packCloseTime,
         packCoverUrl,
         props,
+        events,
       } = req.body;
 
       const fields = {};
@@ -137,11 +156,17 @@ export default async function handler(req, res) {
       if (packType !== undefined) fields.packType = packType;
       if (packLeague !== undefined) fields.packLeague = packLeague;
       if (packStatus !== undefined) fields.packStatus = packStatus;
+      if (packOpenTime !== undefined) fields.packOpenTime = packOpenTime;
+      if (packCloseTime !== undefined) fields.packCloseTime = packCloseTime;
       if (packCoverUrl !== undefined && packCoverUrl) {
         fields.packCover = [{ url: packCoverUrl }];
       }
       if (Array.isArray(props)) {
         fields.Props = props;
+      }
+      if (Array.isArray(events)) {
+        // Expect array of Airtable record IDs
+        fields.Event = events;
       }
 
       if (Object.keys(fields).length === 0) {
@@ -160,12 +185,14 @@ export default async function handler(req, res) {
   }
   if (req.method === "POST") {
     try {
-      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, event, eventId, teams, packCoverUrl, props } = req.body;
+      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator } = req.body;
       if (!packTitle || !packURL) {
         return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
       }
       // Prepare fields for Airtable record
       const fields = { packTitle, packSummary, packURL, packType, packLeague, packStatus };
+      if (packOpenTime) fields.packOpenTime = packOpenTime;
+      if (packCloseTime) fields.packCloseTime = packCloseTime;
       // Link selected Props to this Pack
       if (Array.isArray(props) && props.length > 0) {
         fields.Props = props;
@@ -177,6 +204,9 @@ export default async function handler(req, res) {
       } else if (eventId && eventId.startsWith('rec')) {
         // Legacy: link to an existing Airtable Event record
         fields.Event = [eventId];
+      } else if (Array.isArray(events) && events.length > 0) {
+        // Multiple existing Event record IDs
+        fields.Event = events;
       }
       // Link selected Teams to this Pack
       if (Array.isArray(teams) && teams.length > 0) {
@@ -185,6 +215,10 @@ export default async function handler(req, res) {
       if (packCoverUrl) {
         // Attach cover image
         fields.packCover = [{ url: packCoverUrl }];
+      }
+      // Link selected Pack Creator (linked record to Profiles)
+      if (Array.isArray(packCreator) && packCreator.length > 0) {
+        fields.packCreator = packCreator;
       }
       const created = await base("Packs").create([{ fields }]);
       const record = created[0];

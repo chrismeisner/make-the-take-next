@@ -6,7 +6,9 @@ export default function AdminPacksPage() {
   const { data: session, status } = useSession();
   const [packs, setPacks] = useState([]);
   const [sortOrder, setSortOrder] = useState('desc');
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [hideGraded, setHideGraded] = useState(true);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -32,10 +34,29 @@ export default function AdminPacksPage() {
   }
   // Build status filter options from fetched packs
   const statusOptions = Array.from(new Set(packs.map(p => p.packStatus))).sort();
-  // Filter out packs by selected status
-  const filteredPacks = packs.filter(p => p.packStatus === statusFilter);
+  const selectOptions = ['all', ...statusOptions];
+  // Filter out packs by selected status (or show all)
+  const filteredPacks = statusFilter === 'all' ? packs : packs.filter(p => p.packStatus === statusFilter);
+  // Optionally hide graded packs
+  const visibilityFilteredPacks = hideGraded
+    ? filteredPacks.filter(p => String(p.packStatus || '').toLowerCase() !== 'graded')
+    : filteredPacks;
+  // Apply search filtering (title, url, or event title)
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchedPacks = normalizedQuery
+    ? filteredPacks.filter(p => {
+        const title = String(p.packTitle || '').toLowerCase();
+        const url = String(p.packURL || '').toLowerCase();
+        const eventTitle = String(p.eventTitle || '').toLowerCase();
+        return (
+          title.includes(normalizedQuery) ||
+          url.includes(normalizedQuery) ||
+          eventTitle.includes(normalizedQuery)
+        );
+      })
+    : visibilityFilteredPacks;
   // Sort filtered packs by createdAt
-  const sortedPacks = [...filteredPacks].sort((a, b) => {
+  const sortedPacks = [...searchedPacks].sort((a, b) => {
     const dateA = new Date(a.createdAt);
     const dateB = new Date(b.createdAt);
     return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
@@ -50,8 +71,10 @@ export default function AdminPacksPage() {
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
         >
-          {statusOptions.map(status => (
-            <option key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</option>
+          {selectOptions.map(status => (
+            <option key={status} value={status}>
+              {status === 'all' ? 'All Packs' : (status.charAt(0).toUpperCase() + status.slice(1))}
+            </option>
           ))}
         </select>
       </div>
@@ -72,6 +95,25 @@ export default function AdminPacksPage() {
           <option value="asc">Oldest First</option>
         </select>
       </div>
+      <div className="mb-4 flex items-center gap-4">
+        <label className="block text-sm font-medium text-gray-700">Search Packs</label>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by title, URL, or event"
+          className="mt-1 block w-80 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+        <label className="inline-flex items-center gap-2 text-sm text-gray-700 ml-4">
+          <input
+            type="checkbox"
+            checked={hideGraded}
+            onChange={e => setHideGraded(e.target.checked)}
+            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          Hide graded
+        </label>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full bg-white">
           <thead>
@@ -79,6 +121,8 @@ export default function AdminPacksPage() {
               <th className="px-4 py-2 border">Title</th>
               <th className="px-4 py-2 border">URL</th>
               <th className="px-4 py-2 border">Event</th>
+              <th className="px-4 py-2 border">Open Time</th>
+              <th className="px-4 py-2 border">Close Time</th>
               <th className="px-4 py-2 border">Status</th>
               <th className="px-4 py-2 border"># Props</th>
               <th className="px-4 py-2 border">Actions</th>
@@ -90,6 +134,8 @@ export default function AdminPacksPage() {
                 <td className="px-4 py-2 border">{pack.packTitle}</td>
                 <td className="px-4 py-2 border">{pack.packURL}</td>
                 <td className="px-4 py-2 border">{pack.eventTitle || '-'}</td>
+                <td className="px-4 py-2 border">{pack.packOpenTime ? new Date(pack.packOpenTime).toLocaleString() : '-'}</td>
+                <td className="px-4 py-2 border">{pack.packCloseTime ? new Date(pack.packCloseTime).toLocaleString() : '-'}</td>
                 <td className="px-4 py-2 border">{pack.packStatus}</td>
                 <td className="px-4 py-2 border">{pack.propsCount}</td>
                 <td className="px-4 py-2 border">
@@ -101,6 +147,9 @@ export default function AdminPacksPage() {
                   </Link>
                   <Link href={`/admin/grade/${pack.packURL}`}>
                     <button className="ml-2 px-2 py-1 text-purple-600 hover:underline">Grade</button>
+                  </Link>
+                  <Link href={`/admin/packs/${encodeURIComponent(pack.airtableId)}/create-prop`}>
+                    <button className="ml-2 px-2 py-1 text-indigo-600 hover:underline">Add prop</button>
                   </Link>
                 </td>
               </tr>

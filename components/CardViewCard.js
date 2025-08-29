@@ -34,7 +34,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     sideACount: prop.sideACount || 0,
     sideBCount: prop.sideBCount || 0,
   });
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [, setLastUpdated] = useState(null);
 
   const fetchPropCounts = async (force = false) => {
     try {
@@ -58,12 +58,15 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     fetchPropCounts();
   }, [prop.propID]);
 
-  // Compute percentages
+  // Compute percentages with Laplace smoothing (+1 to each side)
   const rawA = liveCounts.sideACount;
   const rawB = liveCounts.sideBCount;
+  const smoothedA = rawA + 1;
+  const smoothedB = rawB + 1;
+  const smoothedTotal = smoothedA + smoothedB;
+  const sideAPct = Math.round((smoothedA / smoothedTotal) * 100);
+  const sideBPct = 100 - sideAPct;
   const totalTakes = rawA + rawB;
-  const sideAPct = totalTakes === 0 ? 50 : Math.round((rawA / totalTakes) * 100);
-  const sideBPct = totalTakes === 0 ? 50 : 100 - sideAPct;
   const resultsRevealed = prop.propStatus !== "open" || Boolean(selected || alreadyTookSide);
   const readOnly = prop.propStatus !== "open";
   const { propSummary = "No summary provided", propShort, propResult = "" } = prop;
@@ -92,6 +95,40 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     }
   }
 
+  // V1 live score fetcher: when event has started, poll minimal score from our API
+  const [score, setScore] = useState(null);
+  const [scoreError, setScoreError] = useState(null);
+  useEffect(() => {
+    const league = prop.propLeagueLookup || packData.eventLeague;
+    const espnId = prop.propESPNLookup || packData.espnGameID;
+    const eventStartMs = prop.propEventTimeLookup ? new Date(prop.propEventTimeLookup).getTime() : null;
+    if (!league || !espnId || !eventStartMs) return;
+    const now = Date.now();
+    if (now < eventStartMs) return; // only fetch after event start
+    let isActive = true;
+    let timerId = null;
+    async function loadScore() {
+      try {
+        const res = await fetch(`/api/scores?league=${encodeURIComponent(league)}&event=${encodeURIComponent(espnId)}`);
+        const json = await res.json();
+        if (!isActive) return;
+        if (json && json.success) {
+          setScore({ status: json.status, home: json.home, away: json.away, lastUpdated: json.lastUpdated });
+          setScoreError(null);
+        } else {
+          setScoreError(json?.error || 'Error');
+        }
+      } catch (e) {
+        if (!isActive) return;
+        setScoreError('Network error');
+      }
+    }
+    // initial fetch and poll every 45s
+    loadScore();
+    timerId = setInterval(loadScore, 45000);
+    return () => { isActive = false; if (timerId) clearInterval(timerId); };
+  }, [prop.propLeagueLookup, packData.eventLeague, prop.propESPNLookup, packData.espnGameID, prop.propEventTimeLookup]);
+
   return (
     <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">
       {/* HEADER_HEIGHT: adjust this value (160px) to tweak status/title/overview block height */}
@@ -119,6 +156,20 @@ export default function CardViewCard({ prop, currentReceiptId }) {
           {/* Event date/time below title */}
           {eventDateTime && (
             <p className="text-sm text-gray-500 mb-2">{eventDateTime}</p>
+          )}
+          {/* Simple live score strip after event start */}
+          {score && score.home && score.away && (
+            <div className="text-sm text-gray-800 mb-2">
+              <span className="font-semibold">Score:</span>{' '}
+              <span>{score.away.abbreviation || score.away.name}: {score.away.score}</span>{' '}
+              <span className="mx-1">@</span>
+              <span>{score.home.abbreviation || score.home.name}: {score.home.score}</span>{' '}
+              {score.status && (
+                <span className="text-xs text-gray-500 ml-2">
+                  {score.status.shortDetail || score.status.detail || String(score.status.state).toUpperCase()}
+                </span>
+              )}
+            </div>
           )}
           {/* Countdown display if event is upcoming */}
           {eventTimeRaw && !countdown.isCompleted && (
@@ -177,25 +228,10 @@ export default function CardViewCard({ prop, currentReceiptId }) {
           Friend chose: <strong>{friendTake.side}</strong>
         </p>
       )}
-      <p className="text-xs text-gray-500">
-        Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : "–"}{" "}
-        <button onClick={() => fetchPropCounts(true)} className="underline ml-2">
-          Refresh
-        </button>
-      </p>
-      <p className="text-sm text-gray-700">
-        {totalTakes} {totalTakes === 1 ? "Take" : "Takes"} Made
-      </p>
+      <p className="mt-2 text-xs text-gray-500">{totalTakes} Takes Made</p>
+      {/* Commented out Takes Made counter per request */}
 
-      <div className="mt-1 text-sm flex items-center space-x-4">
-        {alreadyTookSide ? (
-          <button onClick={handleShare} className="text-blue-600 underline">
-            Share
-          </button>
-        ) : (
-          <span className="text-gray-600">Make The Take</span>
-        )}
-      </div>
+      {/* Removed Share link and "Make The Take" line per request */}
     </div>
   );
 } 

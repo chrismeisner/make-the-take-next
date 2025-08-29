@@ -4,10 +4,10 @@ import React, { useState, useEffect, useRef } from "react";
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/effect-cards';
-import 'swiper/css/pagination';
+// removed dot pagination CSS
 
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { EffectCards, Pagination } from 'swiper/modules';
+import { EffectCards, Mousewheel } from 'swiper/modules';
 import CardViewCard from "./CardViewCard";
 import InlineCardProgressFooter from "./InlineCardProgressFooter";
 import LeaderboardTable from "./LeaderboardTable";
@@ -44,9 +44,10 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   const { handleChoiceSelect } = usePackContext();
   const { openModal } = useModal();
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState('leaderboard');
+  const [activeTab, setActiveTab] = useState('content');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
+  const [currentSlide, setCurrentSlide] = useState(0);
   // SLIDE_HEIGHT_OFFSET: adjust this (in px) to extend slide container for pagination dots
   const SLIDE_HEIGHT_OFFSET = 64;
   console.log('[PackCarouselView] activity prop:', activity);
@@ -83,7 +84,8 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       }
       // Number keys select choice on current card
       if (e.key === '1' || e.key === '2') {
-        const idx = swiperRef.current?.activeIndex;
+        // Use realIndex to ignore duplicated slides created by loop mode
+        const idx = swiperRef.current?.realIndex;
         // Skip the cover slide at index 0
         if (typeof idx === 'number' && idx > 0 && idx <= packData.props.length) {
           const prop = packData.props[idx - 1];
@@ -226,13 +228,44 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     <>
       {/* Removed sticky footer; using inline footer below pagination */}
       <div className="p-4 overflow-x-visible pb-32 md:pb-24">
+        {/* Mobile-only hero above prop stack */}
+        <div className="block md:hidden px-4 sm:px-0 mb-4">
+          <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
+          <p className="text-gray-600">{packData.packSummary}</p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => openModal('sharePack', {
+                packTitle: packData.packTitle,
+                packSummary: packData.packSummary,
+                packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+              })}
+              className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+            >
+              Share this pack
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {/* Left column wrapper: details + tabs */}
-          <div className="flex flex-col space-y-6">
-            {/* Pack details header */}
-            <div className="px-4 sm:px-0">
+          <div className="order-2 md:order-1 flex flex-col space-y-6">
+            {/* Desktop hero (hidden on mobile) */}
+            <div className="hidden md:block px-4 sm:px-0">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => openModal('sharePack', {
+                    packTitle: packData.packTitle,
+                    packSummary: packData.packSummary,
+                    packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                  })}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+                >
+                  Share this pack
+                </button>
+              </div>
               {Array.isArray(packData.contests) && packData.contests.length > 0 && (
                 <div className="mt-2 text-sm text-gray-700">
                   <div className="font-medium">In contest{packData.contests.length > 1 ? 's' : ''}:</div>
@@ -256,24 +289,20 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                     Event: {packData.homeTeam?.teamNameFull} vs {packData.awayTeam?.teamNameFull} on {new Date(packData.eventTime).toLocaleString()}
                   </span>
                 )}
-                {packData.packCreatorID && <span>Creator: {packData.packCreatorID}</span>}
+                {packData.packCreatorID && (
+                  <span>
+                    Creator: {" "}
+                    <Link
+                      href={`/profile/${encodeURIComponent(packData.packCreatorID)}`}
+                      className="text-blue-600 underline"
+                    >
+                      {packData.packCreatorUsername || packData.packCreatorID}
+                    </Link>
+                  </span>
+                )}
               </div>
             </div>
-            {packData.homeTeam?.teamSlug && packData.awayTeam?.teamSlug && (
-              <p className="mt-2 text-sm px-4 sm:px-0">
-                Teams: {packData.homeTeam.teamNameFull} vs {packData.awayTeam.teamNameFull}
-              </p>
-            )}
-            {packData.homeTeam?.teamSlug && packData.awayTeam?.teamSlug && (
-              <div className="mt-2 text-sm px-4 sm:px-0 flex space-x-4">
-                <Link href={`/teams/${packData.homeTeam.teamSlug}`} className="text-blue-600 hover:underline">
-                  View {packData.homeTeam.teamNameFull} details
-                </Link>
-                <Link href={`/teams/${packData.awayTeam.teamSlug}`} className="text-blue-600 hover:underline">
-                  View {packData.awayTeam.teamNameFull} details
-                </Link>
-              </div>
-            )}
+            
             {session?.user && allReceipts.length > 0 && (
               <div className="px-4 sm:px-0 mt-4">
                 <span className="font-semibold">Your receipts:</span>
@@ -324,16 +353,22 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                   <button
-                    onClick={() => setActiveTab('leaderboard')}
-                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'leaderboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                    onClick={() => setActiveTab('content')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'content' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                   >
-                    Leaderboard
+                    Content
                   </button>
                   <button
                     onClick={() => setActiveTab('activity')}
                     className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                   >
-                    Activity
+                    Takes
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('leaderboard')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'leaderboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Leaderboard
                   </button>
                 </nav>
               </div>
@@ -348,25 +383,65 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                       </li>
                     ))}
                   </ul>
+                ) : activeTab === 'content' ? (
+                  Array.isArray(packData.contentData) && packData.contentData.length > 0 ? (
+                    <ul className="space-y-3">
+                      {packData.contentData.map((c) => (
+                        <li key={c.airtableId} className="text-sm flex items-start gap-3 border rounded-md bg-white shadow-sm p-3">
+                          {c.contentImage && (
+                            <img
+                              src={c.contentImage}
+                              alt={c.contentTitle || 'Content image'}
+                              className="w-16 h-16 object-cover rounded border border-gray-200 flex-shrink-0"
+                              loading="lazy"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <a href={c.contentURL} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-words">
+                              {c.contentTitle || c.contentURL}
+                            </a>
+                            {c.contentSource && (
+                              <span className="ml-2 text-gray-500">({c.contentSource})</span>
+                            )}
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              {c.spotify && (
+                                <a href={c.spotify} target="_blank" rel="noopener noreferrer" className="px-2 py-1 rounded-full bg-green-600 text-white text-xs hover:bg-green-700">Spotify</a>
+                              )}
+                              {c.apple && (
+                                <a href={c.apple} target="_blank" rel="noopener noreferrer" className="px-2 py-1 rounded-full bg-gray-800 text-white text-xs hover:bg-black">Apple</a>
+                              )}
+                              {c.youtube && (
+                                <a href={c.youtube} target="_blank" rel="noopener noreferrer" className="px-2 py-1 rounded-full bg-red-600 text-white text-xs hover:bg-red-700">YouTube</a>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-600">No content yet.</p>
+                  )
                 ) : null}
               </div>
             </div>
           </div>
           {/* Swiper and Inline Footer section (right column) */}
-          <div className="flex justify-center">
+          <div className="order-1 md:order-2 flex justify-center">
             <div className="w-full max-w-[520px] mx-auto overflow-visible">
               {/* Narrower wrapper for the card stack */}
               <div className="mx-auto max-w-[420px] overflow-visible">
                 <Swiper
                   initialSlide={initialSlide}
-                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); }}
+                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.realIndex || 0); }}
                   style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
-                  className="pb-20 sm:pb-8"
-                  modules={[EffectCards, Pagination]}
-                  pagination={{ clickable: true, type: 'bullets', el: '.pack-pagination' }}
+                  className="pb-24 sm:pb-12"
+                  modules={[EffectCards, Mousewheel]}
+                  loop={true}
                   effect="cards"
                   grabCursor={true}
+                  mousewheel={{ forceToAxis: true, thresholdDelta: 10, sensitivity: 0.5 }}
                   cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
+                  onSlideChange={(swiper) => setCurrentSlide(swiper.realIndex || 0)}
                 >
                   {/* First slide: Pack Cover */}
                   <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
@@ -379,20 +454,26 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   ))}
                 </Swiper>
               </div>
-              <div className="mt-8 sm:mt-6 relative w-full flex items-center justify-center">
+              <div className="mt-10 sm:mt-8 relative w-full flex items-center justify-center">
                 <button type="button" onClick={() => swiperRef.current && swiperRef.current.slidePrev()} className="absolute left-0 p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <div className="pack-pagination flex justify-center w-full" />
+                <div className="flex justify-center w-full">
+                  <span className="text-sm text-gray-600">
+                    {Math.max(1, currentSlide)} of {props.length}
+                  </span>
+                </div>
                 <button type="button" onClick={() => swiperRef.current && swiperRef.current.slideNext()} className="absolute right-0 p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
               </div>
-              <InlineCardProgressFooter />
+              <div className="mt-10 sm:mt-8">
+                <InlineCardProgressFooter />
+              </div>
             </div>
           </div>
         </div>

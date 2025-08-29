@@ -23,6 +23,7 @@
     "react-tinder-card": "^1.6.4",
     "swiper": "^11.2.10",
     "swr": "^2.3.4",
+    "three": "0.161.0",
     "twilio": "^5.4.3"
   },
   "devDependencies": {

@@ -12,36 +12,57 @@ export default function AdminContestsIndexPage() {
   const [contests, setContests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [gradingId, setGradingId] = useState("");
 
   // Filters
-  const [showDraft, setShowDraft] = useState(true);
+  const [showDraft, setShowDraft] = useState(false);
   const [showOpen, setShowOpen] = useState(true);
   const [showComingUp, setShowComingUp] = useState(true);
   const [showClosed, setShowClosed] = useState(true);
   const [showGraded, setShowGraded] = useState(true);
 
   // Sort
-  const [sortKey, setSortKey] = useState("status"); // status | start | end
-  const [sortDir, setSortDir] = useState("asc"); // asc | desc
+  const [sortKey, setSortKey] = useState("end"); // status | start | end
+  const [sortDir, setSortDir] = useState("desc"); // asc | desc
 
   useEffect(() => {
     if (status !== "authenticated") return;
-    const fetchContests = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch("/api/contests");
-        const data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.error || "Failed to load contests");
-        setContests(Array.isArray(data.contests) ? data.contests : []);
-      } catch (err) {
-        setError(err.message || "Failed to load contests");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchContests();
+    loadContests();
   }, [status]);
+
+  async function loadContests() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/contests");
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to load contests");
+      setContests(Array.isArray(data.contests) ? data.contests : []);
+    } catch (err) {
+      setError(err.message || "Failed to load contests");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGrade(contest) {
+    const id = contest.contestID;
+    if (!id) return;
+    try {
+      setGradingId(id);
+      const res = await fetch(`/api/admin/contests/${encodeURIComponent(id)}/grade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to grade contest");
+      await loadContests();
+    } catch (err) {
+      setError(err.message || "Failed to grade contest");
+    } finally {
+      setGradingId("");
+    }
+  }
 
   if (status === "loading") return <div className="p-4">Loading...</div>;
   if (!session?.user) return <div className="p-4">Not authorized</div>;
@@ -168,6 +189,21 @@ export default function AdminContestsIndexPage() {
                         >
                           Edit
                         </Link>
+                        {c.contestID ? (
+                          c.contestStatus?.toLowerCase() === "graded" ? (
+                            <span className="text-gray-400">Grade</span>
+                          ) : (
+                            <button
+                              className="text-rose-600 hover:underline disabled:text-gray-400"
+                              disabled={gradingId === c.contestID}
+                              onClick={() => handleGrade(c)}
+                            >
+                              {gradingId === c.contestID ? "Grading..." : "Grade"}
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-gray-300" title="Missing contestID">Grade</span>
+                        )}
                       </div>
                     </td>
                   </tr>

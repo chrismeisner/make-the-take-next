@@ -71,7 +71,7 @@ export default function InlineCardProgressFooter() {
           <div className="text-white text-lg">Submitting...</div>
         </div>
       )}
-      <footer className="fixed bottom-0 inset-x-0 bg-white p-2 pt-8 pb-[calc(0.5rem+env(safe-area-inset-bottom))] border-t border-gray-200 z-50 md:static md:bg-transparent md:p-0 md:pt-0 md:pb-0 md:border-t-0">
+      <footer className="fixed bottom-0 inset-x-0 bg-white p-2 pt-10 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-gray-200 z-50 md:static md:bg-transparent md:p-0 md:pt-0 md:pb-0 md:border-t-0">
         <div
           style={{
             backgroundColor: "#e0e0e0",
@@ -90,16 +90,16 @@ export default function InlineCardProgressFooter() {
             }}
           />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.5rem" }}>
+        <div style={{ marginTop: "0.75rem" }}>
           <p
             style={{
-              margin: "0",
+              margin: "0 0 0.5rem 0",
               fontSize: "0.8rem",
               color: "#666",
               textAlign: "left",
             }}
           >
-            {selectedCount} / {totalProps} Takes Made
+            {progressPercentage}% complete
           </p>
           <button
             onClick={handleSubmit}
@@ -111,9 +111,12 @@ export default function InlineCardProgressFooter() {
               border: "none",
               borderRadius: "3px",
               cursor: canSubmit ? "pointer" : "not-allowed",
+              width: "100%",
             }}
           >
-            {previousSubmissions ? "Resubmit" : "Submit"}
+            {selectedCount === 0
+              ? "Make Your Takes"
+              : (previousSubmissions ? "Resubmit" : "Submit") + " " + selectedCount + " " + (selectedCount === 1 ? "Take" : "Takes")}
           </button>
         </div>
       </footer>

@@ -25,6 +25,8 @@ import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
 import WelcomeModal from "./modals/WelcomeModal";
+import NotifyMeModal from "./modals/NotifyMeModal";
+import SharePackModal from "./modals/SharePackModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -34,6 +36,16 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "notifyMe": {
+      const { packTitle } = modalConfig.modalProps;
+      return (
+        <NotifyMeModal
+          isOpen={true}
+          onClose={closeModal}
+          packTitle={packTitle}
+        />
+      );
+    }
     case "welcome": {
       const { contestHref } = modalConfig.modalProps;
       return (
@@ -53,6 +65,18 @@ export default function GlobalModalRenderer() {
           contestTitle={contestTitle}
           contestSummary={contestSummary}
           contestUrl={contestUrl}
+        />
+      );
+    }
+    case "sharePack": {
+      const { packTitle, packSummary, packUrl } = modalConfig.modalProps;
+      return (
+        <SharePackModal
+          isOpen={true}
+          onClose={closeModal}
+          packTitle={packTitle}
+          packSummary={packSummary}
+          packUrl={packUrl}
         />
       );
     }
@@ -216,6 +240,7 @@ export default function GlobalModalRenderer() {
 		  isOpen={true}
 		  onClose={closeModal}
 		  onEventSelected={modalConfig.modalProps.onEventSelected}
+		  allowMultiSelect={modalConfig.modalProps.allowMultiSelect}
 		/>
 	  );
 	case "addProp":
@@ -291,6 +316,7 @@ export default function GlobalModalRenderer() {
 		  isOpen={true}
 		  onClose={closeModal}
 		  url={modalConfig.modalProps.url}
+		  title={modalConfig.modalProps.title}
 		/>
 	  );
 	case "challengeShare":

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import { useModal } from "../contexts/ModalContext";
+import HeaderGlobe from "./HeaderGlobe";
 
 // Minimal link style for header links (non-pill)
 const linkBaseStyles = "text-sm text-gray-200 hover:text-gray-300 transition-colors";
@@ -56,27 +57,32 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 	}
   }, [session, status]);
   
-  // Compute token balance based on achievements (diamonds) minus exchanges
+  // Read cached token balance once and subscribe to updates from profile page
   useEffect(() => {
     if (!session?.user?.profileID) {
       setTokenBalance(null);
       return;
     }
-    async function fetchTokenBalance() {
-      try {
-        const res = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
-        const data = await res.json();
-        if (data.success && typeof data.tokensBalance === 'number') {
-          setTokenBalance(data.tokensBalance);
-        } else {
-          setTokenBalance(null);
+    const key = `mt_tokensBalance:${session.user.profileID}`;
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem(key);
+        if (cached != null && cached !== '') {
+          const num = Number(cached);
+          if (!Number.isNaN(num)) setTokenBalance(num);
         }
-      } catch (err) {
-        console.error("[Header] Error fetching token balance:", err);
-        setTokenBalance(null);
+        const onUpdate = (evt) => {
+          try {
+            const d = evt?.detail || {};
+            if (d.profileID === session.user.profileID && typeof d.tokensBalance === 'number') {
+              setTokenBalance(d.tokensBalance);
+            }
+          } catch {}
+        };
+        window.addEventListener('mt_tokensBalanceUpdated', onUpdate);
+        return () => window.removeEventListener('mt_tokensBalanceUpdated', onUpdate);
       }
-    }
-    fetchTokenBalance();
+    } catch {}
   }, [session]);
 
   // timezone detection removed; now only in admin page
@@ -124,8 +130,9 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
   const isSuperAdmin = Boolean(session?.user?.superAdmin);
 
   return (
-	<header className="bg-gray-800 text-white shadow-md border-b border-gray-700">
-	  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+	<header className="fixed top-0 inset-x-0 z-40 bg-gray-800 text-white shadow-md border-b border-gray-700">
+	  <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+		<HeaderGlobe href="/" />
 		{/* Single row: brand on left, nav on right */}
 		<div className="flex items-center justify-between h-12">
 		  {/* Brand and timezone */}
@@ -140,9 +147,7 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
                 ☰
               </button>
             )}
-			<Link href="/" className={linkBaseStyles}>
-			  🏴‍☠️
-			</Link>
+			{/* Pirate flag replaced by decorative globe */}
 			{/* timezone display removed; moved to admin page */}
 		  </div>
 		  <nav className="flex items-center space-x-4">
