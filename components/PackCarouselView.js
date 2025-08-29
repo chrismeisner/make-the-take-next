@@ -201,7 +201,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       {/* Removed sticky footer; using inline footer below pagination */}
       <div className="p-4 overflow-x-visible pb-32 md:pb-24">
         {/* Mobile-only hero above prop stack */}
-        <div className="block md:hidden px-4 sm:px-0 mb-4">
+        <div className="block md:hidden px-2 mb-4">
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
           <p className="text-gray-600">{packData.packSummary}</p>
           {packData.firstPlace && (
@@ -228,7 +228,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
           {/* Left column wrapper: details + tabs */}
           <div className="order-2 md:order-1 flex flex-col space-y-6">
             {/* Desktop hero (hidden on mobile) */}
-            <div className="hidden md:block px-4 sm:px-0">
+            <div className="hidden md:block px-2">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
               {packData.firstPlace && (
@@ -290,7 +290,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             {/* Removed "Your receipts" section and copy/QR controls per requirements */}
 
             {/* Tabs moved inside left column wrapper to avoid affecting right column height */}
-            <div className="px-4 sm:px-0">
+            <div className="px-2">
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                   <button

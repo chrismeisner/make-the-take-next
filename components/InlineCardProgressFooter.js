@@ -110,7 +110,7 @@ export default function InlineCardProgressFooter() {
             }}
           >
             {changedCount === 0
-              ? (selectedCount === 0 ? "Make Your Takes" : "No new changes")
+              ? (selectedCount === 0 ? "Make Your Takes" : "Make Your Takes")
               : (previousSubmissions ? "Resubmit" : "Submit") + " " + changedCount + " " + (changedCount === 1 ? "Take" : "Takes")}
           </button>
         </div>

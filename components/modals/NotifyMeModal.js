@@ -1,10 +1,12 @@
 import React, { useState } from "react";
+import { useSession } from "next-auth/react";
 import GlobalModal from "./GlobalModal";
 
 export default function NotifyMeModal({ isOpen, onClose, packTitle }) {
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const { data: session } = useSession();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -28,9 +30,22 @@ export default function NotifyMeModal({ isOpen, onClose, packTitle }) {
         Notify me when this pack drops{packTitle ? `: ${packTitle}` : ""}.
       </p>
 
-      {submitted ? (
+      {session?.user ? (
         <div>
-          <p className="text-green-700 text-sm">Thanks! Well let you know.</p>
+          <p className="text-sm text-gray-800">We'll send you an SMS as soon as this pack drops.</p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : submitted ? (
+        <div>
+          <p className="text-green-700 text-sm">Thanks! We'll let you know.</p>
           <button
             className="mt-4 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
             onClick={onClose}
