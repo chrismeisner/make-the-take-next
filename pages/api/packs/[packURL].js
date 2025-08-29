@@ -477,6 +477,7 @@ export default async function handler(req, res) {
 	  packSummary: packFields.packSummary || "",
 	  packType: packFields.packType || "",
 	  packLeague: packFields.packLeague || null,
+	  firstPlace: packFields.firstPlace || "",
 	  packCreatorID,
 	  packCreatorUsername,
 	  packURL: packFields.packURL,

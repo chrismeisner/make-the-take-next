@@ -14,13 +14,13 @@ export default function InlineCardProgressFooter() {
   const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
   const selectedCount = Object.keys(selectedChoices).length;
   const progressPercentage = totalProps === 0 ? 0 : Math.round((selectedCount / totalProps) * 100);
-  // Determine if selections differ from previous submission
-  const hasChanges = previousSubmissions
-    ? Object.entries(selectedChoices).some(
-        ([propID, side]) => userTakesByProp[propID]?.side !== side
-      )
-    : true;
-  const canSubmit = selectedCount > 0 && hasChanges;
+  // Determine which selections are new or changed vs. existing takes
+  const changedEntries = Object.entries(selectedChoices).filter(
+    ([propID, side]) => userTakesByProp[propID]?.side !== side
+  );
+  const changedCount = changedEntries.length;
+  const hasChanges = changedCount > 0;
+  const canSubmit = hasChanges;
 
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
@@ -109,9 +109,9 @@ export default function InlineCardProgressFooter() {
               width: "100%",
             }}
           >
-            {selectedCount === 0
-              ? "Make Your Takes"
-              : (previousSubmissions ? "Resubmit" : "Submit") + " " + selectedCount + " " + (selectedCount === 1 ? "Take" : "Takes")}
+            {changedCount === 0
+              ? (selectedCount === 0 ? "Make Your Takes" : "No new changes")
+              : (previousSubmissions ? "Resubmit" : "Submit") + " " + changedCount + " " + (changedCount === 1 ? "Take" : "Takes")}
           </button>
         </div>
       </footer>

@@ -12,7 +12,6 @@ import CardViewCard from "./CardViewCard";
 import InlineCardProgressFooter from "./InlineCardProgressFooter";
 import LeaderboardTable from "./LeaderboardTable";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import { useModal } from "../contexts/ModalContext";
@@ -39,11 +38,8 @@ function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
 }
 
 export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [] }) {
-  // Only show receipts section when user is authenticated
-  const { data: session } = useSession();
   const { handleChoiceSelect } = usePackContext();
   const { openModal } = useModal();
-  const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('leaderboard');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
@@ -161,35 +157,16 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   const initialReceipts = userReceipts;
   let allReceipts = [...initialReceipts];
   // Dedupe by receiptID, keeping the earliest createdTime
-  const receiptMap = {};
-  allReceipts.forEach((r) => {
-    if (!receiptMap[r.receiptID] || new Date(r.createdTime) < new Date(receiptMap[r.receiptID].createdTime)) {
-      receiptMap[r.receiptID] = r;
+  const receiptIdToReceipt = {};
+  allReceipts.forEach((receipt) => {
+    if (!receiptIdToReceipt[receipt.receiptID] || new Date(receipt.createdTime) < new Date(receiptIdToReceipt[receipt.receiptID].createdTime)) {
+      receiptIdToReceipt[receipt.receiptID] = receipt;
     }
   });
-  allReceipts = Object.values(receiptMap);
-  // Prepare share link for the first receipt
-  const hasReceipts = session?.user && allReceipts.length > 0;
+  allReceipts = Object.values(receiptIdToReceipt);
+  // Compute currentReceiptId for downstream components (no UI rendering for receipts here)
+  const hasReceipts = allReceipts.length > 0;
   const currentReceiptId = hasReceipts ? allReceipts[0].receiptID : null;
-  const shareUrl = hasReceipts ? `${debugLogs.origin}/packs/${packData.packURL}?ref=${currentReceiptId}` : "";
-  const fallbackCopyTextToClipboard = (text) => {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.top = '0';
-    textArea.style.left = '0';
-    textArea.style.width = '2em';
-    textArea.style.height = '2em';
-    textArea.style.padding = '0';
-    textArea.style.border = 'none';
-    textArea.style.outline = 'none';
-    textArea.style.boxShadow = 'none';
-    textArea.style.background = 'transparent';
-    document.body.appendChild(textArea);
-    textArea.select();
-    try { document.execCommand('copy'); } catch (err) { console.error('Fallback: unable to copy', err); }
-    document.body.removeChild(textArea);
-  };
 
   // Add console logs for team URLs
   useEffect(() => {
@@ -227,6 +204,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
         <div className="block md:hidden px-4 sm:px-0 mb-4">
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
           <p className="text-gray-600">{packData.packSummary}</p>
+          {packData.firstPlace && (
+            <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
+              <span aria-hidden>🏆</span>
+              <span>{packData.firstPlace}</span>
+            </div>
+          )}
           <div className="mt-3">
             <button
               type="button"
@@ -248,6 +231,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             <div className="hidden md:block px-4 sm:px-0">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
+              {packData.firstPlace && (
+                <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
+                  <span aria-hidden>🏆</span>
+                  <span>{packData.firstPlace}</span>
+                </div>
+              )}
               <div className="mt-3">
                 <button
                   type="button"
@@ -298,50 +287,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               </div>
             </div>
             
-            {session?.user && allReceipts.length > 0 && (
-              <div className="px-4 sm:px-0 mt-4">
-                <span className="font-semibold">Your receipts:</span>
-                <ul className="mt-1 space-y-1">
-                  {allReceipts.map(({ receiptID, createdTime }) => (
-                    <li key={receiptID} className="flex justify-between items-center">
-                      <Link href={`/packs/${packData.packURL}/${receiptID}`} className="underline text-blue-600">
-                        {receiptID}
-                      </Link>
-                      <span className="text-sm text-gray-500">
-                        {new Date(createdTime).toLocaleString()}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {/* Removed original copy link component; use Share & QR buttons below */}
-                {/* Share & QR buttons */}
-                <div className="flex space-x-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(shareUrl)
-                          .then(() => setCopied(true))
-                          .catch(() => fallbackCopyTextToClipboard(shareUrl));
-                      } else {
-                        fallbackCopyTextToClipboard(shareUrl);
-                      }
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className={`px-3 py-1 rounded text-white text-sm ${copied ? 'bg-gray-500' : 'bg-blue-600'}`}
-                  >
-                    {copied ? 'Copied!' : 'Copy Link'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openModal('qrCode', { url: shareUrl })}
-                    className="px-3 py-1 bg-gray-700 text-white text-sm rounded"
-                  >
-                    Generate QR
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Removed "Your receipts" section and copy/QR controls per requirements */}
 
             {/* Tabs moved inside left column wrapper to avoid affecting right column height */}
             <div className="px-4 sm:px-0">

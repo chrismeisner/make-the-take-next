@@ -148,14 +148,7 @@ export default function PackPreview({ pack, className = "" }) {
 			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
-			<div className="mt-1">
-				{isOpenLike && (
-					<span className="text-xs font-medium text-green-700">Open</span>
-				)}
-				{!isOpenLike && isComingSoon && (
-					<span className="text-xs font-medium text-gray-600">Coming Soon</span>
-				)}
-			</div>
+			<div className="mt-1" />
 			{isOpenLike && (
 				<div className="mt-1 text-sm text-gray-700">
 					<span>⏱️ </span><Countdown targetTime={pillEventTime} />

@@ -16,7 +16,6 @@ import InlineCardProgressFooter from '../../components/InlineCardProgressFooter'
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import Link from 'next/link';
-import MarketplacePreview from '../../components/MarketplacePreview';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -251,7 +250,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           title={packData.packTitle || packData.packURL}
           breadcrumbs={[
             { name: 'Home', href: '/' },
-            { name: 'Packs', href: '/packs' },
+            ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
             { name: packData.packTitle || packData.packURL },
           ]}
         />
@@ -277,7 +276,6 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             <InlineCardProgressFooter />
           </PackContextProvider>
         </PageContainer>
-        <MarketplacePreview />
       </>
     );
   }
@@ -305,7 +303,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           title={packData.packTitle || packData.packURL}
           breadcrumbs={[
             { name: 'Home', href: '/' },
-            { name: 'Packs', href: '/packs' },
+            ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
             { name: packData.packTitle || packData.packURL },
           ]}
         />
@@ -321,7 +319,6 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             </PackContextProvider>
           )}
         </PageContainer>
-        <MarketplacePreview />
       </>
     );
   }
@@ -349,7 +346,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         title={packData.packTitle || packData.packURL}
         breadcrumbs={[
           { name: 'Home', href: '/' },
-          { name: 'Packs', href: '/packs' },
+          ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
           { name: packData.packTitle || packData.packURL },
         ]}
       />
@@ -365,7 +362,6 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           </PackContextProvider>
         )}
       </PageContainer>
-      <MarketplacePreview />
     </>
   );
 }
