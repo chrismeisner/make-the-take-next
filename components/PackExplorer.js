@@ -4,7 +4,7 @@ export default function PackExplorer({ packs = [] }) {
   return (
     <div>
       {packs.length > 0 ? (
-        <div className="w-full flex flex-col gap-4">
+        <div className="w-full flex flex-col gap-3 md:gap-4">
           {packs.map((pack) => (
             <PackPreview key={pack.packID || pack.airtableId || pack.id} pack={pack} />
           ))}

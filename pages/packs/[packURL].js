@@ -16,6 +16,7 @@ import InlineCardProgressFooter from '../../components/InlineCardProgressFooter'
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import Link from 'next/link';
+import MarketplacePreview from '../../components/MarketplacePreview';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
@@ -149,31 +150,7 @@ export async function getServerSideProps(context) {
         console.error('[getServerSideProps] Error checking challenge acceptance:', err);
       }
     }
-    // Fetch recent activity for this pack (errors here should not break the page)
-    let activity = [];
-    try {
-      const propIDs = data.pack.props.map((p) => p.propID).filter(Boolean);
-      if (propIDs.length > 0) {
-        // Fetch activity without sorting (metadata createdTime isn't a field)
-        const activityRecords = await base('Takes').select({
-          filterByFormula: `OR(${propIDs.map((id) => `{propID}="${id}"`).join(',')})`,
-          maxRecords: 50,
-        }).all();
-        // Sort by record metadata createdTime descending and take top 20
-        activityRecords.sort((a, b) => new Date(b._rawJson.createdTime) - new Date(a._rawJson.createdTime));
-        const topRecords = activityRecords.slice(0, 20);
-        activity = topRecords.map((rec) => ({
-          id: rec.id,
-          propID: rec.fields.propID || '',
-          propTitle: rec.fields.propTitle || '',
-          profileID: rec.fields.profileID || '',
-          createdTime: rec._rawJson.createdTime,
-        }));
-      }
-    } catch (err) {
-      console.error('[getServerSideProps] Error fetching activity =>', err);
-    }
-    console.log('[getServerSideProps] activity:', activity);
+    // Removed recent activity fetch since Takes tab was removed
 
     return {
       props: {
@@ -186,7 +163,6 @@ export async function getServerSideProps(context) {
         userReceipts,
         latestReceiptId,
         challengerTakesByProp,
-        activity,
         isRef,
         hasAcceptedChallenge,
       },
@@ -231,7 +207,7 @@ function ChallengeButton({ receiptId }) {
   );
 }
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, challengerTakesByProp, friendProfile, userReceipts, activity, isRef, latestReceiptId, hasAcceptedChallenge }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, challengerTakesByProp, friendProfile, userReceipts, isRef, latestReceiptId, hasAcceptedChallenge }) {
   const { openModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
@@ -301,6 +277,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             <InlineCardProgressFooter />
           </PackContextProvider>
         </PageContainer>
+        <MarketplacePreview />
       </>
     );
   }
@@ -340,11 +317,11 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
                 leaderboard={leaderboard}
                 debugLogs={debugLogs}
                 userReceipts={userReceipts}
-                activity={activity}
               />
             </PackContextProvider>
           )}
         </PageContainer>
+        <MarketplacePreview />
       </>
     );
   }
@@ -384,11 +361,11 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
               leaderboard={leaderboard}
               debugLogs={debugLogs}
               userReceipts={userReceipts}
-              activity={activity}
             />
           </PackContextProvider>
         )}
       </PageContainer>
+      <MarketplacePreview />
     </>
   );
 }

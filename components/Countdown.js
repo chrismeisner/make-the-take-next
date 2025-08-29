@@ -2,7 +2,7 @@ import React from 'react';
 import useCountdown from '../hooks/useCountdown';
 import useHasMounted from '../hooks/useHasMounted';
 
-export default function Countdown({ targetTime, prefix = '' }) {
+export default function Countdown({ targetTime, prefix = '', showSeconds = true }) {
   const hasMounted = useHasMounted();
   const { days, hours, minutes, seconds, isCompleted } = useCountdown(targetTime);
 
@@ -10,9 +10,11 @@ export default function Countdown({ targetTime, prefix = '' }) {
   if (!hasMounted) return null;
   if (isCompleted) return null;
 
-  const timeText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  const parts = [`${days}d`, `${hours}h`, `${minutes}m`];
+  if (showSeconds) parts.push(`${seconds}s`);
+  const timeText = parts.join(' ');
   return (
-    <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full" suppressHydrationWarning>
+    <span suppressHydrationWarning>
       {prefix ? `${prefix} ${timeText}` : timeText}
     </span>
   );

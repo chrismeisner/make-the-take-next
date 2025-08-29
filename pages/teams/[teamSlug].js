@@ -200,13 +200,17 @@ export default function TeamPage({ team, packs, takeCount, leaderboard }) {
                   key={pack.recordId}
                   className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition"
                 >
-                  {pack.packCover[0] && (
-                    <img
-                      src={pack.packCover[0]}
-                      alt={pack.packTitle}
-                      className="w-full h-32 object-cover"
-                    />
-                  )}
+                  <div className="w-full aspect-square relative bg-gray-100">
+                    {pack.packCover[0] ? (
+                      <img
+                        src={pack.packCover[0]}
+                        alt={pack.packTitle}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
+                    )}
+                  </div>
                   <div className="p-4">
                     <h3 className="text-xl font-semibold mb-2">
                       <Link href={`/packs/${pack.packURL}`} className="hover:underline text-blue-600">

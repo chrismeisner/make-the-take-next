@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import { usePackContext } from "../contexts/PackContext";
 import { useModal } from "../contexts/ModalContext";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/router";
+ 
 
 export default function InlineCardProgressFooter() {
   const { packData, selectedChoices, submitAllTakes, userTakesByProp } = usePackContext();
   const { openModal } = useModal();
   const { data: session } = useSession();
-  const router = useRouter();
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const totalProps = packData.props.length;
   const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
@@ -46,12 +46,7 @@ export default function InlineCardProgressFooter() {
     }
     setIsSubmitting(true);
     const newTakeIDs = await submitAllTakes(receiptId);
-    // Temporarily removing challenge creation on ref; keeping backend logic intact
-    router.replace(
-      { pathname: router.pathname, query: { ...router.query, userReceiptId: receiptId } },
-      undefined,
-      { shallow: true }
-    );
+    // Temporarily removing URL query updates for userReceiptId
     // Fire-and-forget SMS notification to the user
     try {
       fetch("/api/notifyPackSubmitted", {

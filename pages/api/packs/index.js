@@ -50,6 +50,7 @@ async function fetchAllPacks(viewName) {
 	  packOpenTime: fields.packOpenTime || null,
 	  packCloseTime: fields.packCloseTime || null,
 	  eventTime: fields.eventTime || null,
+	  firstPlace: fields.firstPlace || "",
 	  createdAt: record._rawJson.createdTime,
 	  propsCount: (fields.Props || []).length,
       // Winner info (from Airtable): either lookup or derive from linked record id

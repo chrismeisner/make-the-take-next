@@ -10,12 +10,14 @@ export default async function handler(req, res) {
   try {
     const records = await base('Items')
       .select({
-        fields: ['itemID', 'itemName', 'itemTokens', 'itemBrand', 'itemDescription', 'itemStatus'],
+        fields: ['itemID', 'itemName', 'itemTokens', 'itemBrand', 'itemDescription', 'itemStatus', 'itemImage'],
       })
       .all();
 
     const items = records.map((rec) => {
       const f = rec.fields;
+      const imageArray = Array.isArray(f.itemImage) ? f.itemImage : [];
+      const imageUrl = imageArray && imageArray.length > 0 ? imageArray[0].url : '';
       return {
         itemID:          f.itemID          || rec.id,
         itemName:        f.itemName        || '',
@@ -23,6 +25,7 @@ export default async function handler(req, res) {
         itemBrand:       f.itemBrand       || '',
         itemDescription: f.itemDescription || '',
         itemStatus:      f.itemStatus      || '',
+        itemImage:       imageUrl,
       };
     });
 

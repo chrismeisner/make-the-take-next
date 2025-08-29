@@ -38,19 +38,18 @@ function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
   );
 }
 
-export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [], activity = [] }) {
+export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [] }) {
   // Only show receipts section when user is authenticated
   const { data: session } = useSession();
   const { handleChoiceSelect } = usePackContext();
   const { openModal } = useModal();
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState('content');
+  const [activeTab, setActiveTab] = useState('leaderboard');
   const [swiperReady, setSwiperReady] = useState(false);
   const [cardHeight, setCardHeight] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
   // SLIDE_HEIGHT_OFFSET: adjust this (in px) to extend slide container for pagination dots
   const SLIDE_HEIGHT_OFFSET = 64;
-  console.log('[PackCarouselView] activity prop:', activity);
   const { props } = packData;
   const swiperRef = useRef(null);
   const router = useRouter();
@@ -158,13 +157,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     parts.push(`${seconds}s`);
     return parts.join(' ');
   }
-  const fallback = router.query.userReceiptId;
-  // Start with server receipts and optionally include the latest fallback
+  // Start with server receipts only (ignore any userReceiptId in query)
   const initialReceipts = userReceipts;
   let allReceipts = [...initialReceipts];
-  if (fallback) {
-    allReceipts.push({ receiptID: fallback, createdTime: new Date().toISOString() });
-  }
   // Dedupe by receiptID, keeping the earliest createdTime
   const receiptMap = {};
   allReceipts.forEach((r) => {
@@ -353,36 +348,22 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                   <button
-                    onClick={() => setActiveTab('content')}
-                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'content' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                  >
-                    Content
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('activity')}
-                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                  >
-                    Takes
-                  </button>
-                  <button
                     onClick={() => setActiveTab('leaderboard')}
                     className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'leaderboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
                   >
                     Leaderboard
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('content')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'content' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Content
                   </button>
                 </nav>
               </div>
               <div className="pt-4">
                 {activeTab === 'leaderboard' ? (
                   <LeaderboardTable leaderboard={leaderboard} />
-                ) : activeTab === 'activity' ? (
-                  <ul className="space-y-2">
-                    {activity.map((act) => (
-                      <li key={act.id} className="text-sm text-gray-700">
-                        <span className="font-medium">{act.profileID}</span> took <span className="italic">{act.propTitle}</span> – {new Date(act.createdTime).toLocaleString()}
-                      </li>
-                    ))}
-                  </ul>
                 ) : activeTab === 'content' ? (
                   Array.isArray(packData.contentData) && packData.contentData.length > 0 ? (
                     <ul className="space-y-3">

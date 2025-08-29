@@ -42,7 +42,7 @@ export default function LandingPage({ packsData = [] }) {
           </div>
         )}
         <PageContainer>
-          <h1 className="text-2xl font-bold mb-4">All Packs</h1>
+          <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">All Packs</h1>
           <PackExplorer packs={packsData} />
         </PageContainer>
       </div>

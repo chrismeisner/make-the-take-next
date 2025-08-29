@@ -19,27 +19,63 @@ export default function PackPreview({ pack, className = "" }) {
   const winnerID = pack.winnerProfileID || null;
   const { openModal } = useModal();
 
-  // Derive sorted event times
-  const eventTimes = Array.isArray(pack.propEventRollup) ? [...pack.propEventRollup] : [];
-  eventTimes.sort((a, b) => new Date(a) - new Date(b));
-  // Compute earliest event time for logic
-  const earliestEventTime = eventTimes.length > 0 ? eventTimes[0] : pack.eventTime;
-  // (Date display removed)
-  // Compute next future event time and set up live countdown
+  // Derive sorted, de-duplicated event times (ms) from rollup or single string
+  function parseEventTimesToMs(input) {
+    const entries = [];
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        if (typeof item === 'string') {
+          const parts = item.split(',').map(s => s.trim()).filter(Boolean);
+          entries.push(...parts);
+        } else if (item) {
+          entries.push(String(item));
+        }
+      }
+    } else if (typeof input === 'string') {
+      const parts = input.split(',').map(s => s.trim()).filter(Boolean);
+      entries.push(...parts);
+    } else if (input) {
+      entries.push(String(input));
+    }
+    const msValues = entries
+      .map(str => new Date(str).getTime())
+      .filter(v => Number.isFinite(v));
+    const unique = Array.from(new Set(msValues));
+    unique.sort((a, b) => a - b);
+    return unique;
+  }
+
+  const eventMsList = parseEventTimesToMs(pack.propEventRollup?.length ? pack.propEventRollup : pack.eventTime);
+  const earliestEventMs = eventMsList.length > 0 ? eventMsList[0] : (pack.eventTime ? new Date(pack.eventTime).getTime() : NaN);
   const now = Date.now();
-  const futureEventTimes = eventTimes.filter(evt => new Date(evt).getTime() > now);
-  const nextEventTime = futureEventTimes.length > 0 ? futureEventTimes[0] : null;
+  const nextEventMs = eventMsList.find(ms => ms > now) ?? null;
+
+  function formatDropDate(ms) {
+    if (!Number.isFinite(ms)) return 'TBD';
+    const d = new Date(ms);
+    const weekday = d.toLocaleDateString(undefined, { weekday: 'long' });
+    const monthIndex = d.getMonth();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+    const month = months[monthIndex] || '';
+    const day = d.getDate();
+    const ordinal = (n) => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return s[(v - 20) % 10] || s[v] || s[0];
+    };
+    return `${weekday}, ${month} ${day}${ordinal(day)}`;
+  }
 
   // Determine which time to count down to on the preview pill
   const statusNorm = String(pack.packStatus || '').toLowerCase();
   const isOpenLike = statusNorm === 'open' || statusNorm === 'active';
   const isComingSoon = statusNorm === 'coming up' || statusNorm === 'coming soon' || statusNorm === 'coming-soon' || statusNorm === 'upcoming';
   const pillEventTime = isOpenLike
-    ? (pack.packCloseTime || nextEventTime || earliestEventTime)
+    ? (pack.packCloseTime || nextEventMs || earliestEventMs)
     : (isComingSoon
-      ? earliestEventTime
-      : (nextEventTime || earliestEventTime));
-  const pillLabelPrefix = isOpenLike && pack.packCloseTime ? 'Closes in' : 'Starts in';
+      ? earliestEventMs
+      : (nextEventMs || earliestEventMs));
+  
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -93,13 +129,13 @@ export default function PackPreview({ pack, className = "" }) {
   const disabled = isDisabled || isComingSoon;
 
   const content = (
-	  <div className="flex flex-row items-stretch gap-3">
-		<div className="order-2 aspect-square w-28 md:w-48 relative bg-gray-100 flex-shrink-0">
+	  <div className="flex flex-col md:flex-row items-stretch md:items-start gap-2 md:gap-3">
+		<div className="order-1 md:order-2 w-full md:basis-1/3 md:max-w-xs aspect-square relative bg-gray-100">
 			{coverUrl ? (
 				<img
 					src={coverUrl}
 					alt={`${pack.packTitle || "Pack"} cover`}
-					className="absolute inset-0 w-full h-full object-cover"
+					className={`absolute inset-0 w-full h-full object-cover ${disabled ? 'grayscale opacity-60' : ''}`}
 					loading="lazy"
 				/>
 			) : (
@@ -108,33 +144,55 @@ export default function PackPreview({ pack, className = "" }) {
 				</div>
 			)}
 		</div>
-		<div className="order-1 p-4 flex-1">
-			<h2 className="text-lg font-semibold">
+		<div className="order-2 md:order-1 p-3 md:p-4 flex-1 md:basis-2/3">
+			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
-			{pack.packSummary && (
-				<p className="mt-1 text-sm text-gray-700">{pack.packSummary}</p>
+			<div className="mt-1">
+				{isOpenLike && (
+					<span className="text-xs font-medium text-green-700">Open</span>
+				)}
+				{!isOpenLike && isComingSoon && (
+					<span className="text-xs font-medium text-gray-600">Coming Soon</span>
+				)}
+			</div>
+			{isOpenLike && (
+				<div className="mt-1 text-sm text-gray-700">
+					<span>⏱️ </span><Countdown targetTime={pillEventTime} />
+				</div>
+			)}
+			{!isOpenLike && isComingSoon && (
+				<div className="mt-1 text-sm text-gray-700">
+					{(() => {
+						const dropMs = Number.isFinite(earliestEventMs)
+							? earliestEventMs
+							: (pack.packOpenTime ? new Date(pack.packOpenTime).getTime() : NaN);
+						return `🗓️ ${formatDropDate(dropMs)}`;
+					})()}
+				</div>
+			)}
+			{pack.firstPlace && (
+				<div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
+					<span aria-hidden>🏆</span>
+					<span>{pack.firstPlace}</span>
+				</div>
 			)}
 			{isOpenLike && propsCount > 0 && (
-				<div className="mt-1 text-xs text-gray-700">
+				<div className="mt-1 text-xs md:text-sm text-gray-700">
 					{propsCount} {propsCount === 1 ? 'prop' : 'props'}
 				</div>
 			)}
 			{/* Date and status labels removed on request */}
-			{(isOpenLike || isComingSoon) && (
-				<div className="mt-2">
-					<Countdown targetTime={pillEventTime} prefix={isOpenLike && pack.packCloseTime ? 'Closes in' : ''} />
-				</div>
-			)}
+
 			{isOpenLike && (
 				<div className="mt-3 flex items-center gap-2">
-					<div className="inline-flex items-center justify-center px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+					<div className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-blue-600 text-white text-xs md:text-sm font-medium hover:bg-blue-700">
 						Play this pack
 					</div>
 					<button
 						type="button"
 						onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); }}
-						className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
 					>
 						Share
 					</button>
@@ -145,13 +203,13 @@ export default function PackPreview({ pack, className = "" }) {
 					<button
 						type="button"
 						onClick={(e) => { e.preventDefault(); openModal('notifyMe', { packTitle: pack.packTitle }); }}
-						className="inline-flex items-center justify-center px-3 py-2 rounded bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
+						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-blue-600 text-white text-xs md:text-sm font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
 					>
-						Notify me when this pack drops
+						Notify me
 					</button>
 				</div>
 			)}
-			<div className="mt-2 text-sm text-gray-600">
+			<div className="mt-2 text-xs md:text-sm text-gray-600">
 				{pack.packStatus === "graded" && winnerID && (<p>Winner: @{winnerID}</p>)}
 			</div>
 		</div>
@@ -162,8 +220,7 @@ export default function PackPreview({ pack, className = "" }) {
 	  return (
 		  <div
 			  aria-label={(pack.packTitle || 'Pack') + ' preview'}
-			  aria-disabled="true"
-			  className={`w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black opacity-60 cursor-not-allowed transition-shadow hover:shadow-md ${className}`}
+			  className={`w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
 		  >
 			  {content}
 		  </div>
