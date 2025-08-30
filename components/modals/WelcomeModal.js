@@ -19,7 +19,7 @@ export default function WelcomeModal({ isOpen, onClose, contestHref = "/" }) {
     try {
       onClose?.();
     } finally {
-      router.push('/leaderboard');
+      router.push('/how-to-play');
     }
   };
 
@@ -37,16 +37,16 @@ export default function WelcomeModal({ isOpen, onClose, contestHref = "/" }) {
 
       <div className="flex justify-center gap-2 mt-2 sm:mt-4">
         <button
-          onClick={handleGoToContests}
-          className="w-full sm:w-auto px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-        >
-          Play a Pack
-        </button>
-        <button
           onClick={handleGoToLeaderboards}
           className="w-full sm:w-auto px-4 py-2 rounded bg-gray-200 text-gray-900 hover:bg-gray-300"
         >
-          View Leaderboards
+          How to play
+        </button>
+        <button
+          onClick={handleGoToContests}
+          className="w-full sm:w-auto px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+        >
+          See Available Packs
         </button>
       </div>
     </GlobalModal>

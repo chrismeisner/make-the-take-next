@@ -177,7 +177,7 @@ export default function ProfilePage() {
 		<strong>Mobile:</strong> {profile.profileMobile}
 	  </p>
 	  <p>
-		<strong>Username:</strong> {profile.profileUsername || "N/A"}
+		<strong>Username:</strong> {profile.profileID}
 	  </p>
 	  <p>
 		<strong>Created:</strong> {profile.createdTime}

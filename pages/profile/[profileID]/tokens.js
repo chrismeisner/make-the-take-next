@@ -7,7 +7,7 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
 );
 
-export default function ProfileTokensPage({ profileID, profileUsername, achievements = [], exchanges = [] }) {
+export default function ProfileTokensPage({ profileID, achievements = [], exchanges = [] }) {
   const [sortOrder, setSortOrder] = useState("desc"); // desc = newest first
 
   const diamondsTotal = useMemo(
@@ -40,9 +40,7 @@ export default function ProfileTokensPage({ profileID, profileUsername, achievem
   return (
     <PageContainer>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">
-          {profileUsername ? `@${profileUsername}` : profileID} Tokens
-        </h1>
+        <h1 className="text-2xl font-bold">{profileID} Tokens</h1>
         <div className="flex items-center gap-3">
           <label className="text-sm text-gray-700">
             <span className="mr-2">Sort Achievements</span>
@@ -130,15 +128,9 @@ export default function ProfileTokensPage({ profileID, profileUsername, achievem
 export async function getServerSideProps({ params }) {
   const { profileID } = params;
   try {
-    // Resolve profileUsername for header
-    const profs = await base("Profiles")
-      .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
-      .firstPage();
-    if (profs.length === 0) {
-      return { notFound: true };
-    }
+    const profs = await base("Profiles").select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 }).firstPage();
+    if (profs.length === 0) return { notFound: true };
     const profileRecord = profs[0];
-    const profileUsername = profileRecord.fields.profileUsername || null;
 
     // Fetch Achievements (diamonds)
     let achRecs = [];
@@ -203,7 +195,7 @@ export async function getServerSideProps({ params }) {
       itemNames: Array.isArray(e.exchangeItem) ? e.exchangeItem.map((id) => idToName[id] || id) : [],
     }));
 
-    return { props: { profileID, profileUsername, achievements, exchanges } };
+    return { props: { profileID, achievements, exchanges } };
   } catch (err) {
     console.error("[Tokens page] Error:", err);
     return { notFound: true };

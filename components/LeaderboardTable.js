@@ -21,25 +21,16 @@ export default function LeaderboardTable({ leaderboard }) {
   const currentProfileID = session?.user?.profileID;
   const hasEntries = Array.isArray(leaderboard) && leaderboard.length > 0;
 
-  // Helper to obscure phone
-  function obscurePhone(e164Phone) {
-	if (!e164Phone || e164Phone === "Unknown") return "Unknown";
-	const stripped = e164Phone.replace(/\D/g, "");
-	if (stripped.length !== 10 && stripped.length !== 11) return e164Phone;
-	const last4 = stripped.slice(-4);
-	return `xxxx-${last4}`;
-  }
-
   return (
 	<div className="overflow-x-auto w-full">
 	  <table className="min-w-full border-collapse">
 		<thead>
 		  <tr className="border-b">
-			<th className="text-left py-2 px-3">Phone</th>
-			<th className="text-left py-2 px-3">Username</th>
-			<th className="text-left py-2 px-3">Takes</th>
-			<th className="text-left py-2 px-3">Record (W-L-T)</th>
-			<th className="text-left py-2 px-3">Points</th>
+			<th className="text-left py-2 px-3 w-10"></th>
+			<th className="text-left py-2 px-3">Taker</th>
+			<th className="text-left py-2 px-3">REC</th>
+			<th className="text-left py-2 px-3">PER</th>
+			<th className="text-left py-2 px-3">PTS</th>
 		  </tr>
 		</thead>
 		<tbody>
@@ -52,17 +43,7 @@ export default function LeaderboardTable({ leaderboard }) {
 		  ) : (
 			leaderboard.map((item, idx) => (
 			  <tr key={idx} className="border-b">
-				<td className="py-2 px-3">
-				  {item.profileID ? (
-					<Link href={"/profile/" + item.profileID}>
-					  <span className="text-blue-600 underline">
-						{obscurePhone(item.phone)}
-					  </span>
-					</Link>
-				  ) : (
-					obscurePhone(item.phone)
-				  )}
-				</td>
+				<td className="py-2 px-3 w-10">{idx + 1}</td>
 				<td className="py-2 px-3">
 				  {item.profileID ? (
 					<Link href={"/profile/" + item.profileID}>
@@ -74,8 +55,16 @@ export default function LeaderboardTable({ leaderboard }) {
 					'Unknown'
 				  )}
 				</td>
-				<td className="py-2 px-3">{item.takes}</td>
 				<td className="py-2 px-3">{item.won || 0}-{item.lost || 0}-{item.pushed || 0}</td>
+				<td className="py-2 px-3">
+				  {(() => {
+					const w = Number(item.won || 0);
+					const l = Number(item.lost || 0);
+					const d = w + l;
+					const r = d > 0 ? w / d : 0;
+					return r.toFixed(3).replace(/^0/, '');
+				  })()}
+				</td>
 				<td className="py-2 px-3">{Math.round(item.points)}</td>
 			  </tr>
 			))

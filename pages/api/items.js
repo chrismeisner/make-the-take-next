@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   try {
     const records = await base('Items')
       .select({
-        fields: ['itemID', 'itemName', 'itemTokens', 'itemBrand', 'itemDescription', 'itemStatus', 'itemImage'],
+        fields: ['itemID', 'itemName', 'itemTokens', 'itemBrand', 'itemDescription', 'itemStatus', 'itemImage', 'featured'],
       })
       .all();
 
@@ -26,6 +26,7 @@ export default async function handler(req, res) {
         itemDescription: f.itemDescription || '',
         itemStatus:      f.itemStatus      || '',
         itemImage:       imageUrl,
+        featured:        Boolean(f.featured),
       };
     });
 

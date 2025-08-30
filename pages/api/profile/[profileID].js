@@ -82,6 +82,55 @@ export default async function handler(req, res) {
 			packIDs, // lookup packIDs for this take
 		  };
 		});
+	} else {
+	  // Fallback: some profiles may not have Takes linked; derive by phone number like leaderboard
+	  try {
+		const phone = pf.profileMobile;
+		if (phone && typeof phone === 'string') {
+		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} != "overwritten")`;
+		  const takeRecords = await base('Takes')
+			.select({ filterByFormula, maxRecords: 5000 })
+			.all();
+		  // Compute total points ignoring overwritten/hidden takes
+		  totalPoints = sumTakePoints(takeRecords);
+		  // Map visible takes to response shape and gather packIDs
+		  userTakes = takeRecords
+			.filter(isVisibleTake)
+			.map((t) => {
+			  const tf = t.fields;
+			  const packIDs = tf.packID || [];
+			  userPackIDs.push(...packIDs);
+			  let contentImageUrls = [];
+			  if (Array.isArray(tf.contentImage)) {
+				contentImageUrls = tf.contentImage.map((att) => att.url);
+			  }
+			  return {
+				airtableRecordId: t.id,
+				takeID: tf.TakeID || t.id,
+				propID: tf.propID || '',
+				propSide: tf.propSide || null,
+				propTitle: tf.propTitle || '',
+				subjectTitle: tf.subjectTitle || '',
+				takePopularity: tf.takePopularity || 0,
+				createdTime: t._rawJson.createdTime,
+				takeStatus: tf.takeStatus || '',
+				propResult: Array.isArray(tf.propResult) ? tf.propResult[0] : tf.propResult || '',
+				propEventMatchup: Array.isArray(tf.propEventMatchup) ? tf.propEventMatchup[0] : tf.propEventMatchup || '',
+				propLeague: Array.isArray(tf.propLeague) ? tf.propLeague[0] : tf.propLeague || '',
+				propESPN: Array.isArray(tf.propESPN) ? tf.propESPN[0] : tf.propESPN || '',
+				propStatus: Array.isArray(tf.propStatus) ? tf.propStatus[0] : tf.propStatus || '',
+				takeResult: tf.takeResult || '',
+				takePTS: tf.takePTS || 0,
+				takeHide: tf.takeHide || false,
+				takeTitle: tf.takeTitle || '',
+				takeContentImageUrls: contentImageUrls,
+				packIDs,
+			  };
+			});
+		}
+	  } catch (fallbackErr) {
+		console.error('[profile] Fallback take fetch by phone failed =>', fallbackErr);
+	  }
 	}
 
 	// 3) Deduplicate and fetch pack details for each unique pack ID in userPacks.

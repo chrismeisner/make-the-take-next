@@ -280,7 +280,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                       href={`/profile/${encodeURIComponent(packData.packCreatorID)}`}
                       className="text-blue-600 underline"
                     >
-                      {packData.packCreatorUsername || packData.packCreatorID}
+                      {packData.packCreatorID}
                     </Link>
                   </span>
                 )}

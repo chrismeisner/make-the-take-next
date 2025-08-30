@@ -6,7 +6,7 @@ import PageContainer from "../../../components/PageContainer";
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-export default function ProfileAwardsPage({ profileID, profileUsername, winnerPacks = [], userTakesByPack = {}, userPointsByPack = {}, userResultsByPack = {} }) {
+export default function ProfileAwardsPage({ profileID, winnerPacks = [], userTakesByPack = {}, userPointsByPack = {}, userResultsByPack = {} }) {
   const [sortOrder, setSortOrder] = useState("desc"); // desc = most recent first
   const [expandedRows, setExpandedRows] = useState({});
 
@@ -27,7 +27,7 @@ export default function ProfileAwardsPage({ profileID, profileUsername, winnerPa
   return (
     <PageContainer>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{profileUsername ? `@${profileUsername}` : profileID} Awards</h1>
+        <h1 className="text-2xl font-bold">{profileID} Awards</h1>
         <div className="flex items-center gap-3">
           <label className="text-sm text-gray-700">
             <span className="mr-2">Sort</span>
@@ -171,7 +171,6 @@ export async function getServerSideProps({ params }) {
     }
     const profileRecord = profs[0];
     const profileRecordId = profileRecord.id;
-    const profileUsername = profileRecord.fields.profileUsername || null;
 
     // Find packs where this profile is the winner and pack is graded
     const winnerFormula = `OR(AND(LOWER({packStatus})='graded', {winnerProfileID}='${profileID}'), AND(LOWER({packStatus})='graded', FIND('${profileRecordId}', ARRAYJOIN({packWinner}))>0))`;
@@ -265,7 +264,7 @@ export async function getServerSideProps({ params }) {
       userResultsByPack = Object.fromEntries([...resultTotals.entries()]);
     }
 
-    return { props: { profileID, profileUsername, winnerPacks, userTakesByPack, userPointsByPack, userResultsByPack } };
+    return { props: { profileID, winnerPacks, userTakesByPack, userPointsByPack, userResultsByPack } };
   } catch (err) {
     console.error('[Awards page] Error:', err);
     return { notFound: true };

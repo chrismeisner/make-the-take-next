@@ -18,6 +18,7 @@ export default function AdminNewPackPage() {
   const [packTitle, setPackTitle] = useState('');
   const [packURL, setPackURL] = useState('');
   const [packSummary, setPackSummary] = useState('');
+  const [firstPlace, setFirstPlace] = useState('');
   const [propsList, setPropsList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -229,6 +230,7 @@ export default function AdminNewPackPage() {
       // Build payload including event link and props
       const payload = { packTitle, packURL };
       if (packSummary) payload.packSummary = packSummary;
+      if (firstPlace) payload.firstPlace = firstPlace;
       if (packLeague) payload.packLeague = packLeague.toLowerCase();
       if (packCoverUrl) payload.packCoverUrl = packCoverUrl;
       if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
@@ -414,7 +416,7 @@ export default function AdminNewPackPage() {
             <option value="">Select an influencer (optional)</option>
             {creators.map((c) => (
               <option key={c.airtableId} value={c.airtableId}>
-                {c.profileUsername ? `@${c.profileUsername}` : c.profileID}
+                {c.profileID}
               </option>
             ))}
           </select>
@@ -469,6 +471,16 @@ export default function AdminNewPackPage() {
             value={packSummary}
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">First Place</label>
+          <input
+            type="text"
+            value={firstPlace}
+            onChange={(e) => setFirstPlace(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+            placeholder="e.g., $1,000 or Prize description"
           />
         </div>
         <div>

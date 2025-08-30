@@ -5,7 +5,7 @@ import Countdown from "./Countdown";
 import { useModal } from "../contexts/ModalContext";
 // Simplified: we will read winner from pack.winnerProfileID (lookup) or pack.packWinnerRecordIds
 
-export default function PackPreview({ pack, className = "" }) {
+export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const { data: session } = useSession();
   // Determine a common pack identifier
   const packID = pack.packID || pack.id || pack.airtableId;
@@ -128,6 +128,9 @@ export default function PackPreview({ pack, className = "" }) {
 
   const disabled = isDisabled || isComingSoon;
 
+  const primaryBtnBase = "inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded text-white text-xs md:text-sm font-medium";
+  const primaryBtnColor = accent === 'green' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700';
+
   const content = (
 	  <div className="flex flex-col md:flex-row items-stretch md:items-start gap-2 md:gap-3">
 		<div className="order-1 md:order-2 w-full md:basis-1/3 md:max-w-xs aspect-square relative bg-gray-100">
@@ -149,6 +152,11 @@ export default function PackPreview({ pack, className = "" }) {
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
 			<div className="mt-1" />
+			{isOpenLike && propsCount > 0 && (
+				<div className="mt-1 text-xs md:text-sm text-gray-700">
+					{propsCount} {propsCount === 1 ? 'Prop Available' : 'Props Available'}
+				</div>
+			)}
 			{isOpenLike && (
 				<div className="mt-1 text-sm text-gray-700">
 					<span>⏱️ </span><Countdown targetTime={pillEventTime} />
@@ -170,16 +178,12 @@ export default function PackPreview({ pack, className = "" }) {
 					<span>{pack.firstPlace}</span>
 				</div>
 			)}
-			{isOpenLike && propsCount > 0 && (
-				<div className="mt-1 text-xs md:text-sm text-gray-700">
-					{propsCount} {propsCount === 1 ? 'prop' : 'props'}
-				</div>
-			)}
+
 			{/* Date and status labels removed on request */}
 
 			{isOpenLike && (
 				<div className="mt-3 flex items-center gap-2">
-					<div className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-blue-600 text-white text-xs md:text-sm font-medium hover:bg-blue-700">
+					<div className={`${primaryBtnBase} ${primaryBtnColor}`}>
 						Play this pack
 					</div>
 					<button

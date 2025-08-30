@@ -95,7 +95,7 @@ export default function LoginPage({ superAdminSecret }) {
   // If already logged in, show profile link and logout
   if (session?.user) {
     const profileID = session.user.profileID;
-    const displayUser = profileID || session.user.phone || "user";
+    const displayUser = profileID || "user";
     return (
 	  <div className="max-w-md mx-auto mt-10 p-4 border rounded shadow-sm">
 		<h1 className="text-2xl font-bold mb-4">You're already logged in</h1>

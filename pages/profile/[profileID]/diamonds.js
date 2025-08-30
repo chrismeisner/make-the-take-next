@@ -6,7 +6,7 @@ import PageContainer from "../../../components/PageContainer";
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-export default function ProfileDiamondsPage({ profileID, profileUsername, achievements = [] }) {
+export default function ProfileDiamondsPage({ profileID, achievements = [] }) {
   const [sortOrder, setSortOrder] = useState("desc"); // desc = newest first
 
   const sortedAchievements = useMemo(() => {
@@ -25,9 +25,7 @@ export default function ProfileDiamondsPage({ profileID, profileUsername, achiev
   return (
     <PageContainer>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">
-          {profileUsername ? `@${profileUsername}` : profileID} Diamonds
-        </h1>
+        <h1 className="text-2xl font-bold">{profileID} Diamonds</h1>
         <div className="flex items-center gap-3">
           <label className="text-sm text-gray-700">
             <span className="mr-2">Sort</span>
@@ -90,7 +88,6 @@ export async function getServerSideProps({ params }) {
     }
     const profileRecord = profs[0];
     const profileRecordId = profileRecord.id;
-    const profileUsername = profileRecord.fields.profileUsername || null;
 
     // Fetch Achievements by profileID string field if available; fallback to link lookup
     let achRecs = [];
@@ -120,7 +117,7 @@ export async function getServerSideProps({ params }) {
       createdTime: r._rawJson?.createdTime || null,
     }));
 
-    return { props: { profileID, profileUsername, achievements } };
+    return { props: { profileID, achievements } };
   } catch (err) {
     console.error("[Diamonds page] Error:", err);
     return { notFound: true };

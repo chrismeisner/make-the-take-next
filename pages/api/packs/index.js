@@ -186,12 +186,13 @@ export default async function handler(req, res) {
   }
   if (req.method === "POST") {
     try {
-      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator } = req.body;
+      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace } = req.body;
       if (!packTitle || !packURL) {
         return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
       }
       // Prepare fields for Airtable record
       const fields = { packTitle, packSummary, packURL, packType, packLeague, packStatus };
+      if (firstPlace !== undefined) fields.firstPlace = firstPlace;
       if (packOpenTime) fields.packOpenTime = packOpenTime;
       if (packCloseTime) fields.packCloseTime = packCloseTime;
       // Link selected Props to this Pack

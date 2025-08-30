@@ -228,7 +228,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
       // Determine which prop index (first for superprop)
       const propIndex = 0;
       openModal('challenge', {
-        friendName: friendProfile.profileUsername || friendProfile.profileID,
+        friendName: friendProfile?.profileID || '',
         friendTakesByProp,
         challengerTakesByProp,
         packProps: packData.props,

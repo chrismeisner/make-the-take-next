@@ -138,29 +138,39 @@ export const authOptions = {
           const phone = "+10000000000";
           console.log("[NextAuth] SuperAdmin authorize => upserting Profiles record for", phone);
 
-          // Upsert super-admin profile in Airtable
+          // Upsert super-admin profile in Airtable without forcing profileID to a fixed value
           const filter = `{profileMobile} = "${phone}"`;
           const found = await base("Profiles").select({ filterByFormula: filter, maxRecords: 1 }).all();
           let airtableId;
+          let profileID;
+
           if (found.length > 0) {
-            airtableId = found[0].id;
-            // Ensure profileID is 'superadmin'
-            if (found[0].fields.profileID !== "superadmin") {
-              await base("Profiles").update([{ id: airtableId, fields: { profileID: "superadmin" } }]);
+            const rec = found[0];
+            airtableId = rec.id;
+            profileID = rec.fields.profileID;
+            const updates = {};
+
+            if (!profileID) {
+              profileID = generateRandomProfileID(8);
+              updates.profileID = profileID;
+            }
+
+            if (!rec.fields.superAdmin) {
+              updates.superAdmin = true;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              await base("Profiles").update([{ id: airtableId, fields: updates }]);
             }
           } else {
+            profileID = generateRandomProfileID(8);
             const created = await base("Profiles").create([
-              { fields: { profileMobile: phone, profileID: "superadmin" } },
+              { fields: { profileMobile: phone, profileID, superAdmin: true } },
             ]);
             airtableId = created[0].id;
           }
 
-          return {
-            phone,
-            profileID: "superadmin",
-            airtableId,
-        superAdmin: true,
-          };
+          return { phone, profileID, airtableId, superAdmin: true };
         }
         return null;
       },
@@ -224,7 +234,7 @@ export const authOptions = {
     async signIn({ user, account, isNewUser }) {
       console.log(`[NextAuth] signIn: profileID=${user.profileID} via provider=${account.provider}`);
       if (account.provider === "super-admin") {
-        console.log("[NextAuth] Super Admin login successful for profileID superadmin");
+        console.log(`[NextAuth] Super Admin login successful for profileID=${user.profileID}`);
       }
     },
   },
