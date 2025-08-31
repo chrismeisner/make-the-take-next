@@ -1,8 +1,5 @@
 import { getSession } from "next-auth/react";
-import Airtable from "airtable";
-
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+import { createRepositories } from "../../lib/dal/factory";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -19,50 +16,29 @@ export default async function handler(req, res) {
   }
 
   try {
-	let filterFormula;
-	if (propID) {
-	  // Fetch take for a specific prop.
-	  filterFormula = `AND({propID} = "${propID}", {takeMobile} = "${session.user.phone}", {takeStatus} = "latest")`;
-	} else {
-	  // Otherwise, fetch all takes for the user.
-	  filterFormula = `AND({takeMobile} = "${session.user.phone}", {takeStatus} = "latest")`;
-	}
-	
-	const records = await base("Takes")
-	  .select({ filterByFormula: filterFormula, maxRecords: 5000 })
-	  .all();
-
-    // Branch for single propID to match VerificationWidget expectations
+    const { takes } = createRepositories();
     if (propID) {
-      if (records.length === 0) {
+      const latest = await takes.getLatestForUser({ propID, phone: session.user.phone });
+      if (!latest) {
         return res.status(200).json({ success: true });
       }
-      const record = records[0];
-      const f = record.fields;
-      return res.status(200).json({
-        success: true,
-        side: f.propSide,
-        takeID: f.TakeID || record.id,
-      });
+      const side = latest.propSide || latest.prop_side || null;
+      const takeID = latest.TakeID || latest.id;
+      return res.status(200).json({ success: true, side, takeID });
     }
-	
-	if (records.length === 0) {
-	  return res.status(200).json({ success: true, takes: [] });
-	}
-	
-	const takes = records.map((record) => {
-	  const f = record.fields;
-	  return {
-		takeID: f.TakeID || record.id,
-		propID: f.propID || null,
-		takeMobile: f.takeMobile || null,
-		takeStatus: f.takeStatus || null,
-		takeResult: f.takeResult || null,
-		packs: f.Packs || [], // expecting this field to be an array of pack IDs
-	  };
-	});
-	
-	return res.status(200).json({ success: true, takes });
+    const list = await takes.listLatestForPhone(session.user.phone);
+    if (!Array.isArray(list) || list.length === 0) {
+      return res.status(200).json({ success: true, takes: [] });
+    }
+    const simplified = list.map((t) => ({
+      takeID: t.takeID || t.id,
+      propID: t.propID || null,
+      takeMobile: t.takeMobile || null,
+      takeStatus: t.takeStatus || null,
+      takeResult: t.takeResult || null,
+      packs: t.packs || [],
+    }));
+    return res.status(200).json({ success: true, takes: simplified });
   } catch (error) {
 	console.error("[userTakes] Error fetching user takes:", error);
 	return res
