@@ -1,8 +1,5 @@
 // File: /pages/api/prop.js
-import Airtable from "airtable";
-
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+import { createRepositories } from "../../lib/dal/factory";
 
 export default async function handler(req, res) {
   const { propID } = req.query;
@@ -13,40 +10,22 @@ export default async function handler(req, res) {
   }
 
   try {
-	// 1) Fetch the single Props record by propID
-	const records = await base("Props")
-	  .select({
-		filterByFormula: `{propID} = "${propID}"`,
-		maxRecords: 1,
-	  })
-	  .firstPage();
-
-	if (!records || records.length === 0) {
+	const { props, takes } = createRepositories();
+	// 1) Fetch the single Prop by propID
+	const prop = await props.getByPropID(propID);
+	if (!prop) {
 	  return res
 		.status(404)
 		.json({ success: false, error: `Prop not found for propID="${propID}"` });
 	}
 
-	// Extract fields from the first (and only) matching record
-	const record = records[0];
-	const data = record.fields;
-	const createdAt = record._rawJson.createdTime;
+	const data = prop; // includes fields
+	const createdAt = prop.createdAt;
 
-	// 2) Enumerate the Takes table to count records for this Prop by matching the propID field
-	// Only count active takes (exclude overwritten)
+	// 2) Count active takes for this prop
+	const countsMap = await takes.countBySides(propID);
 	const sideCount = Number(data.sideCount) || 2;
-	const takeRecords = await base("Takes")
-	  .select({
-		filterByFormula: `AND({propID} = "${propID}", {takeStatus} != "overwritten")`,
-	  })
-	  .all();
-	// Build a map of counts per side value
-	const countsMap = {};
-	takeRecords.forEach((t) => {
-	  const side = t.fields.propSide;
-	  countsMap[side] = (countsMap[side] || 0) + 1;
-	});
-	const totalTakes = takeRecords.length;
+	const totalTakes = (countsMap.A || 0) + (countsMap.B || 0);
 	// Build choices array for each side based on sideCount
 	const choices = [];
 	for (let i = 0; i < sideCount; i++) {

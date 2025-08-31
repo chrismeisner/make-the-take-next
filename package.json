@@ -24,7 +24,8 @@
     "swiper": "^11.2.10",
     "swr": "^2.3.4",
     "three": "0.161.0",
-    "twilio": "^5.4.3"
+    "twilio": "^5.4.3",
+    "pg": "^8.11.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.0.0",

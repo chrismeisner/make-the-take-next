@@ -1,10 +1,7 @@
 // File: /pages/api/take.js
 
 import { getToken } from "next-auth/jwt";
-import Airtable from "airtable";
-
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+import { createRepositories } from "../../lib/dal/factory";
 
 export default async function handler(req, res) {
   console.log("[/api/take] Received request with method:", req.method);
@@ -45,25 +42,19 @@ export default async function handler(req, res) {
   );
 
   try {
+	const { props, takes } = createRepositories();
 	// 3) Find the matching Prop record by propID
-	const propsFound = await base("Props")
-	  .select({
-		filterByFormula: `{propID} = "${propID}"`,
-		maxRecords: 1,
-	  })
-	  .firstPage();
-
-	if (!propsFound.length) {
+	const propRec = await props.getByPropID(propID);
+	if (!propRec) {
 	  return res.status(404).json({
 		success: false,
 		error: `Prop not found for propID="${propID}"`,
 	  });
 	}
 
-	const propRec = propsFound[0];
-	const propStatus = propRec.fields.propStatus || "open";
+	const propStatus = propRec.propStatus || "open";
 	// Collect linked teams from the Prop record
-	const teams = Array.isArray(propRec.fields.Teams) ? propRec.fields.Teams : [];
+	const teams = Array.isArray(propRec.Teams) ? propRec.Teams : [];
 	if (propStatus !== "open") {
 	  return res.status(400).json({
 		success: false,
@@ -71,37 +62,11 @@ export default async function handler(req, res) {
 	  });
 	}
 
-	// 5) Overwrite any old "latest" take for this phone + prop
-	const oldTakes = await base("Takes")
-	  .select({
-		filterByFormula: `AND({propID}="${propID}", {takeMobile}="${token.phone}", {takeStatus}="latest")`,
-		maxRecords: 1,
-	  })
-	  .all();
-
-	if (oldTakes.length > 0) {
-	  const oldTake = oldTakes[0];
-	  const oldSide = oldTake.fields.propSide;
-
-	  // Mark old take as overwritten
-	  await base("Takes").update([
-		{
-		  id: oldTake.id,
-		  fields: { takeStatus: "overwritten" },
-		},
-	  ]);
-	}
 
 	// 6) Calculate popularity of the chosen side before adding the new take
-	const existingTakes = await base("Takes")
-	  .select({ filterByFormula: `AND({propID}="${propID}", {takeStatus}!="overwritten")` })
-	  .all();
-	let sideACount = 0;
-	let sideBCount = 0;
-	existingTakes.forEach((t) => {
-	  if (t.fields.propSide === "A") sideACount++;
-	  if (t.fields.propSide === "B") sideBCount++;
-	});
+	const counts = await takes.countBySides(propID);
+	const sideACount = counts.A || 0;
+	const sideBCount = counts.B || 0;
 	const totalCount = sideACount + sideBCount;
 	const chosenCount = propSide === "A" ? sideACount : sideBCount;
 	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0.5;
@@ -109,7 +74,7 @@ export default async function handler(req, res) {
 	// 7) Create the new "latest" take
 	//    We'll link the "Profile" field to the user's profile record in Airtable
 	const profileRecId = token.airtableId; // e.g., "rec123..."
-	const packLinks = propRec.fields.Packs || [];
+	const packLinks = propRec.Packs || [];
 	console.log("📦📝 [api/take] Submitting take:", { propID, propSide, phone: token.phone, receiptId, packLinks, teams, takePopularity });
 	const takeFields = {
 	  propID,
@@ -126,27 +91,12 @@ export default async function handler(req, res) {
 	if (receiptId) takeFields.receiptID = receiptId;
 	// Include takeRef if present in referer URL
 	if (takeRef) takeFields.takeRef = takeRef;
-	const takeResp = await base("Takes").create([
-	  { fields: takeFields }
-	]);
-	const newTake = takeResp[0];
-	const newTakeID = newTake.fields.takeID || newTake.id;
+	const newTakeID = await takes.createLatestTake({ propID, propSide, phone: token.phone, fields: takeFields });
 
 	// 8) Compute dynamic side counts for this prop
-	const takesRecords = await base("Takes")
-	  .select({
-		filterByFormula: `AND({propID}="${propID}", {takeStatus}!="overwritten")`,
-		maxRecords: 10000,
-	  })
-	  .all();
-
-	let sideACount2 = 0;
-	let sideBCount2 = 0;
-	takesRecords.forEach((take) => {
-	  const side = take.fields.propSide;
-	  if (side === "A") sideACount2++;
-	  if (side === "B") sideBCount2++;
-	});
+	const recount = await takes.countBySides(propID);
+	let sideACount2 = recount.A || 0;
+	let sideBCount2 = recount.B || 0;
 
 	// Return success with updated dynamic counts
 	return res.status(200).json({

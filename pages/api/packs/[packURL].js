@@ -1,6 +1,7 @@
 // File: /pages/api/packs/[packURL].js
 
 import Airtable from "airtable";
+import { createRepositories } from '../../../lib/dal/factory';
 import { aggregateTakeStats } from '../../../lib/leaderboard';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
@@ -25,26 +26,15 @@ export default async function handler(req, res) {
   console.log("[packURL] Received request =>", packURL);
 
   try {
-	// 1) Fetch the pack record by packURL
-	console.log("[packURL] Querying Packs table => packURL:", packURL);
-	const packRecords = await base("Packs")
-	  .select({
-		filterByFormula: `{packURL} = "${packURL}"`,
-		maxRecords: 1,
-	  })
-	  .firstPage();
-
-	console.log("[packURL] packRecords length =>", packRecords.length);
-	if (!packRecords || packRecords.length === 0) {
+	// 1) Fetch the pack record by packURL via DAL
+	const { packs } = createRepositories();
+	const pack = await packs.getByPackURL(packURL);
+	if (!pack) {
 	  console.log("[packURL] No pack found for:", packURL);
-	  return res.status(404).json({
-		success: false,
-		error: "Pack not found",
-	  });
+	  return res.status(404).json({ success: false, error: "Pack not found" });
 	}
-
-	const packRecord = packRecords[0];
-	const packFields = packRecord.fields;
+	const packFields = pack;
+	const packRecordId = pack.id;
   // Fetch linked Event record early so we can attach espnGameID and eventLeague to props
   const eventIDs = packFields.Event || [];
   let espnGameID = null;
@@ -116,7 +106,7 @@ export default async function handler(req, res) {
 
 	  console.log("[packURL] propsRecords length =>", propsRecords.length);
       // Compute per-pack order using propOrderByPack JSON text; fallback to default, then numeric propOrder
-      const packRecordId = packRecord.id;
+      // use packRecordId resolved above
       const getPerPackOrder = (rec) => {
         try {
           const f = rec.fields || {};
