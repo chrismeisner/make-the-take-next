@@ -1,6 +1,8 @@
 // File: /pages/api/props/index.js
 import fetch from "node-fetch";
 import Airtable from "airtable";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { query } from "../../../lib/db/postgres";
 
 /**
  * This version uses Airtable's REST API (instead of the Airtable.js client),
@@ -13,6 +15,55 @@ import Airtable from "airtable";
  *  => returns the next 10
  */
 export default async function handler(req, res) {
+  // Postgres GET path
+  if (req.method === "GET" && getDataBackend() === 'postgres') {
+    try {
+      const limitRaw = parseInt(req.query.limit || "10", 10);
+      const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
+      const offsetRaw = parseInt(req.query.offset || "0", 10);
+      const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+      const { rows } = await query(
+        `SELECT p.id, p.prop_id, p.prop_short, p.prop_summary, p.prop_status,
+                p.pack_id, p.event_id, p.side_count, p.moneyline_a, p.moneyline_b,
+                p.open_time, p.close_time, p.grading_mode, p.formula_key, p.formula_params,
+                p.cover_url, p.prop_order,
+                e.title AS event_title, e.event_time, e.league AS event_league
+           FROM props p
+      LEFT JOIN events e ON p.event_id = e.id
+       ORDER BY p.prop_id
+          LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+
+      const propsData = rows.map((r) => ({
+        airtableId: r.id,
+        propID: r.prop_id,
+        propTitle: "Untitled",
+        propSummary: r.prop_summary || "",
+        propStatus: r.prop_status || "open",
+        PropSideAShort: "",
+        PropSideBShort: "",
+        propShort: r.prop_short || "",
+        eventTitle: r.event_title || null,
+        eventTime: r.event_time || null,
+        eventLeague: r.event_league || null,
+        propCloseTime: r.close_time || null,
+        subjectLogoUrls: [],
+        contentImageUrls: [],
+        linkedPacks: r.pack_id ? [r.pack_id] : [],
+        teams: [],
+        propOrder: r.prop_order || 0,
+        createdAt: null,
+      }));
+
+      const nextOffset = rows.length === limit ? String(offset + limit) : null;
+      return res.status(200).json({ success: true, props: propsData, nextOffset });
+    } catch (err) {
+      console.error("[api/props GET PG] error =>", err);
+      return res.status(500).json({ success: false, error: "Failed to fetch props" });
+    }
+  }
   if (req.method === "POST") {
     // Create a new Prop linked to a Pack
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
