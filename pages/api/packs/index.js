@@ -3,6 +3,8 @@
 import Airtable from "airtable";
 import { getToken } from "next-auth/jwt";
 import { upsertEvent } from "../../../lib/airtableService";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { query } from "../../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -115,6 +117,79 @@ async function attachTotalTakeCount(packsData) {
 }
 
 export default async function handler(req, res) {
+  // Postgres path for GET (staging/prod Postgres runtime)
+  if (req.method === "GET" && getDataBackend() === 'postgres') {
+    try {
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+      const userPhone = token?.phone || null;
+
+      // Filter: active/graded/coming-soon (case-insensitive) if status present
+      const { rows: packRows } = await query(
+        `SELECT id, pack_url, title, prize, cover_url, league, created_at, pack_status
+         FROM packs
+         WHERE LOWER(COALESCE(pack_status, '')) IN ('active','graded','coming-soon')
+            OR pack_status IS NULL
+         ORDER BY created_at DESC NULLS LAST
+         LIMIT 200`
+      );
+
+      const packIdToUrl = new Map(packRows.map(r => [r.id, r.pack_url]));
+
+      // Total take counts per pack (latest only)
+      const { rows: totalCounts } = await query(
+        `SELECT pack_id, COUNT(*)::int AS c
+           FROM takes
+          WHERE take_status = 'latest'
+          GROUP BY pack_id`
+      );
+      const totalMap = new Map(totalCounts.map(r => [r.pack_id, Number(r.c)]));
+
+      // User-specific take counts per pack (if logged in)
+      let userMap = new Map();
+      if (userPhone) {
+        const { rows } = await query(
+          `SELECT pack_id, COUNT(*)::int AS c
+             FROM takes
+            WHERE take_status = 'latest' AND take_mobile = $1
+            GROUP BY pack_id`,
+          [userPhone]
+        );
+        userMap = new Map(rows.map(r => [r.pack_id, Number(r.c)]));
+      }
+
+      const packsData = packRows.map((r) => ({
+        airtableId: r.id, // legacy field name kept for shape compatibility
+        eventTitle: null,
+        propEventRollup: [],
+        packID: r.id, // no Airtable id in PG; expose internal id
+        packTitle: r.title || "Untitled Pack",
+        packURL: r.pack_url || "",
+        packCover: r.cover_url || null,
+        packPrize: r.prize || "",
+        prizeSummary: "",
+        packSummary: "",
+        packType: "",
+        packLeague: r.league || null,
+        packStatus: r.pack_status || "",
+        packOpenTime: null,
+        packCloseTime: null,
+        eventTime: null,
+        firstPlace: "",
+        createdAt: r.created_at || null,
+        propsCount: 0,
+        winnerProfileID: null,
+        packWinnerRecordIds: [],
+        takeCount: totalMap.get(r.id) || 0,
+        userTakesCount: userMap.get(r.id) || 0,
+      }));
+
+      return res.status(200).json({ success: true, packs: packsData });
+    } catch (error) {
+      console.error("[api/packs PG] Error =>", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch packs." });
+    }
+  }
+
   if (req.method === "DELETE") {
     try {
       const packId = req.query.packId || req.body?.packId;
