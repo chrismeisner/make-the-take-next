@@ -21,9 +21,31 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 } };
+  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 } };
 
   try {
+    // 0) Upsert Teams first (for downstream references)
+    const teamRecords = await base('Teams').select({ pageSize: 200, view: 'Grid view' }).all();
+    for (const rec of teamRecords) {
+      const f = rec.fields || {};
+      const teamID = f.teamID || null;
+      const name = f.teamNameFull || f.teamName || '';
+      const league = f.teamLeague || null;
+      const slug = f.teamSlug || f.teamAbbreviation || null;
+      const logoUrl = Array.isArray(f.teamLogo) && f.teamLogo[0]?.url ? f.teamLogo[0].url : (f.teamLogoURL || null);
+      const upsertSql = `
+        INSERT INTO teams (team_id, name, team_slug, league, logo_url)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (team_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          team_slug = EXCLUDED.team_slug,
+          league = EXCLUDED.league,
+          logo_url = EXCLUDED.logo_url
+        RETURNING id`;
+      const { rows } = await query(upsertSql, [teamID, name, slug, league, logoUrl]);
+      if (rows[0]?.id) report.teams.upserted += 1;
+    }
+
     // 1) Upsert Packs (build map from Airtable record id -> packs.id)
     const packRecords = await base('Packs').select({ pageSize: 100, view: 'Grid view' }).all();
     const packIdMap = new Map();
