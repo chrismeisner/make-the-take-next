@@ -1,4 +1,6 @@
 import Airtable from "airtable";
+import { getDataBackend } from "../../lib/runtimeConfig";
+import { query } from "../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -10,6 +12,17 @@ export default async function handler(req, res) {
   }
   
   try {
+    if (getDataBackend() === 'postgres') {
+      const { rows } = await query(
+        `SELECT id, title, value FROM prizes ORDER BY title`);
+      const prizes = rows.map(r => ({
+        prizeID: r.id,
+        prizeTitle: r.title || 'Untitled',
+        prizePTS: 0,
+        prizeIMGs: [],
+      }));
+      return res.status(200).json({ success: true, prizes });
+    }
 	// Fetch all available prizes, sorted by prizePTS ascending
 	const records = await base("Prizes")
 	  .select({
