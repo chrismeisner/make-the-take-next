@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 } };
+  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 } };
 
   try {
     // 0) Upsert Teams first (for downstream references)
@@ -73,6 +73,24 @@ export default async function handler(req, res) {
         packIdMap.set(rec.id, insertedId);
         report.packs.upserted += 1;
       }
+    }
+
+    // 1.5) Upsert Items
+    const itemRecords = await base('Items').select({ pageSize: 100, view: 'Grid view' }).all();
+    for (const rec of itemRecords) {
+      const f = rec.fields || {};
+      const itemID = f.itemID || rec.id;
+      const title = f.itemTitle || f.itemName || '';
+      const imageUrl = Array.isArray(f.itemImage) && f.itemImage[0]?.url ? f.itemImage[0].url : (f.itemImageURL || null);
+      const upsertSql = `
+        INSERT INTO items (item_id, title, image_url)
+        VALUES ($1,$2,$3)
+        ON CONFLICT (item_id) DO UPDATE SET
+          title = EXCLUDED.title,
+          image_url = EXCLUDED.image_url
+        RETURNING id`;
+      const { rows } = await query(upsertSql, [itemID, title, imageUrl]);
+      if (rows[0]?.id) report.items.upserted += 1;
     }
 
     // 2) Upsert Props (link to pack_id when available via Airtable pack link)
@@ -139,6 +157,30 @@ export default async function handler(req, res) {
       ]);
       if (rows[0]?.id) report.props.upserted += 1;
     }
+
+    // 3) Upsert Prizes (link to pack by packURL if present)
+    try {
+      const prizeRecords = await base('Prizes').select({ pageSize: 100, view: 'Grid view' }).all();
+      for (const rec of prizeRecords) {
+        const f = rec.fields || {};
+        const title = f.prizeTitle || f.title || '';
+        const status = f.prizeStatus || null;
+        let packId = null;
+        const packsLinks = Array.isArray(f.Packs) ? f.Packs : [];
+        if (packsLinks.length) {
+          const first = packsLinks[0];
+          packId = packIdMap.get(first) || null;
+        }
+        const value = f.prizeValue ? String(f.prizeValue) : null;
+        const upsertSql = `
+          INSERT INTO prizes (title, status, pack_id, value)
+          VALUES ($1,$2,$3,$4)
+          ON CONFLICT DO NOTHING
+          RETURNING id`;
+        const { rows } = await query(upsertSql, [title, status, packId, value]);
+        if (rows[0]?.id) report.prizes.upserted += 1;
+      }
+    } catch {}
 
     return res.status(200).json({ success: true, report });
   } catch (err) {
