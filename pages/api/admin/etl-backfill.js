@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   try {
     // 0) Upsert Teams first (for downstream references)
-    const teamRecords = await base('Teams').select({ pageSize: 200, view: 'Grid view' }).all();
+    const teamRecords = await base('Teams').select({ pageSize: 100, view: 'Grid view' }).all();
     for (const rec of teamRecords) {
       const f = rec.fields || {};
       const teamID = f.teamID || null;
