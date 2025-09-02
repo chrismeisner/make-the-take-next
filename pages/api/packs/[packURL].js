@@ -3,6 +3,8 @@
 import Airtable from "airtable";
 import { createRepositories } from '../../../lib/dal/factory';
 import { aggregateTakeStats } from '../../../lib/leaderboard';
+import { getDataBackend } from '../../../lib/runtimeConfig';
+import { query } from '../../../lib/db/postgres';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -35,6 +37,8 @@ export default async function handler(req, res) {
 	}
 	const packFields = pack;
 	const packRecordId = pack.id;
+
+	const isPG = getDataBackend() === 'postgres';
   // Fetch linked Event record early so we can attach espnGameID and eventLeague to props
   const eventIDs = packFields.Event || [];
   let espnGameID = null;
@@ -42,45 +46,93 @@ export default async function handler(req, res) {
   // New: home/away team logos available early for prop cover resolution
   let homeTeamInfoCover = null;
   let awayTeamInfoCover = null;
+  let packEventTime = null;
+  let packEventId = null;
+  let packEventIds = [];
+  let homeTeam = null;
+  let awayTeam = null;
+  let homeTeamScore = null;
+  let awayTeamScore = null;
+
   if (eventIDs.length > 0) {
     const firstEventID = eventIDs[0];
-    try {
-      const eventRec = await base("Events").find(firstEventID);
-      const ef = eventRec.fields;
-      espnGameID = ef.espnGameID || null;
-      eventLeague = ef.eventLeague || null;
-      console.log(`[api/packs/[packURL]] Found Event ${firstEventID}: espnGameID=${espnGameID}, eventLeague=${eventLeague}`);
-      // Resolve team logos for hometeam/awayteam propCoverSource
-      const homeLink = ef.homeTeamLink || null;
-      const awayLink = ef.awayTeamLink || null;
-      if (homeLink) {
-        const homeId = Array.isArray(homeLink) ? homeLink[0] : homeLink;
-        try {
-          const homeRec = await base("Teams").find(homeId);
+    packEventId = firstEventID;
+    packEventIds = eventIDs;
+
+    if (isPG) {
+      try {
+        const { rows } = await query(
+          `SELECT e.*, 
+                  ht.team_slug AS home_team_slug, ht.name AS home_team_name, ht.logo_url AS home_logo,
+                  at.team_slug AS away_team_slug, at.name AS away_team_name, at.logo_url AS away_logo
+             FROM events e
+        LEFT JOIN teams ht ON e.home_team_id = ht.id
+        LEFT JOIN teams at ON e.away_team_id = at.id
+            WHERE e.id = $1
+            LIMIT 1`,
+          [firstEventID]
+        );
+        if (rows.length) {
+          const e = rows[0];
+          espnGameID = e.espn_game_id || null;
+          eventLeague = e.league || null;
+          packEventTime = e.event_time || null;
           homeTeamInfoCover = {
-            recordId: homeRec.id,
-            teamLogo: Array.isArray(homeRec.fields.teamLogo)
-              ? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-              : [],
-            teamLogoURL: homeRec.fields.teamLogoURL || null,
+            recordId: e.home_team_id,
+            teamLogo: e.home_logo ? [{ url: e.home_logo, filename: 'home-team-logo' }] : [],
+            teamLogoURL: e.home_logo || null,
           };
-        } catch {}
-      }
-      if (awayLink) {
-        const awayId = Array.isArray(awayLink) ? awayLink[0] : awayLink;
-        try {
-          const awayRec = await base("Teams").find(awayId);
           awayTeamInfoCover = {
-            recordId: awayRec.id,
-            teamLogo: Array.isArray(awayRec.fields.teamLogo)
-              ? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-              : [],
-            teamLogoURL: awayRec.fields.teamLogoURL || null,
+            recordId: e.away_team_id,
+            teamLogo: e.away_logo ? [{ url: e.away_logo, filename: 'away-team-logo' }] : [],
+            teamLogoURL: e.away_logo || null,
           };
-        } catch {}
+        }
+      } catch (err) {
+        console.error(`[api/packs/[packURL]] PG event lookup error:`, err);
       }
-    } catch (err) {
-      console.error(`[api/packs/[packURL]] Error fetching Event ${firstEventID}:`, err);
+    } else {
+      try {
+        const eventRec = await base("Events").find(firstEventID);
+        const ef = eventRec.fields;
+        espnGameID = ef.espnGameID || null;
+        eventLeague = ef.eventLeague || null;
+        packEventTime = ef.eventTime || null;
+        console.log(`[api/packs/[packURL]] Found Event ${firstEventID}: espnGameID=${espnGameID}, eventLeague=${eventLeague}`);
+        // Resolve team logos for hometeam/awayteam propCoverSource
+        const homeLink = ef.homeTeamLink || null;
+        const awayLink = ef.awayTeamLink || null;
+        homeTeam = homeLink || null;
+        awayTeam = awayLink || null;
+        if (homeLink) {
+          const homeId = Array.isArray(homeLink) ? homeLink[0] : homeLink;
+          try {
+            const homeRec = await base("Teams").find(homeId);
+            homeTeamInfoCover = {
+              recordId: homeRec.id,
+              teamLogo: Array.isArray(homeRec.fields.teamLogo)
+                ? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+                : [],
+              teamLogoURL: homeRec.fields.teamLogoURL || null,
+            };
+          } catch {}
+        }
+        if (awayLink) {
+          const awayId = Array.isArray(awayLink) ? awayLink[0] : awayLink;
+          try {
+            const awayRec = await base("Teams").find(awayId);
+            awayTeamInfoCover = {
+              recordId: awayRec.id,
+              teamLogo: Array.isArray(awayRec.fields.teamLogo)
+                ? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+                : [],
+              teamLogoURL: awayRec.fields.teamLogoURL || null,
+            };
+          } catch {}
+        }
+      } catch (err) {
+        console.error(`[api/packs/[packURL]] Error fetching Event ${firstEventID}:`, err);
+      }
     }
   }
 	// ---------------------------------------------
@@ -149,7 +201,7 @@ export default async function handler(req, res) {
 		// Determine team logos: prefer prop-level event logos first; fallback to pack-level event logos
 		let homeLogoUrl = null;
 		let awayLogoUrl = null;
-		if (Array.isArray(f.Event) && f.Event.length > 0) {
+		if (!isPG && Array.isArray(f.Event) && f.Event.length > 0) {
 		  try {
 			const ev = await base('Events').find(f.Event[0]);
 			const evf = ev.fields || {};
@@ -271,40 +323,6 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4a. Linked Event record => eventTime (pack-level only)
-	// ---------------------------------------------
-	const linkedEventIDs = packFields.Event || [];
-	let packEventTime = null;
-	let packEventId = null;
-	let packEventIds = [];
-	let homeTeam = null;
-	let awayTeam = null;
-	let homeTeamScore = null;
-	let awayTeamScore = null;
-	if (linkedEventIDs.length > 0) {
-	  const firstEventID = linkedEventIDs[0];
-	  packEventId = firstEventID;
-	  packEventIds = linkedEventIDs;
-	  console.log("[packURL] fetching Event record =>", firstEventID);
-
-	  const eventRecords = await base("Events")
-		.select({
-		  filterByFormula: `RECORD_ID()="${firstEventID}"`,
-		  maxRecords: 1,
-		})
-		.all();
-	  if (eventRecords.length > 0) {
-		const eventFields = eventRecords[0].fields;
-		packEventTime = eventFields.eventTime || null;
-		homeTeam = eventFields.homeTeamLink || null;
-		awayTeam = eventFields.awayTeamLink || null;
-		homeTeamScore = eventFields.homeTeamScore ?? null;
-		awayTeamScore = eventFields.awayTeamScore ?? null;
-		console.log("[packURL] Found eventTime =>", packEventTime);
-	  }
-	}
-
-	// ---------------------------------------------
 	// 4b. Linked Content records => contentData
 	// ---------------------------------------------
 	const linkedContentIDs = packFields.Content || [];
@@ -418,45 +436,66 @@ export default async function handler(req, res) {
 		}
 	}
 
-	// Fetch linked Teams for event
+	// Fetch linked Teams for event (Airtable path) or from Postgres event join
 	let homeTeamInfo = null;
 	let awayTeamInfo = null;
-	if (homeTeam) {
-	  const homeId = Array.isArray(homeTeam) ? homeTeam[0] : homeTeam;
-	  try {
-		const homeRec = await base("Teams").find(homeId);
-		// Determine slug from fields.teamSlug, fallback to fields.teamID or record id
-		const resolvedHomeSlug = homeRec.fields.teamSlug || homeRec.fields.teamID || homeRec.id;
-		homeTeamInfo = {
-		  recordId: homeRec.id,
-		  teamSlug: resolvedHomeSlug,
-		  teamName: homeRec.fields.teamName || "",
-		  teamNameFull: homeRec.fields.teamNameFull || homeRec.fields.teamName || "",
-		  teamLogo: Array.isArray(homeRec.fields.teamLogo)
-			? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-			: [],
-		};
-	  } catch (err) {
-		console.error("[packURL] Error fetching homeTeam =>", err);
+	if (isPG && (homeTeamInfoCover || awayTeamInfoCover)) {
+	  homeTeamInfo = homeTeamInfoCover
+		? {
+			recordId: homeTeamInfoCover.recordId,
+			teamSlug: null,
+			teamName: null,
+			teamNameFull: null,
+			teamLogo: Array.isArray(homeTeamInfoCover.teamLogo) ? homeTeamInfoCover.teamLogo : [],
+		}
+		: null;
+	  awayTeamInfo = awayTeamInfoCover
+		? {
+			recordId: awayTeamInfoCover.recordId,
+			teamSlug: null,
+			teamName: null,
+			teamNameFull: null,
+			teamLogo: Array.isArray(awayTeamInfoCover.teamLogo) ? awayTeamInfoCover.teamLogo : [],
+		}
+		: null;
+	} else {
+	  if (homeTeam) {
+		const homeId = Array.isArray(homeTeam) ? homeTeam[0] : homeTeam;
+		try {
+		  const homeRec = await base("Teams").find(homeId);
+		  // Determine slug from fields.teamSlug, fallback to fields.teamID or record id
+		  const resolvedHomeSlug = homeRec.fields.teamSlug || homeRec.fields.teamID || homeRec.id;
+		  homeTeamInfo = {
+			recordId: homeRec.id,
+			teamSlug: resolvedHomeSlug,
+			teamName: homeRec.fields.teamName || "",
+			teamNameFull: homeRec.fields.teamNameFull || homeRec.fields.teamName || "",
+			teamLogo: Array.isArray(homeRec.fields.teamLogo)
+			  ? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+			  : [],
+		  };
+		} catch (err) {
+		  console.error("[packURL] Error fetching homeTeam =>", err);
+		}
 	  }
-	}
-	if (awayTeam) {
-	  const awayId = Array.isArray(awayTeam) ? awayTeam[0] : awayTeam;
-	  try {
-		const awayRec = await base("Teams").find(awayId);
-		// Determine slug from fields.teamSlug, fallback to fields.teamID or record id
-		const resolvedAwaySlug = awayRec.fields.teamSlug || awayRec.fields.teamID || awayRec.id;
-		awayTeamInfo = {
-		  recordId: awayRec.id,
-		  teamSlug: resolvedAwaySlug,
-		  teamName: awayRec.fields.teamName || "",
-		  teamNameFull: awayRec.fields.teamNameFull || awayRec.fields.teamName || "",
-		  teamLogo: Array.isArray(awayRec.fields.teamLogo)
-			? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-			: [],
-		};
-	  } catch (err) {
-		console.error("[packURL] Error fetching awayTeam =>", err);
+	  if (awayTeam) {
+		const awayId = Array.isArray(awayTeam) ? awayTeam[0] : awayTeam;
+		try {
+		  const awayRec = await base("Teams").find(awayId);
+		  // Determine slug from fields.teamSlug, fallback to fields.teamID or record id
+		  const resolvedAwaySlug = awayRec.fields.teamSlug || awayRec.fields.teamID || awayRec.id;
+		  awayTeamInfo = {
+			recordId: awayRec.id,
+			teamSlug: resolvedAwaySlug,
+			teamName: awayRec.fields.teamName || "",
+			teamNameFull: awayRec.fields.teamNameFull || homeRec.fields.teamName || "",
+			teamLogo: Array.isArray(awayRec.fields.teamLogo)
+			  ? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
+			  : [],
+		  };
+		} catch (err) {
+		  console.error("[packURL] Error fetching awayTeam =>", err);
+		}
 	  }
 	}
 
