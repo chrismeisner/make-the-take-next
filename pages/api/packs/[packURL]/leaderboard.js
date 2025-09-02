@@ -2,6 +2,8 @@
 
 import Airtable from 'airtable';
 import { aggregateTakeStats } from '../../../../lib/leaderboard';
+import { getDataBackend } from '../../../../lib/runtimeConfig';
+import { query } from '../../../../lib/db/postgres';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -55,16 +57,37 @@ export default async function handler(req, res) {
 	  })
 	  .all();
 
-	// Build phone->profileID map
-	const phoneToProfileID = new Map();
-	takes.forEach((take) => {
-	  const tf = take.fields;
-	  const profileLink = tf.Profile || [];
-	  if (profileLink.length > 0 && tf.profileID) {
-		const phoneKey = tf.takeMobile || 'Unknown';
-		phoneToProfileID.set(phoneKey, tf.profileID);
+	// Build phone->profileID map (prefer Postgres when enabled)
+	let phoneToProfileID = new Map();
+	if (getDataBackend() === 'postgres') {
+	  try {
+		const uniquePhones = Array.from(new Set(takes.map(t => t.fields.takeMobile).filter(Boolean)));
+		if (uniquePhones.length > 0) {
+		  const { rows } = await query('SELECT mobile_e164, profile_id FROM profiles WHERE mobile_e164 = ANY($1::text[])', [uniquePhones]);
+		  phoneToProfileID = new Map(rows.map(r => [r.mobile_e164, r.profile_id]));
+		}
+	  } catch (err) {
+		console.error('[pack leaderboard] Postgres mapping failed, fallback to Airtable =>', err);
+		// fallback to Airtable-derived links if present on takes
+		takes.forEach((take) => {
+		  const tf = take.fields;
+		  const profileLink = tf.Profile || [];
+		  if (profileLink.length > 0 && tf.profileID) {
+			const phoneKey = tf.takeMobile || 'Unknown';
+			phoneToProfileID.set(phoneKey, tf.profileID);
+		  }
+		});
 	  }
-	});
+	} else {
+	  takes.forEach((take) => {
+		const tf = take.fields;
+		const profileLink = tf.Profile || [];
+		if (profileLink.length > 0 && tf.profileID) {
+		  const phoneKey = tf.takeMobile || 'Unknown';
+		  phoneToProfileID.set(phoneKey, tf.profileID);
+		}
+	  });
+	}
 
 	// Aggregate stats using shared helper
 	const statsList = aggregateTakeStats(takes);
