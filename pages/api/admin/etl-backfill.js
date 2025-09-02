@@ -21,11 +21,12 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
+  const report = { teams: { upserted: 0 }, events: { upserted: 0 }, packs: { upserted: 0, linkedEvents: 0 }, props: { upserted: 0, skippedNoPackLink: 0, linkedEvents: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
 
   try {
     // 0) Upsert Teams first (for downstream references)
     const teamRecords = await base('Teams').select({ pageSize: 100, view: 'Grid view' }).all();
+    const teamRecMap = new Map(); // Airtable team rec id -> teams.id
     for (const rec of teamRecords) {
       const f = rec.fields || {};
       const teamID = f.teamID || null;
@@ -43,7 +44,44 @@ export default async function handler(req, res) {
           logo_url = EXCLUDED.logo_url
         RETURNING id`;
       const { rows } = await query(upsertSql, [teamID, name, slug, league, logoUrl]);
-      if (rows[0]?.id) report.teams.upserted += 1;
+      if (rows[0]?.id) {
+        report.teams.upserted += 1;
+        teamRecMap.set(rec.id, rows[0].id);
+      }
+    }
+
+    // 0.5) Upsert Events and build map from Airtable event record id -> events.id
+    const eventRecords = await base('Events').select({ pageSize: 100, view: 'Grid view' }).all();
+    const eventRecMap = new Map();
+    for (const rec of eventRecords) {
+      const f = rec.fields || {};
+      const espnGameId = f.espnGameID || null;
+      const title = f.eventTitle || '';
+      const eventTime = f.eventTime || null;
+      const league = f.eventLeague || null;
+      let homeTeamId = null;
+      let awayTeamId = null;
+      try {
+        const hLink = Array.isArray(f.homeTeamLink) ? f.homeTeamLink[0] : f.homeTeamLink;
+        const aLink = Array.isArray(f.awayTeamLink) ? f.awayTeamLink[0] : f.awayTeamLink;
+        if (hLink && teamRecMap.has(hLink)) homeTeamId = teamRecMap.get(hLink);
+        if (aLink && teamRecMap.has(aLink)) awayTeamId = teamRecMap.get(aLink);
+      } catch {}
+      const upsertSql = `
+        INSERT INTO events (espn_game_id, title, event_time, league, home_team_id, away_team_id)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (espn_game_id) DO UPDATE SET
+          title = EXCLUDED.title,
+          event_time = EXCLUDED.event_time,
+          league = EXCLUDED.league,
+          home_team_id = COALESCE(EXCLUDED.home_team_id, events.home_team_id),
+          away_team_id = COALESCE(EXCLUDED.away_team_id, events.away_team_id)
+        RETURNING id`;
+      const { rows } = await query(upsertSql, [espnGameId, title, eventTime, league, homeTeamId, awayTeamId]);
+      if (rows[0]?.id) {
+        report.events.upserted += 1;
+        eventRecMap.set(rec.id, rows[0].id);
+      }
     }
 
     // 1) Upsert Packs (build map from Airtable record id -> packs.id)
@@ -72,6 +110,18 @@ export default async function handler(req, res) {
       if (insertedId) {
         packIdMap.set(rec.id, insertedId);
         report.packs.upserted += 1;
+        // Link first Event if available
+        try {
+          const linkedEvents = Array.isArray(f.Event) ? f.Event : [];
+          if (linkedEvents.length > 0) {
+            const firstEventAirId = linkedEvents[0];
+            const eventId = eventRecMap.get(firstEventAirId) || null;
+            if (eventId) {
+              await query('UPDATE packs SET event_id = $2 WHERE id = $1', [insertedId, eventId]);
+              report.packs.linkedEvents += 1;
+            }
+          }
+        } catch {}
       }
     }
 
@@ -176,11 +226,19 @@ export default async function handler(req, res) {
       const sideCount = Number(f.sideCount) || 2;
       const moneylineA = f.PropSideAMoneyline != null ? Number(f.PropSideAMoneyline) : null;
       const moneylineB = f.PropSideBMoneyline != null ? Number(f.PropSideBMoneyline) : null;
+      // Link event if available
+      let eventId = null;
+      const propEvents = Array.isArray(f.Event) ? f.Event : [];
+      if (propEvents.length > 0) {
+        const firstEventAirId = propEvents[0];
+        eventId = eventRecMap.get(firstEventAirId) || null;
+        if (eventId) report.props.linkedEvents += 1;
+      }
       const upsertSql = `
         INSERT INTO props (
           prop_id, prop_short, prop_summary, prop_type, prop_status,
-          pack_id, side_count, moneyline_a, moneyline_b
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          pack_id, side_count, moneyline_a, moneyline_b, event_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (prop_id) DO UPDATE SET
           prop_short = EXCLUDED.prop_short,
           prop_summary = EXCLUDED.prop_summary,
@@ -189,7 +247,8 @@ export default async function handler(req, res) {
           pack_id = EXCLUDED.pack_id,
           side_count = EXCLUDED.side_count,
           moneyline_a = EXCLUDED.moneyline_a,
-          moneyline_b = EXCLUDED.moneyline_b
+          moneyline_b = EXCLUDED.moneyline_b,
+          event_id = COALESCE(EXCLUDED.event_id, props.event_id)
         RETURNING id
       `;
       const { rows } = await query(upsertSql, [
@@ -202,6 +261,7 @@ export default async function handler(req, res) {
         sideCount,
         moneylineA,
         moneylineB,
+        eventId,
       ]);
       if (rows[0]?.id) report.props.upserted += 1;
     }
