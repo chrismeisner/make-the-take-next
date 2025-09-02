@@ -5,6 +5,7 @@ import { getToken } from "next-auth/jwt";
 import { upsertEvent } from "../../../lib/airtableService";
 import { getDataBackend } from "../../../lib/runtimeConfig";
 import { query } from "../../../lib/db/postgres";
+import { createRepositories } from "../../../lib/dal/factory";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -206,15 +207,21 @@ export default async function handler(req, res) {
   }
   if (req.method === "PATCH") {
     // Update pack fields
-    const { packId } = req.body;
-    if (!packId) {
-      return res.status(400).json({ success: false, error: "Missing packId" });
+    const { packId, packURL } = req.body;
+    if (!packId && !packURL) {
+      return res.status(400).json({ success: false, error: "Missing packId or packURL" });
     }
     try {
+      // Prefer DAL when packURL is provided
+      if (packURL) {
+        const { packs } = createRepositories();
+        const updated = await packs.updateByPackURL(packURL, req.body || {});
+        return res.status(200).json({ success: true, record: updated });
+      }
+
       const {
         packTitle,
         packSummary,
-        packURL,
         packType,
         packLeague,
         packStatus,
@@ -228,7 +235,6 @@ export default async function handler(req, res) {
       const fields = {};
       if (packTitle !== undefined) fields.packTitle = packTitle;
       if (packSummary !== undefined) fields.packSummary = packSummary;
-      if (packURL !== undefined) fields.packURL = packURL;
       if (packType !== undefined) fields.packType = packType;
       if (packLeague !== undefined) fields.packLeague = packLeague;
       if (packStatus !== undefined) fields.packStatus = packStatus;
@@ -265,41 +271,15 @@ export default async function handler(req, res) {
       if (!packTitle || !packURL) {
         return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
       }
-      // Prepare fields for Airtable record
-      const fields = { packTitle, packSummary, packURL, packType, packLeague, packStatus };
-      if (firstPlace !== undefined) fields.firstPlace = firstPlace;
-      if (packOpenTime) fields.packOpenTime = packOpenTime;
-      if (packCloseTime) fields.packCloseTime = packCloseTime;
-      // Link selected Props to this Pack
-      if (Array.isArray(props) && props.length > 0) {
-        fields.Props = props;
-      }
-      // If client passed the full event object, upsert it into Events and link
-      if (event && typeof event === 'object') {
-        const eventRecordId = await upsertEvent(event);
-        fields.Event = [eventRecordId];
-      } else if (eventId && eventId.startsWith('rec')) {
-        // Legacy: link to an existing Airtable Event record
-        fields.Event = [eventId];
-      } else if (Array.isArray(events) && events.length > 0) {
-        // Multiple existing Event record IDs
-        fields.Event = events;
-      }
-      // Link selected Teams to this Pack
-      if (Array.isArray(teams) && teams.length > 0) {
-        fields.Teams = teams;
-      }
-      if (packCoverUrl) {
-        // Attach cover image
-        fields.packCover = [{ url: packCoverUrl }];
-      }
-      // Link selected Pack Creator (linked record to Profiles)
-      if (Array.isArray(packCreator) && packCreator.length > 0) {
-        fields.packCreator = packCreator;
-      }
-      const created = await base("Packs").create([{ fields }]);
-      const record = created[0];
-      return res.status(200).json({ success: true, record });
+
+      const { packs } = createRepositories();
+      // Prefer DAL create in both backends
+      const created = await packs.createOne({
+        packTitle, packSummary, packURL, packType, packLeague, packStatus,
+        packOpenTime, packCloseTime, packCoverUrl,
+        events, props,
+      });
+      return res.status(200).json({ success: true, record: created });
     } catch (error) {
       console.error("[api/packs POST] Error =>", error);
       // Return the underlying error message if available
