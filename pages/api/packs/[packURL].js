@@ -5,6 +5,10 @@ import { createRepositories } from '../../../lib/dal/factory';
 import { aggregateTakeStats } from '../../../lib/leaderboard';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { query } from '../../../lib/db/postgres';
+import { AirtablePacksRepository } from '../../../lib/dal/airtable/packs';
+import { PostgresPacksRepository } from '../../../lib/dal/postgres/packs';
+import { AirtablePropsRepository } from '../../../lib/dal/airtable/props';
+import { PostgresPropsRepository } from '../../../lib/dal/postgres/props';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -495,6 +499,34 @@ export default async function handler(req, res) {
 	};
 
 	console.log("[packURL] final leaderboard =>", leaderboard);
+
+	// Optional shadow read: compare with alternate backend and log differences
+	try {
+	  if (process.env.SHADOW_READS === '1') {
+		const backend = getDataBackend();
+		const altPacks = backend === 'postgres' ? new AirtablePacksRepository() : new PostgresPacksRepository();
+		const altProps = backend === 'postgres' ? new AirtablePropsRepository() : new PostgresPropsRepository();
+		const altPack = await altPacks.getByPackURL(packURL);
+		if (altPack) {
+		  const altPropsList = await altProps.listByPackURL(packURL);
+		  const diffs = [];
+		  if ((altPack.packTitle || altPack.title) !== packData.packTitle) diffs.push('packTitle');
+		  if ((altPack.packLeague || altPack.league) !== packData.packLeague) diffs.push('packLeague');
+		  const pgPropIds = new Set((propsData || []).map(p => p.propID).filter(Boolean));
+		  const atPropIds = new Set((altPropsList || []).map(p => p.propID || p.prop_id).filter(Boolean));
+		  const onlyPg = [...pgPropIds].filter(x => !atPropIds.has(x)).slice(0,10);
+		  const onlyAt = [...atPropIds].filter(x => !pgPropIds.has(x)).slice(0,10);
+		  if (onlyPg.length || onlyAt.length || pgPropIds.size !== atPropIds.size) {
+			diffs.push('propIDs');
+		  }
+		  if (diffs.length) {
+			console.warn(`[shadow /api/packs/:packURL] backend=${backend} packURL=${packURL} diffs=`, { diffs, onlyPg, onlyAt, pgCount: pgPropIds.size, atCount: atPropIds.size });
+		  }
+		}
+	  }
+	} catch (shadowErr) {
+	  console.warn('[shadow /api/packs/:packURL] shadow compare failed =>', shadowErr?.message || shadowErr);
+	}
 
 	// Return success
 	return res.status(200).json({
