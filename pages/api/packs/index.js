@@ -184,6 +184,23 @@ export default async function handler(req, res) {
         userTakesCount: userMap.get(r.id) || 0,
       }));
 
+      // Optional shadow read: compare with Airtable list and log differences
+      try {
+        if (process.env.SHADOW_READS === '1') {
+          const atPacks = await fetchAllPacks(undefined);
+          const pgSet = new Set(packsData.map(p => p.packURL));
+          const atSet = new Set(atPacks.map(p => p.packURL));
+          const onlyPg = [...pgSet].filter(u => !atSet.has(u));
+          const onlyAt = [...atSet].filter(u => !pgSet.has(u));
+          const countDiff = packsData.length !== atPacks.length;
+          if (onlyPg.length || onlyAt.length || countDiff) {
+            console.warn('[shadow /api/packs] diff', { countPg: packsData.length, countAt: atPacks.length, onlyPg: onlyPg.slice(0,10), onlyAt: onlyAt.slice(0,10) });
+          }
+        }
+      } catch (shadowErr) {
+        console.warn('[shadow /api/packs] shadow compare failed =>', shadowErr?.message || shadowErr);
+      }
+
       return res.status(200).json({ success: true, packs: packsData });
     } catch (error) {
       console.error("[api/packs PG] Error =>", error);
