@@ -216,6 +216,30 @@ export default async function handler(req, res) {
       if (packURL) {
         const { packs } = createRepositories();
         const updated = await packs.updateByPackURL(packURL, req.body || {});
+        // Optional dual-write to Airtable for safety during staging
+        if (getDataBackend() === 'postgres' && process.env.DUAL_WRITE_AIRTABLE === '1') {
+          try {
+            const fields = {};
+            const { packTitle, packSummary, packType, packLeague, packStatus, packOpenTime, packCloseTime, packCoverUrl, props, events } = req.body || {};
+            if (packTitle !== undefined) fields.packTitle = packTitle;
+            if (packSummary !== undefined) fields.packSummary = packSummary;
+            if (packType !== undefined) fields.packType = packType;
+            if (packLeague !== undefined) fields.packLeague = packLeague;
+            if (packStatus !== undefined) fields.packStatus = packStatus;
+            if (packOpenTime !== undefined) fields.packOpenTime = packOpenTime;
+            if (packCloseTime !== undefined) fields.packCloseTime = packCloseTime;
+            if (packCoverUrl) fields.packCover = [{ url: packCoverUrl }];
+            if (Array.isArray(props)) fields.Props = props;
+            if (Array.isArray(events)) fields.Event = events;
+            const safe = packURL.replace(/"/g, '\\"');
+            const recs = await base('Packs').select({ filterByFormula: `{packURL} = "${safe}"`, maxRecords: 1 }).firstPage();
+            if (recs?.length) {
+              await base('Packs').update([{ id: recs[0].id, fields }], { typecast: true });
+            }
+          } catch (dwErr) {
+            console.error('[api/packs PATCH] dual-write Airtable failed =>', dwErr);
+          }
+        }
         return res.status(200).json({ success: true, record: updated });
       }
 
@@ -279,6 +303,20 @@ export default async function handler(req, res) {
         packOpenTime, packCloseTime, packCoverUrl,
         events, props,
       });
+      // Optional dual-write to Airtable
+      if (getDataBackend() === 'postgres' && process.env.DUAL_WRITE_AIRTABLE === '1') {
+        try {
+          const fields = { packTitle, packSummary, packURL, packType, packLeague, packStatus };
+          if (packOpenTime) fields.packOpenTime = packOpenTime;
+          if (packCloseTime) fields.packCloseTime = packCloseTime;
+          if (packCoverUrl) fields.packCover = [{ url: packCoverUrl }];
+          if (Array.isArray(events)) fields.Event = events;
+          if (Array.isArray(props)) fields.Props = props;
+          await base('Packs').create([{ fields }], { typecast: true });
+        } catch (dwErr) {
+          console.error('[api/packs POST] dual-write Airtable failed =>', dwErr);
+        }
+      }
       return res.status(200).json({ success: true, record: created });
     } catch (error) {
       console.error("[api/packs POST] Error =>", error);
