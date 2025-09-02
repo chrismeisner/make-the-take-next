@@ -22,7 +22,8 @@ export async function getServerSideProps(context) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
   const { ref } = context.query;
   const isRef = Boolean(ref);
-  const proto = context.req.headers['x-forwarded-proto'] || 'http';
+  // Force http for internal SSR fetch to avoid TLS handshake issues
+  const proto = 'http';
   const host = context.req.headers['x-forwarded-host'] || context.req.headers.host;
   const origin = process.env.SITE_URL || `${proto}://${host}`;
 
