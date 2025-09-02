@@ -74,7 +74,8 @@ export default function LandingPage({ packsData = [] }) {
 }
 
 export async function getServerSideProps(context) {
-  const proto = context.req.headers["x-forwarded-proto"] || "http";
+  // Force http for internal SSR fetch to avoid TLS handshake issues
+  const proto = "http";
   const host =
     context.req.headers["x-forwarded-host"] || context.req.headers.host;
   const origin = process.env.SITE_URL || `${proto}://${host}`;
@@ -91,10 +92,12 @@ export async function getServerSideProps(context) {
     }
     // Hide packs with status: draft, archived, graded
     const allPacks = Array.isArray(data.packs) ? data.packs : [];
+    console.log('[HomePage GSSP] fetched packs count=', allPacks.length, 'examples=', allPacks.slice(0,5).map(p=>({url:p.packURL,status:p.packStatus,league:p.packLeague})));
     const filteredPacks = allPacks.filter((p) => {
       const status = String(p?.packStatus || '').toLowerCase();
       return status !== 'draft' && status !== 'archived' && status !== 'graded';
     });
+    console.log('[HomePage GSSP] filtered packs count=', filteredPacks.length);
     // Sort: open/active first, then by packCloseTime ascending (soonest closing first).
     // Packs without close time go last within their status grouping.
     const statusRank = (p) => {

@@ -184,6 +184,8 @@ export default async function handler(req, res) {
         userTakesCount: userMap.get(r.id) || 0,
       }));
 
+      console.log('[api/packs PG] count=', packsData.length, 'examples=', packsData.slice(0,5).map(p=>p.packURL));
+
       // Optional shadow read: compare with Airtable list and log differences
       try {
         if (process.env.SHADOW_READS === '1') {
@@ -363,6 +365,7 @@ export default async function handler(req, res) {
 	  packsData = await attachUserTakeCount(packsData, token);
 	}
 
+	console.log('[api/packs AT] count=', packsData.length, 'examples=', packsData.slice(0,5).map(p=>p.packURL));
 	return res.status(200).json({ success: true, packs: packsData });
   } catch (error) {
 	console.error("[api/packs] Error =>", error);
