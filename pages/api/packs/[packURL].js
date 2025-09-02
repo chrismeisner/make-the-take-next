@@ -349,34 +349,48 @@ export default async function handler(req, res) {
 	}
 
 	// ---------------------------------------------
-	// 4c. Linked Contests => we fetch contestTitle + contestPrize
+	// 4c. Linked Contests => via DAL when Postgres, fallback to Airtable
 	// ---------------------------------------------
-	const linkedContestIDs = packFields.Contests || [];
 	let contestsData = [];
-	if (linkedContestIDs.length > 0) {
-	  console.log("[packURL] fetching Contests =>", linkedContestIDs);
-	  const contestFormula = `OR(${linkedContestIDs
-		.map((id) => `RECORD_ID()="${id}"`)
-		.join(",")})`;
+	try {
+	  const { contests } = createRepositories();
+	  const contestsViaDal = await contests.listByPackURL(packURL);
+	  if (Array.isArray(contestsViaDal) && contestsViaDal.length > 0) {
+		contestsData = contestsViaDal.map((c) => ({
+		  airtableId: c.airtableId,
+		  contestID: c.contestID,
+		  contestTitle: c.contestTitle,
+		  contestPrize: c.contestPrize || "",
+		}));
+	  }
+	} catch (e) {
+	  // fallback to Airtable if DAL backend doesn't support this yet
+	  const linkedContestIDs = packFields.Contests || [];
+	  if (linkedContestIDs.length > 0) {
+		console.log("[packURL] fetching Contests =>", linkedContestIDs);
+		const contestFormula = `OR(${linkedContestIDs
+		  .map((id) => `RECORD_ID()="${id}"`)
+		  .join(",")})`;
 
-	  const contestRecords = await base("Contests")
-		.select({
-		  filterByFormula: contestFormula,
-		  maxRecords: 50,
-		})
-		.all();
+		const contestRecords = await base("Contests")
+		  .select({
+			filterByFormula: contestFormula,
+			maxRecords: 50,
+		  })
+		  .all();
 
-	  console.log("[packURL] contestRecords length =>", contestRecords.length);
+		console.log("[packURL] contestRecords length =>", contestRecords.length);
 
-	  contestsData = contestRecords.map((rec) => {
-		const cf = rec.fields;
-		return {
-		  airtableId: rec.id,
-		  contestID: cf.contestID || "",
-		  contestTitle: cf.contestTitle || "Untitled Contest",
-		  contestPrize: cf.contestPrize || "", // optional
-		};
-	  });
+		contestsData = contestRecords.map((rec) => {
+		  const cf = rec.fields;
+		  return {
+			airtableId: rec.id,
+			contestID: cf.contestID || "",
+			contestTitle: cf.contestTitle || "Untitled Contest",
+			contestPrize: cf.contestPrize || "",
+		  };
+		});
+	  }
 	}
 
 	// ---------------------------------------------
@@ -474,7 +488,7 @@ export default async function handler(req, res) {
 	  homeTeamScore,
 	  awayTeamScore,
 	  contentData,
-	  contests: contestsData, // new array with {contestID, contestTitle, contestPrize}
+	  contests: contestsData, // via DAL or Airtable fallback
 	};
 
 	console.log("[packURL] packData =>", packData);
