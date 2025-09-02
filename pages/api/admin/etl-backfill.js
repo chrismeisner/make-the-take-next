@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { teams: { upserted: 0 }, events: { upserted: 0 }, packs: { upserted: 0, linkedEvents: 0 }, props: { upserted: 0, skippedNoPackLink: 0, linkedEvents: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
+  const report = { teams: { upserted: 0 }, events: { upserted: 0 }, profiles: { upserted: 0, linkedTeams: 0 }, achievements: { upserted: 0 }, packs: { upserted: 0, linkedEvents: 0 }, props: { upserted: 0, skippedNoPackLink: 0, linkedEvents: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
 
   try {
     // 0) Upsert Teams first (for downstream references)
@@ -82,6 +82,66 @@ export default async function handler(req, res) {
         report.events.upserted += 1;
         eventRecMap.set(rec.id, rows[0].id);
       }
+    }
+
+    // 0.6) Upsert Profiles and build map from Airtable profile record id -> profiles.id
+    const profileRecords = await base('Profiles').select({ pageSize: 100, view: 'Grid view' }).all();
+    const profileRecMap = new Map();
+    const profileIdTextToRowId = new Map();
+    for (const rec of profileRecords) {
+      const f = rec.fields || {};
+      const profileID = f.profileID || null;
+      const mobile = f.profileMobile || null;
+      const username = f.profileUsername || null;
+      let favoriteTeamId = null;
+      try {
+        const favLink = Array.isArray(f.profileTeam) ? f.profileTeam[0] : f.profileTeam;
+        if (favLink && teamRecMap.has(favLink)) favoriteTeamId = teamRecMap.get(favLink);
+      } catch {}
+      const upsertSql = `
+        INSERT INTO profiles (profile_id, mobile_e164, username, favorite_team_id)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (profile_id) DO UPDATE SET
+          mobile_e164 = COALESCE(EXCLUDED.mobile_e164, profiles.mobile_e164),
+          username = COALESCE(EXCLUDED.username, profiles.username),
+          favorite_team_id = COALESCE(EXCLUDED.favorite_team_id, profiles.favorite_team_id)
+        RETURNING id`;
+      const { rows } = await query(upsertSql, [profileID, mobile, username, favoriteTeamId]);
+      if (rows[0]?.id) {
+        report.profiles.upserted += 1;
+        if (favoriteTeamId) report.profiles.linkedTeams += 1;
+        profileRecMap.set(rec.id, rows[0].id);
+        if (profileID) profileIdTextToRowId.set(profileID, rows[0].id);
+      }
+    }
+
+    // 0.7) Upsert Achievements
+    try {
+      const achRecords = await base('Achievements').select({ pageSize: 100, view: 'Grid view' }).all();
+      for (const rec of achRecords) {
+        const f = rec.fields || {};
+        const key = f.achievementKey || null;
+        const title = f.achievementTitle || '';
+        const description = f.achievementDescription || '';
+        const value = typeof f.achievementValue === 'number' ? f.achievementValue : 0;
+        // Prefer profileID text, fallback to linked record id
+        let profileId = null;
+        if (f.profileID && profileIdTextToRowId.has(f.profileID)) {
+          profileId = profileIdTextToRowId.get(f.profileID);
+        } else if (Array.isArray(f.achievementProfile) && f.achievementProfile.length > 0) {
+          const firstProfileAirId = f.achievementProfile[0];
+          profileId = profileRecMap.get(firstProfileAirId) || null;
+        }
+        const insertSql = `
+          INSERT INTO achievements (achievement_key, title, description, value, profile_id)
+          VALUES ($1,$2,$3,$4,$5)
+          ON CONFLICT DO NOTHING
+          RETURNING id`;
+        const { rows } = await query(insertSql, [key, title, description, value, profileId]);
+        if (rows[0]?.id) report.achievements.upserted += 1;
+      }
+    } catch (achErr) {
+      console.error('[etl-backfill] achievements import error =>', achErr);
     }
 
     // 1) Upsert Packs (build map from Airtable record id -> packs.id)
