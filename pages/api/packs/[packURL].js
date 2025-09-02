@@ -490,6 +490,37 @@ export default async function handler(req, res) {
 	  }));
 	}
 
+	const packData = {
+	  packID: packFields.packID,
+	  packTitle: packFields.packTitle || "Untitled Pack",
+	  packSummary: packFields.packSummary || "",
+	  packType: packFields.packType || "",
+	  packLeague: packFields.packLeague || null,
+	  firstPlace: packFields.firstPlace || "",
+	  packCreatorID,
+	  packCreatorUsername,
+	  packURL: packFields.packURL,
+	  packOpenTime: packFields.packOpenTime || null,
+	  packCloseTime: packFields.packCloseTime || null,
+	  packEventId,
+	  packEventIds,
+	  props: propsData,
+	  packPrize: packFields.packPrize || "",
+	  packPrizeImage,
+	  prizeSummary: packFields.prizeSummary || "",
+	  packPrizeURL: packFields.packPrizeURL || "",
+	  packCover,
+	  eventTime: packEventTime,
+	  espnGameID,
+	  eventLeague,
+	  homeTeam: null,
+	  awayTeam: null,
+	  homeTeamScore,
+	  awayTeamScore,
+	  contentData,
+	  contests: contestsData,
+	};
+
 	console.log("[packURL] final leaderboard =>", leaderboard);
 
 	// Return success
