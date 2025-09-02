@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS packs (
   event_id UUID REFERENCES events(id),
   pack_status TEXT,
   prize TEXT,
+  league TEXT,
   featured_status TEXT,
   cover_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -104,6 +105,13 @@ CREATE INDEX IF NOT EXISTS idx_takes_pack ON takes (pack_id);
 CREATE TABLE IF NOT EXISTS contests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contest_id TEXT UNIQUE,
+  title TEXT,
+  summary TEXT,
+  prize TEXT,
+  details TEXT,
+  start_time TIMESTAMPTZ,
+  end_time TIMESTAMPTZ,
+  cover_url TEXT,
   contest_status TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

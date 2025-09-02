@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 } };
+  const report = { teams: { upserted: 0 }, packs: { upserted: 0 }, props: { upserted: 0, skippedNoPackLink: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
 
   try {
     // 0) Upsert Teams first (for downstream references)
@@ -73,6 +73,54 @@ export default async function handler(req, res) {
         packIdMap.set(rec.id, insertedId);
         report.packs.upserted += 1;
       }
+    }
+
+    // 1.2) Upsert Contests and link Packs
+    try {
+      const contestRecords = await base('Contests').select({ pageSize: 100, view: 'Grid view' }).all();
+      const contestMap = new Map(); // contest airtable id -> contests.id
+      for (const rec of contestRecords) {
+        const f = rec.fields || {};
+        const contestID = f.contestID || rec.id;
+        const title = f.contestTitle || '';
+        const summary = f.contestSummary || '';
+        const prize = f.contestPrize || null;
+        const details = f.contestDetails || null;
+        const startTime = f.contestStartTime || null;
+        const endTime = f.contestEndTime || null;
+        const coverUrl = Array.isArray(f.contestCover) && f.contestCover[0]?.url ? f.contestCover[0].url : (f.contestCoverUrl || null);
+        const status = f.contestStatus || null;
+        const upsertSql = `
+          INSERT INTO contests (contest_id, title, summary, prize, details, start_time, end_time, cover_url, contest_status)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT (contest_id) DO UPDATE SET
+            title = EXCLUDED.title,
+            summary = EXCLUDED.summary,
+            prize = EXCLUDED.prize,
+            details = EXCLUDED.details,
+            start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
+            cover_url = EXCLUDED.cover_url,
+            contest_status = EXCLUDED.contest_status
+          RETURNING id`;
+        const { rows } = await query(upsertSql, [contestID, title, summary, prize, details, startTime, endTime, coverUrl, status]);
+        const cid = rows[0]?.id;
+        if (cid) {
+          report.contests.upserted += 1;
+          contestMap.set(rec.id, cid);
+          // link packs
+          const linked = Array.isArray(f.Packs) ? f.Packs : [];
+          await query('DELETE FROM contests_packs WHERE contest_id = $1', [cid]);
+          for (const airPackId of linked) {
+            const pid = packIdMap.get(airPackId);
+            if (!pid) continue;
+            await query('INSERT INTO contests_packs (contest_id, pack_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [cid, pid]);
+            report.contests.links += 1;
+          }
+        }
+      }
+    } catch (contestErr) {
+      console.error('[etl-backfill] contests import error =>', contestErr);
     }
 
     // 1.5) Upsert Items
