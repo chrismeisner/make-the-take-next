@@ -436,110 +436,31 @@ export default async function handler(req, res) {
 		}
 	}
 
-	// Fetch linked Teams for event (Airtable path) or from Postgres event join
-	let homeTeamInfo = null;
-	let awayTeamInfo = null;
-	if (isPG && (homeTeamInfoCover || awayTeamInfoCover)) {
-	  homeTeamInfo = homeTeamInfoCover
-		? {
-			recordId: homeTeamInfoCover.recordId,
-			teamSlug: null,
-			teamName: null,
-			teamNameFull: null,
-			teamLogo: Array.isArray(homeTeamInfoCover.teamLogo) ? homeTeamInfoCover.teamLogo : [],
-		}
-		: null;
-	  awayTeamInfo = awayTeamInfoCover
-		? {
-			recordId: awayTeamInfoCover.recordId,
-			teamSlug: null,
-			teamName: null,
-			teamNameFull: null,
-			teamLogo: Array.isArray(awayTeamInfoCover.teamLogo) ? awayTeamInfoCover.teamLogo : [],
-		}
-		: null;
-	} else {
-	  if (homeTeam) {
-		const homeId = Array.isArray(homeTeam) ? homeTeam[0] : homeTeam;
-		try {
-		  const homeRec = await base("Teams").find(homeId);
-		  // Determine slug from fields.teamSlug, fallback to fields.teamID or record id
-		  const resolvedHomeSlug = homeRec.fields.teamSlug || homeRec.fields.teamID || homeRec.id;
-		  homeTeamInfo = {
-			recordId: homeRec.id,
-			teamSlug: resolvedHomeSlug,
-			teamName: homeRec.fields.teamName || "",
-			teamNameFull: homeRec.fields.teamNameFull || homeRec.fields.teamName || "",
-			teamLogo: Array.isArray(homeRec.fields.teamLogo)
-			  ? homeRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-			  : [],
-		  };
-		} catch (err) {
-		  console.error("[packURL] Error fetching homeTeam =>", err);
-		}
-	  }
-	  if (awayTeam) {
-		const awayId = Array.isArray(awayTeam) ? awayTeam[0] : awayTeam;
-		try {
-		  const awayRec = await base("Teams").find(awayId);
-		  // Determine slug from fields.teamSlug, fallback to fields.teamID or record id
-		  const resolvedAwaySlug = awayRec.fields.teamSlug || awayRec.fields.teamID || awayRec.id;
-		  awayTeamInfo = {
-			recordId: awayRec.id,
-			teamSlug: resolvedAwaySlug,
-			teamName: awayRec.fields.teamName || "",
-			teamNameFull: awayRec.fields.teamNameFull || homeRec.fields.teamName || "",
-			teamLogo: Array.isArray(awayRec.fields.teamLogo)
-			  ? awayRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-			  : [],
-		  };
-		} catch (err) {
-		  console.error("[packURL] Error fetching awayTeam =>", err);
-		}
-	  }
-	}
-
-	const packData = {
-	  packID: packFields.packID,
-	  packTitle: packFields.packTitle || "Untitled Pack",
-	  packSummary: packFields.packSummary || "",
-	  packType: packFields.packType || "",
-	  packLeague: packFields.packLeague || null,
-	  firstPlace: packFields.firstPlace || "",
-	  packCreatorID,
-	  packCreatorUsername,
-	  packURL: packFields.packURL,
-	  packOpenTime: packFields.packOpenTime || null,
-	  packCloseTime: packFields.packCloseTime || null,
-	  packEventId,
-	  packEventIds,
-	  props: propsData,
-	  packPrize: packFields.packPrize || "",
-	  packPrizeImage,
-	  prizeSummary: packFields.prizeSummary || "",
-	  packPrizeURL: packFields.packPrizeURL || "",
-	  packCover,
-	  eventTime: packEventTime,
-	  espnGameID,
-	  eventLeague,
-	  homeTeam: homeTeamInfo,
-	  awayTeam: awayTeamInfo,
-	  homeTeamScore,
-	  awayTeamScore,
-	  contentData,
-	  contests: contestsData, // via DAL or Airtable fallback
-	};
-
-	console.log("[packURL] packData =>", packData);
 	// Fetch all profiles to map phone -> profileID
-	const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
-	const phoneToProfileID = new Map();
-	allProfiles.forEach((profile) => {
-	  const { profileMobile, profileID } = profile.fields;
-	  if (profileMobile && profileID) {
-		phoneToProfileID.set(profileMobile, profileID);
+	let phoneToProfileID = new Map();
+	if (isPG) {
+	  try {
+		const { rows } = await query('SELECT mobile_e164, profile_id FROM profiles WHERE mobile_e164 IS NOT NULL AND profile_id IS NOT NULL');
+		phoneToProfileID = new Map(rows.map(r => [r.mobile_e164, r.profile_id]));
+	  } catch (err) {
+		console.error('[packURL] PG profiles map failed, falling back to Airtable =>', err);
+		const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
+		allProfiles.forEach((profile) => {
+		  const { profileMobile, profileID } = profile.fields;
+		  if (profileMobile && profileID) {
+			phoneToProfileID.set(profileMobile, profileID);
+		  }
+		});
 	  }
-	});
+	} else {
+	  const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
+	  allProfiles.forEach((profile) => {
+		const { profileMobile, profileID } = profile.fields;
+		if (profileMobile && profileID) {
+		  phoneToProfileID.set(profileMobile, profileID);
+		}
+	  });
+	}
 
 	// ---------------------------------------------
 	// 6. Build leaderboard
