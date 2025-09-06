@@ -27,6 +27,9 @@ import ShareContestModal from "./modals/ShareContestModal";
 import WelcomeModal from "./modals/WelcomeModal";
 import NotifyMeModal from "./modals/NotifyMeModal";
 import SharePackModal from "./modals/SharePackModal";
+import FetchEventsModal from "./modals/FetchEventsModal";
+import FetchTeamsModal from "./modals/FetchTeamsModal";
+import { getDataBackend } from "../lib/runtimeConfig";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -36,6 +39,26 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "fetchTeams": {
+      const { onFetched } = modalConfig.modalProps;
+      return (
+        <FetchTeamsModal
+          isOpen={true}
+          onClose={closeModal}
+          onFetched={onFetched}
+        />
+      );
+    }
+    case "fetchEvents": {
+      const { onFetched } = modalConfig.modalProps;
+      return (
+        <FetchEventsModal
+          isOpen={true}
+          onClose={closeModal}
+          onFetched={onFetched}
+        />
+      );
+    }
     case "notifyMe": {
       const { packTitle } = modalConfig.modalProps;
       return (
@@ -207,6 +230,9 @@ export default function GlobalModalRenderer() {
 		/>
 	  );
 	case "prize":
+	  if (getDataBackend && getDataBackend() === 'postgres') {
+		return null;
+	  }
 	  return (
 		<PrizeModal
 		  isOpen={true}

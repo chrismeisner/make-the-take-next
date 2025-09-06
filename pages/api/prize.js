@@ -1,5 +1,6 @@
 // File: /pages/api/prize.js
 import Airtable from "airtable";
+import { getDataBackend } from "../../lib/runtimeConfig";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -12,6 +13,10 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (getDataBackend() === 'postgres') {
+      // Prizes feature is disabled in Postgres mode
+      return res.status(200).json({ success: true, prize: null });
+    }
 	// We still fetch the first "available" prize
 	const records = await base("Prizes")
 	  .select({

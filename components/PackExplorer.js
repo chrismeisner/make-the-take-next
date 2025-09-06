@@ -81,8 +81,8 @@ export default function PackExplorer({ packs = [], accent = 'blue' }) {
 
       {visiblePacks && visiblePacks.length > 0 ? (
         <div className="w-full flex flex-col gap-3 md:gap-4">
-          {visiblePacks.map((pack) => (
-            <PackPreview key={pack.packID || pack.airtableId || pack.id} pack={pack} accent={accent} />
+          {visiblePacks.map((pack, idx) => (
+            <PackPreview key={pack.packID || pack.airtableId || pack.id} index={idx} pack={pack} accent={accent} />
           ))}
         </div>
       ) : (

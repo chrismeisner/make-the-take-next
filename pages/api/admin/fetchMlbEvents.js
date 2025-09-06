@@ -83,6 +83,7 @@ export default async function handler(req, res) {
         .firstPage();
       const fields = {
         espnGameID,
+        eventID: String(espnGameID),
         eventTime,
         eventTitle,
         eventStatus,
@@ -95,8 +96,10 @@ export default async function handler(req, res) {
 
       if (existing.length) {
         await base("Events").update([{ id: existing[0].id, fields }]);
+        console.log(`[admin/fetchMlbEvents] [AT] Updated Event ${espnGameID} → ${existing[0].id}`);
       } else {
-        await base("Events").create([{ fields }]);
+        const created = await base("Events").create([{ fields }]);
+        console.log(`[admin/fetchMlbEvents] [AT] Created Event ${espnGameID} → ${created[0]?.id}`);
       }
 
       processedCount++;

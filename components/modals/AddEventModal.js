@@ -77,6 +77,7 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
     setLoadingEvents(true);
     async function load() {
       try {
+        const tz = 'America/New_York';
         if (leagueLower === 'nfl' && weekRange?.start && weekRange?.end) {
           // Build list of dates from start to end inclusive
           const start = new Date(weekRange.start + 'T00:00:00Z');
@@ -86,22 +87,17 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
             dates.push(formatYyyyMmDdUTC(d));
           }
           const results = await Promise.all(dates.map((dStr) =>
-            fetch(`/api/admin/eventsByDate?date=${encodeURIComponent(dStr)}&league=${encodeURIComponent(selectedLeague)}`)
+            fetch(`/api/admin/eventsByDate?date=${encodeURIComponent(dStr)}&league=${encodeURIComponent(selectedLeague)}&tz=${encodeURIComponent(tz)}`)
               .then(r => r.json()).catch(() => null)
           ));
           const merged = [];
           (results || []).forEach(r => { if (r?.success && Array.isArray(r.events)) merged.push(...r.events); });
           setEvents(merged);
         } else if (selectedDate) {
-          const resp = await fetch(`/api/admin/eventsByDate?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(selectedLeague)}`);
+          const tz = 'America/New_York';
+          const resp = await fetch(`/api/admin/eventsByDate?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(selectedLeague)}&tz=${encodeURIComponent(tz)}`);
           const data = await resp.json();
-          if (data.success) {
-            const filteredEvents = data.events.filter(ev => {
-              const dt = new Date(ev.eventTime);
-              return dt.toLocaleDateString('en-CA') === selectedDate;
-            });
-            setEvents(filteredEvents);
-          }
+          if (data.success) setEvents(data.events);
         } else {
           setEvents([]);
         }

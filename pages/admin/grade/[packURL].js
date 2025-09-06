@@ -69,18 +69,7 @@ export default function GradePackPage() {
       .finally(() => setLoading(false));
   }, [packURL]);
 
-  useEffect(() => {
-    if (!loading && !scoresFetched && espnGameID && eventLeague) {
-      const dateStr = eventTime ? eventTime.slice(0,10).replace(/-/g, "") : "";
-      const endpoint = eventLeague.toLowerCase() === 'nfl'
-        ? '/api/admin/fetchNflEvents'
-        : '/api/admin/fetchMlbEvents';
-      fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: dateStr }),
-      })
-        .then((res) => res.json())
+
         .then(() => fetch(`/api/packs/${packURL}`))
         .then((res2) => res2.json())
         .then((data2) => {

@@ -5,8 +5,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method Not Allowed' });
   }
 
-  const { gameID } = req.query || {};
-  const src = resolveSourceConfig('major-mlb');
+  const { gameID, source: sourceParam } = req.query || {};
+  const src = resolveSourceConfig(sourceParam || 'major-mlb');
   if (!src.ok) return res.status(500).json({ success: false, error: src.error || 'Missing RAPIDAPI key/host for source' });
   if (!gameID) {
     return res.status(400).json({ success: false, error: 'Missing gameID query param' });
@@ -18,6 +18,10 @@ export default async function handler(req, res) {
       // Path style: /boxscore/{eventId}
       const path = `${src.endpoints.boxScore.replace(/\/$/, '')}/${encodeURIComponent(String(gameID))}`;
       url = new URL(`https://${src.host}${path}`);
+    } else if (src.source === 'nfl') {
+      // Query style: /nflboxscore?id={gameID}
+      url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+      url.searchParams.set('id', String(gameID));
     }
 
     const upstream = await fetch(url.toString(), {
@@ -198,6 +202,67 @@ export default async function handler(req, res) {
       statKeys = keys;
       gameLineLabels = Array.isArray(battingLabels) ? battingLabels : undefined;
       // Fallback scan for any extra players/stat keys we can parse
+      collectPlayers(raw, undefined);
+      for (const p of Object.values(playerMap)) {
+        Object.keys(p.stats || {}).forEach((k) => { if (!statKeys.includes(k)) statKeys.push(k); });
+      }
+      statKeys.sort();
+    } else if (src.source === 'nfl') {
+      // The NFL box score mirrors ESPN grouping; map labels->values into flat stats like MLB logic
+      const map = {};
+      const keySet = new Set();
+      try {
+        const teamBlocks = Array.isArray(raw?.players) ? raw.players : [];
+        for (const teamBlock of teamBlocks) {
+          const teamAbv = String(teamBlock?.team?.abbreviation || '').toUpperCase();
+          const statGroups = Array.isArray(teamBlock?.statistics) ? teamBlock.statistics : [];
+          for (const group of statGroups) {
+            const keys = Array.isArray(group?.keys) ? group.keys : [];
+            const labels = Array.isArray(group?.labels) ? group.labels : [];
+            const athletes = Array.isArray(group?.athletes) ? group.athletes : [];
+            for (const row of athletes) {
+              const athlete = row?.athlete || {};
+              const id = String(athlete?.id || '').trim();
+              const longName = athlete?.displayName || athlete?.shortName || '';
+              const pos = row?.position?.abbreviation || athlete?.position?.abbreviation || '';
+              const values = Array.isArray(row?.stats) ? row.stats : [];
+              if (!id && !longName) continue;
+              const playerId = id || `${teamAbv || 'UNK'}:${longName || 'UNKNOWN'}`;
+              const existing = map[playerId] || { stats: {} };
+              const stats = { ...existing.stats };
+              const count = Math.min(keys.length, values.length);
+              for (let i = 0; i < count; i++) {
+                const key = String(keys[i]);
+                const val = values[i];
+                // NFL values include mixed strings (e.g., "26/49"); keep numeric-only
+                const num = (() => {
+                  if (typeof val === 'number') return Number.isFinite(val) ? val : undefined;
+                  if (typeof val !== 'string') return undefined;
+                  const t = val.trim();
+                  if (/^[+-]?\d*(?:\.\d+)?$/.test(t) && t !== '' && t !== '+' && t !== '-') return parseFloat(t);
+                  return undefined;
+                })();
+                if (num !== undefined) {
+                  stats[key] = num;
+                  keySet.add(key);
+                }
+              }
+              map[playerId] = {
+                id: playerId,
+                longName: longName || existing.longName || playerId,
+                firstName: existing.firstName || '',
+                lastName: existing.lastName || '',
+                pos: pos || existing.pos || '',
+                teamAbv: teamAbv || existing.teamAbv || '',
+                stats,
+              };
+            }
+          }
+        }
+      } catch {}
+      Object.assign(playerMap, map);
+      statKeys = Array.from(keySet).sort();
+      // Fallback scan for any other numeric fields we can parse
       collectPlayers(raw, undefined);
       for (const p of Object.values(playerMap)) {
         Object.keys(p.stats || {}).forEach((k) => { if (!statKeys.includes(k)) statKeys.push(k); });

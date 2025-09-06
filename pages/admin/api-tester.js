@@ -1,14 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 
 export default function ApiTesterPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [source, setSource] = useState('major-mlb');
+  const [nflYear, setNflYear] = useState(new Date().getFullYear());
+  const [nflWeek, setNflWeek] = useState(1);
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState(null);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0,10));
-  const [dateMode, setDateMode] = useState('today');
   const [selectedStat, setSelectedStat] = useState("");
   const [selectedGameId, setSelectedGameId] = useState("");
   const [showPlayers, setShowPlayers] = useState(false);
@@ -22,7 +25,54 @@ export default function ApiTesterPage() {
   const [tpLoading, setTpLoading] = useState(false);
   const [rawBoxscore, setRawBoxscore] = useState(null);
   const [statType, setStatType] = useState('battingLine');
-  const [timeZone, setTimeZone] = useState('America/New_York');
+  const [timeZone, setTimeZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const [copiedRequestUrl, setCopiedRequestUrl] = useState(false);
+  const [nflMode, setNflMode] = useState('players');
+
+  // Read initial state from URL query once
+  useEffect(() => {
+    if (!router.isReady) return;
+    try {
+      const q = router.query || {};
+      const getStr = (v) => Array.isArray(v) ? v[0] : v;
+      const qsSource = getStr(q.source);
+      const qsDate = getStr(q.date);
+      const qsTZ = getStr(q.timeZone);
+      const qsYear = getStr(q.nflYear);
+      const qsWeek = getStr(q.nflWeek);
+      if (qsSource === 'major-mlb' || qsSource === 'nfl') setSource(qsSource);
+      if (qsDate && /^\d{4}-\d{2}-\d{2}$/.test(qsDate)) {
+        setDate(qsDate);
+      }
+      if (qsTZ) setTimeZone(qsTZ);
+      if (qsYear && /^\d{4}$/.test(qsYear)) setNflYear(Number(qsYear));
+      if (qsWeek && /^\d{1,2}$/.test(qsWeek)) setNflWeek(Number(qsWeek));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
+  // Persist core controls to URL (shallow) for shareable state
+  useEffect(() => {
+    if (!router.isReady) return;
+    const nextQuery = {
+      ...(source ? { source } : {}),
+      ...(source === 'major-mlb' ? (date ? { date } : {}) : {}),
+      ...(source === 'nfl' ? { nflYear: String(nflYear || ''), nflWeek: String(nflWeek || '') } : {}),
+    };
+    const curr = router.query || {};
+    const same = Object.keys(nextQuery).length === Object.keys(curr).length && Object.keys(nextQuery).every((k) => String(curr[k] || '') === String(nextQuery[k] || ''));
+    if (same) return;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, source, date, nflYear, nflWeek]);
+
+  // Keep internal timeZone aligned with the user's local zone for readout and formatting
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+  useEffect(() => {
+    setTimeZone(localTZ);
+  }, [localTZ]);
+
+  // Removed auto-check for NFL; use the button instead
 
   // Helpers for timezone-safe date formatting
   function formatYMDInTZ(tz, instant) {
@@ -210,10 +260,48 @@ export default function ApiTesterPage() {
     return [];
   }, [availableStats, statOptions, statType]);
 
+  const nflTeamStatOptions = useMemo(() => {
+    if (source !== 'nfl' || !rawBoxscore || !selectedTeamAbv) return [];
+    try {
+      const teams = Array.isArray(rawBoxscore?.teams) ? rawBoxscore.teams : [];
+      const abv = String(selectedTeamAbv).toUpperCase();
+      const team = teams.find((t) => String(t?.team?.abbreviation || '').toUpperCase() === abv);
+      const stats = Array.isArray(team?.statistics) ? team.statistics : [];
+      const keys = stats.map((s) => String(s?.name || '')).filter(Boolean);
+      return Array.from(new Set(keys)).sort((a, b) => a.localeCompare(b));
+    } catch {
+      return [];
+    }
+  }, [source, rawBoxscore, selectedTeamAbv]);
+
+  function getSelectedTeamStatValue() {
+    if (source !== 'nfl' || !rawBoxscore || !selectedTeamAbv || !selectedStat) return 0;
+    const teams = Array.isArray(rawBoxscore?.teams) ? rawBoxscore.teams : [];
+    const abv = String(selectedTeamAbv).toUpperCase();
+    const team = teams.find((t) => String(t?.team?.abbreviation || '').toUpperCase() === abv);
+    const stats = Array.isArray(team?.statistics) ? team.statistics : [];
+    const entry = stats.find((s) => String(s?.name || '') === String(selectedStat));
+    if (!entry) return 0;
+    const v = entry?.value;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const dv = entry?.displayValue;
+    const n = typeof dv === 'string' ? parseFloat(dv) : dv;
+    return Number.isFinite(n) ? n : 0;
+  }
+
   // Reset selected stat when changing the stat type to avoid mismatches
   useEffect(() => {
     setSelectedStat("");
   }, [statType]);
+
+  // Keep statType aligned with league
+  useEffect(() => {
+    if (source === 'nfl' && statType !== 'all') {
+      setStatType('all');
+    } else if ((source === 'major-mlb' || source === 'mlb') && statType !== 'battingLine') {
+      setStatType('battingLine');
+    }
+  }, [source]);
 
   function resolveSelectedStatKey() {
     if (!selectedStat) return null;
@@ -281,11 +369,16 @@ export default function ApiTesterPage() {
     setPlayersError("");
     try {
       const params = new URLSearchParams();
-      if (date) {
-        // convert YYYY-MM-DD -> YYYYMMDD
-        params.set('gameDate', String(date).replace(/-/g, ''));
+      params.set('source', source);
+      if (source === 'major-mlb' || source === 'mlb') {
+        if (date) {
+          // convert YYYY-MM-DD -> YYYYMMDD
+          params.set('gameDate', String(date).replace(/-/g, ''));
+        }
+      } else if (source === 'nfl') {
+        params.set('year', String(nflYear));
+        params.set('week', String(nflWeek));
       }
-      // Source fixed to Major MLB; do not pass param
       const res = await fetch(`/api/admin/api-tester/status?${params.toString()}`);
       const data = await res.json();
       setStatus(data);
@@ -300,24 +393,20 @@ export default function ApiTesterPage() {
 
   // Removed top performers effect (legacy)
 
-  // Keep date in sync with the dropdown selection unless "Other" is chosen
+  // Initialize date to today based on local time zone on mount
   useEffect(() => {
-    if (dateMode === 'today') {
-      setDate(formatYMDInTZ(timeZone, new Date()));
-    } else if (dateMode === 'yesterday') {
-      const todayYMD = formatYMDInTZ(timeZone, new Date());
-      setDate(prevDayYMD(todayYMD));
-    }
-  }, [dateMode, timeZone]);
+    setDate(formatYMDInTZ(timeZone, new Date()));
+  }, [timeZone]);
 
-  // Auto-fetch players when an event is selected so stat readouts have data
+  // Auto-fetch players when an MLB event is selected so stat readouts have data
   useEffect(() => {
     if (!selectedGameId) return;
+    if (!(source === 'major-mlb' || source === 'mlb')) return;
     if (playersLoading) return;
     const hasPlayers = Object.keys(playersById || {}).length > 0;
     if (hasPlayers) return;
     fetchPlayersForSelectedEvent();
-  }, [selectedGameId]);
+  }, [selectedGameId, source]);
 
   // If a topPerformers category:metric is selected and we can resolve a direct
   // numeric stat key from player stats, switch the selection to that key so
@@ -538,7 +627,7 @@ export default function ApiTesterPage() {
     return <div>Please log in.</div>;
   }
 
-  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+  
 
   return (
     <div className="p-4">
@@ -549,51 +638,82 @@ export default function ApiTesterPage() {
 
       <section className="border rounded-lg p-4">
         <h2 className="text-lg font-semibold mb-2">Connection Status</h2>
-        <p className="text-sm text-gray-600 mb-3">Check connectivity to the new external API source.</p>
-        <div className="flex flex-wrap items-end gap-3 mb-3">
+        <p className="text-sm text-gray-600 mb-3">Check connectivity to the external API source.</p>
+
+        {/* Top: League selector only */}
+        <div className="flex items-end gap-3 mb-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Date</label>
-            <div className="mt-1 flex items-center gap-3">
-              <select
-                value={dateMode}
-                onChange={(e) => setDateMode(e.target.value)}
-                className="px-3 py-2 border rounded"
-              >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="other">Other…</option>
-              </select>
-              {dateMode === 'other' && (
+            <label className="block text-sm font-medium text-gray-700">League</label>
+            <select
+              value={source}
+              onChange={(e) => { setSource(e.target.value); setStatus(null); setSelectedGameId(""); setPlayersById({}); setShowPlayers(false); setSelectedStat(""); }}
+              className="px-3 py-2 border rounded w-40"
+            >
+              <option value="major-mlb">MLB</option>
+              <option value="nfl">NFL</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Conditional controls under league */}
+        {source === 'major-mlb' && (
+          <div className="mb-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Date</label>
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   className="px-3 py-2 border rounded"
                 />
-              )}
+              </div>
+              <div className="pb-2 text-sm text-gray-700">Times displayed in {localTZ}</div>
             </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Time zone</label>
-            <select
-              value={timeZone}
-              onChange={(e) => setTimeZone(e.target.value)}
-              className="px-3 py-2 border rounded"
+            <button
+              onClick={checkConnection}
+              disabled={checking}
+              className="mt-3 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              <option value={localTZ}>Local ({localTZ})</option>
-              <option value="America/New_York">US/Eastern</option>
-              <option value="UTC">UTC</option>
-            </select>
+              {checking ? "Checking..." : "Check Connection"}
+            </button>
           </div>
-          {/* Data source fixed to Major MLB now */}
-        </div>
-        <button
-          onClick={checkConnection}
-          disabled={checking}
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {checking ? "Checking..." : "Check Connection"}
-        </button>
+        )}
+
+        {source === 'nfl' && (
+          <div className="mb-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">NFL Year</label>
+                <input
+                  type="number"
+                  value={nflYear}
+                  onChange={(e) => setNflYear(Number(e.target.value) || new Date().getFullYear())}
+                  className="px-3 py-2 border rounded w-28"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">NFL Week</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={22}
+                  value={nflWeek}
+                  onChange={(e) => setNflWeek(Number(e.target.value) || 1)}
+                  className="px-3 py-2 border rounded w-24"
+                />
+              </div>
+              <div className="pb-2 text-sm text-gray-700">Times displayed in {localTZ}</div>
+            </div>
+            <button
+              onClick={checkConnection}
+              disabled={checking}
+              className="mt-3 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {checking ? "Checking..." : "Check Connection"}
+            </button>
+          </div>
+        )}
 
         {status && (
           <div className="mt-3 text-sm">
@@ -601,6 +721,27 @@ export default function ApiTesterPage() {
               <p className="text-green-700">Connected ✓{status.message ? ` — ${status.message}` : ""}</p>
             ) : (
               <p className="text-red-700">Connection failed: {status.error || "Unknown error"}</p>
+            )}
+            {status?.meta?.requestUrl && (
+              <div className="mt-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-700">Request URL:</span>
+                  <code className="text-xs break-all">{status.meta.requestUrl}</code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(status.meta.requestUrl);
+                        setCopiedRequestUrl(true);
+                        setTimeout(() => setCopiedRequestUrl(false), 1000);
+                      } catch {}
+                    }}
+                    className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
+                  >
+                    {copiedRequestUrl ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
             )}
             {status.meta && (
               <pre className="mt-2 p-2 bg-gray-50 border rounded overflow-auto text-xs">
@@ -616,9 +757,8 @@ export default function ApiTesterPage() {
               </details>
             )}
 
-            {/* Player Stat selector populated from topPerformers keys */}
-            {/* Events selector for the day's games */}
-            {gamesForDate.length > 0 && (
+            {/* Events selector (MLB) */}
+            {gamesForDate.length > 0 && (source === 'major-mlb' || source === 'mlb') && (
               <div className="mt-4 pt-4 border-t">
                 <div className="flex flex-wrap items-end gap-3">
                   <div>
@@ -648,9 +788,249 @@ export default function ApiTesterPage() {
                 {/* Source is fixed; no extra notes */}
               </div>
             )}
+            {/* Events selector (NFL) */}
+            {gamesForDate.length > 0 && source === 'nfl' && (
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
+                    <select
+                      value={selectedGameId}
+                      onChange={async (e) => {
+                        const id = e.target.value;
+                        setSelectedGameId(id);
+                        // Clear MLB-specific state
+                        setShowPlayers(false);
+                        setSelectedPlayerId("");
+                        setSelectedTeamAbv("");
+                        setNflMode('players');
+                        setPlayersById({});
+                        setAvailableStats([]);
+                        setPlayersError("");
+                        setRawBoxscore(null);
+                        if (!id) return;
+                        try {
+                          const resp = await fetch(`/api/admin/api-tester/boxscore?source=nfl&gameID=${encodeURIComponent(id)}`);
+                          const json = await resp.json();
+                          if (!resp.ok || !json.success) throw new Error(json.error || `NFL box score failed (${resp.status})`);
+                          setRawBoxscore(json?.data || null);
+                          const map = json?.normalized?.playersById || {};
+                          setPlayersById(map);
+                          const keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
+                          setAvailableStats(keys);
+                          // Initialize team options and default selection
+                          const g = gamesForDate.find((gg) => (gg.id || gg.gameID) === id) || {};
+                          const away = g.away || g.awayTeam || '';
+                          const home = g.home || g.homeTeam || '';
+                          const teamAbvs = [away, home].filter(Boolean);
+                          setEventTeamAbvs(teamAbvs);
+                          if (teamAbvs.length && !selectedTeamAbv) {
+                            setSelectedTeamAbv(teamAbvs[0]);
+                          }
+                          // Enrich positions using nflPlayers endpoint, but DO NOT add players
+                          try {
+                            if (teamAbvs.length) {
+                              const rosterResp = await fetch(`/api/admin/api-tester/nflPlayers?teamAbv=${encodeURIComponent(teamAbvs.join(','))}`);
+                              const rosterJson = await rosterResp.json();
+                              if (rosterResp.ok && rosterJson.success && rosterJson.playersById) {
+                                const rosterMap = rosterJson.playersById || {};
+                                setPlayersById((prev) => {
+                                  const merged = { ...prev };
+                                  for (const [pid, p] of Object.entries(rosterMap)) {
+                                    // Only enrich if this player already exists from the event box score
+                                    if (merged[pid]) {
+                                      merged[pid] = {
+                                        ...merged[pid],
+                                        longName: merged[pid].longName || p.longName || pid,
+                                        pos: merged[pid].pos || p.pos || '',
+                                        teamAbv: merged[pid].teamAbv || p.teamAbv || merged[pid].teamAbv || '',
+                                      };
+                                    }
+                                  }
+                                  return merged;
+                                });
+                              }
+                            }
+                          } catch {}
+                          setShowPlayers(true);
+                        } catch (err) {
+                          setPlayersError(err.message || 'Failed to fetch NFL box score');
+                        }
+                      }}
+                      className="px-3 py-2 border rounded w-72"
+                    >
+                      <option value="">Select an event…</option>
+                      {gamesForDate.map((g) => {
+                        const id = g.id || g.gameID;
+                        const label = `${g.away || g.awayTeam || ''}@${g.home || g.homeTeam || ''}`;
+                        return <option key={id} value={id}>{label}</option>;
+                      })}
+                    </select>
+                  </div>
+                  {selectedGameId && (() => {
+                    const g = gamesForDate.find((gg) => (gg.id || gg.gameID) === selectedGameId) || {};
+                    const away = g.away || g.awayTeam || '';
+                    const home = g.home || g.homeTeam || '';
+                    const options = [away, home].filter(Boolean);
+                    if (!options.length) return null;
+                    return (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Team</label>
+                        <select
+                          value={selectedTeamAbv}
+                          onChange={(e) => setSelectedTeamAbv(e.target.value)}
+                          className="px-3 py-2 border rounded w-48"
+                        >
+                          <option value="">Select a team…</option>
+                          {options.map((abv) => (
+                            <option key={abv} value={abv}>{abv}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })()}
+                  {selectedGameId && selectedTeamAbv && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Selection</label>
+                      <select
+                        value={nflMode}
+                        onChange={(e) => { setNflMode(e.target.value); setSelectedPlayerId(""); setSelectedStat(""); }}
+                        className="px-3 py-2 border rounded w-40"
+                      >
+                        <option value="players">Players</option>
+                        <option value="team">Team</option>
+                      </select>
+                    </div>
+                  )}
+                  {selectedGameId && selectedTeamAbv && nflMode === 'players' && Object.keys(playersById || {}).length > 0 && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Players</label>
+                        <select
+                          value={selectedPlayerId}
+                          onChange={(e) => setSelectedPlayerId(e.target.value)}
+                          className="px-3 py-2 border rounded w-72"
+                        >
+                          <option value="">Select a player…</option>
+                          <option value={TEAM_AGG_ID}>Whole team</option>
+                          {Object.entries(playersById)
+                            .filter(([, p]) => String(p?.teamAbv || '').toUpperCase() === String(selectedTeamAbv).toUpperCase())
+                            .sort((a, b) => {
+                              const an = a[1]?.longName || a[0];
+                              const bn = b[1]?.longName || b[0];
+                              return String(an).localeCompare(String(bn));
+                            })
+                            .map(([id, p]) => {
+                              const name = p?.longName || id;
+                              const pos = p?.pos || '';
+                              return (
+                                <option key={id} value={id}>{name}{pos ? ` (${pos})` : ''}</option>
+                              );
+                            })}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Stat</label>
+                        <select
+                          value={selectedStat}
+                          onChange={(e) => setSelectedStat(e.target.value)}
+                          className="px-3 py-2 border rounded w-72"
+                          disabled={!computedStatOptions.length}
+                        >
+                          <option value="">{computedStatOptions.length ? 'Select a stat…' : 'No stats available'}</option>
+                          {computedStatOptions.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedStat && (
+                        <div className="pb-2 flex items-center gap-2">
+                          <span className="text-sm text-gray-700">
+                            {selectedPlayerId && selectedPlayerId !== TEAM_AGG_ID
+                              ? (playersById[selectedPlayerId]?.longName || selectedPlayerId)
+                              : selectedTeamAbv
+                                ? `${selectedTeamAbv} total`
+                                : 'All players total'}
+                          </span>
+                          <span className="text-sm text-gray-700">— Value:</span>
+                          <span className="text-sm font-semibold">{String(getSelectedPlayerStatValue())}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {selectedGameId && selectedTeamAbv && nflMode === 'team' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Stat</label>
+                        <select
+                          value={selectedStat}
+                          onChange={(e) => setSelectedStat(e.target.value)}
+                          className="px-3 py-2 border rounded w-72"
+                          disabled={!nflTeamStatOptions.length}
+                        >
+                          <option value="">{nflTeamStatOptions.length ? 'Select a stat…' : 'No stats available'}</option>
+                          {nflTeamStatOptions.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedStat && (
+                        <div className="pb-2 flex items-center gap-2">
+                          <span className="text-sm text-gray-700">{selectedTeamAbv} team — Value:</span>
+                          <span className="text-sm font-semibold">{String(getSelectedTeamStatValue())}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                {rawBoxscore && source === 'nfl' && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-gray-700">Raw NFL Boxscore</summary>
+                    <pre className="mt-2 p-2 bg-gray-50 border rounded overflow-auto text-xs">
+{JSON.stringify(rawBoxscore, null, 2)}
+                    </pre>
+                  </details>
+                )}
+                {selectedGameId && (() => {
+                  const g = gamesForDate.find((gg) => (gg.id || gg.gameID) === selectedGameId) || {};
+                  const away = g.away || g.awayTeam || '';
+                  const home = g.home || g.homeTeam || '';
+                  const awayR = g?.lineScore?.away?.R ?? '';
+                  const homeR = g?.lineScore?.home?.R ?? '';
+                  const statusTxt = g.gameStatus || g.currentInning || '';
+                  const timeTxt = g.gameTime || '';
+                  let timeLocal = timeTxt;
+                  try {
+                    if (timeTxt) {
+                      const dtf = new Intl.DateTimeFormat('en-US', { timeZone, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                      timeLocal = dtf.format(new Date(timeTxt));
+                    }
+                  } catch {}
+                  return (
+                    <div className="mt-3 border rounded p-3 text-sm">
+                      <div className="font-semibold mb-1">Selected Event</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                        <div><span className="text-gray-600">Matchup:</span> {away}@{home}</div>
+                        <div><span className="text-gray-600">Kickoff ({timeZone}):</span> {timeLocal || '—'}</div>
+                        <div><span className="text-gray-600">Status:</span> {statusTxt || '—'}</div>
+                        <div><span className="text-gray-600">Score:</span> {awayR} - {homeR}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {selectedGameId && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-gray-700">Filtered readout</summary>
+                    <pre className="mt-2 p-2 bg-gray-50 border rounded overflow-auto text-xs">
+{JSON.stringify(filteredData, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
 
-            {/* Players + Stat selectors */}
-            {showPlayers && (
+            {/* Players + Stat selectors (MLB only) */}
+            {showPlayers && (source === 'major-mlb' || source === 'mlb') && (
               <div className="mt-4">
                 {/* Top Performers filter removed */}
                 <div className="flex flex-wrap items-end gap-3">
@@ -692,8 +1072,10 @@ export default function ApiTesterPage() {
                         .map((p) => {
                           const display = playersById[p.id]?.longName || p.id;
                           const team = playersById[p.id]?.teamAbv || p.team;
+                          const pos = playersById[p.id]?.pos || '';
+                          const meta = [team, pos].filter(Boolean).join(', ');
                           return (
-                            <option key={`${p.id}-${p.team}`} value={p.id}>{display}{team ? ` (${team})` : ''}</option>
+                            <option key={`${p.id}-${p.team}`} value={p.id}>{display}{meta ? ` (${meta})` : ''}</option>
                           );
                         })}
                     </select>
@@ -746,7 +1128,7 @@ export default function ApiTesterPage() {
                     </pre>
                   </details>
                 )}
-                {rawBoxscore && (
+                {rawBoxscore && (source === 'major-mlb' || source === 'mlb') && (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-gray-700">Raw MLB Boxscore</summary>
                     <pre className="mt-2 p-2 bg-gray-50 border rounded overflow-auto text-xs">

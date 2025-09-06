@@ -22,6 +22,10 @@ export default function GradePropsPage() {
   const [showResultModal, setShowResultModal] = useState(false);
   // API readout per-prop (Major MLB scoreboard)
   const [apiReadouts, setApiReadouts] = useState({}); // { [airtableId]: { loading, error, game } }
+  // Debug toggles per-prop
+  const [debugOpen, setDebugOpen] = useState({});
+  // Preview results per-prop
+  const [previews, setPreviews] = useState({}); // { [airtableId]: { loading, error, request, response } }
 
   // Helpers for logging and derived state
   const getComputedType = (prop) => {
@@ -135,12 +139,15 @@ export default function GradePropsPage() {
       next[id] = { loading: true, error: '', game: null };
       setApiReadouts({ ...next });
       try {
-        // Derive espnGameID and YYYYMMDD
+        // Derive espnGameID and YYYYMMDD and choose source
         let espnId = String(prop?.propESPNLookup || '').trim();
         let yyyymmdd = '';
+        // Choose source by league or formula params; nfl if propLeagueLookup === 'nfl'
+        let source = (prop?.propLeagueLookup && String(prop.propLeagueLookup).toLowerCase() === 'nfl') ? 'nfl' : 'major-mlb';
         try {
           const fp = prop?.formulaParams ? JSON.parse(prop.formulaParams) : {};
           if (!espnId && fp?.espnGameID) espnId = String(fp.espnGameID).trim();
+          if (String(fp?.dataSource || '').toLowerCase() === 'nfl') source = 'nfl';
           if (fp?.gameDate) yyyymmdd = String(fp.gameDate);
         } catch {}
         if (!yyyymmdd && prop?.propEventTimeLookup) {
@@ -152,11 +159,33 @@ export default function GradePropsPage() {
             yyyymmdd = `${yr}${mo}${da}`;
           } catch {}
         }
-        const params = new URLSearchParams();
-        params.set('source', 'major-mlb');
-        if (yyyymmdd) params.set('gameDate', yyyymmdd);
-        if (espnId) params.set('gameID', espnId);
-        const resp = await fetch(`/api/admin/api-tester/status?${params.toString()}`);
+        if (!source && prop?.propLeagueLookup) {
+          const lg = String(prop.propLeagueLookup).toLowerCase();
+          if (lg === 'nfl') source = 'nfl';
+        } else if (prop?.propLeagueLookup && String(prop.propLeagueLookup).toLowerCase() === 'nfl') {
+          source = 'nfl';
+        }
+        // NFL path requires year/week instead of yyyymmdd; derive when possible
+        let query = '';
+        if (source === 'nfl') {
+          const d = prop?.propEventTimeLookup ? new Date(prop.propEventTimeLookup) : (yyyymmdd ? new Date(`${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`) : null);
+          const yr = d ? d.getFullYear() : new Date().getFullYear();
+          // Best-effort week: prefer prop.propEventWeek if provided API returned it
+          const wk = prop?.propEventWeek || 1;
+          const nflParams = new URLSearchParams();
+          nflParams.set('source', 'nfl');
+          nflParams.set('year', String(yr));
+          nflParams.set('week', String(wk));
+          if (espnId) nflParams.set('gameID', espnId);
+          query = nflParams.toString();
+        } else {
+          const params = new URLSearchParams();
+          params.set('source', 'major-mlb');
+          if (yyyymmdd) params.set('gameDate', yyyymmdd);
+          if (espnId) params.set('gameID', espnId);
+          query = params.toString();
+        }
+        const resp = await fetch(`/api/admin/api-tester/status?${query}`);
         const json = await resp.json();
         if (!resp.ok || !json?.success) throw new Error(json?.error || 'Failed to fetch event readout');
         const game = Array.isArray(json?.games) ? json.games[0] : null;
@@ -253,6 +282,10 @@ export default function GradePropsPage() {
         try { parsedParams = JSON.parse(prop.formulaParams); } catch {}
       }
       const fk = String(prop?.formulaKey || '').toLowerCase();
+      // Global fallback injectors before validation
+      if (!parsedParams.espnGameID && prop?.propESPNLookup) {
+        parsedParams.espnGameID = String(prop.propESPNLookup);
+      }
       // Inference helpers shared by all formulas
       const ensureGameDateFromLookups = () => {
         if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
@@ -317,6 +350,7 @@ export default function GradePropsPage() {
         if (!parsedParams.espnGameID) missing.push('espnGameID');
         if (!parsedParams.gameDate) missing.push('gameDate');
         if (!metrics.length) missing.push('metrics[]');
+        if (metrics.length > 0 && metrics.length < 2) missing.push('metrics must include at least two');
         if (!parsedParams.playerId) missing.push('playerId');
         if (!a.comparator) missing.push('sides.A.comparator');
         if (a.threshold == null) missing.push('sides.A.threshold');
@@ -355,6 +389,19 @@ export default function GradePropsPage() {
         const required = isH2H ? ['playerAId', 'playerBId', 'gameDate'] : ['playerId', 'gameDate'];
         ensureGameDateFromLookups();
         missing = required.filter((k) => !parsedParams || !parsedParams[k] || String(parsedParams[k]).trim() === '');
+      }
+      // Fallback injectors: use prop lookups when params were omitted
+      if (!parsedParams.espnGameID && prop?.propESPNLookup) {
+        parsedParams.espnGameID = String(prop.propESPNLookup);
+      }
+      if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
+        try {
+          const d = new Date(prop.propEventTimeLookup);
+          const yr = d.getFullYear();
+          const mo = String(d.getMonth() + 1).padStart(2, '0');
+          const da = String(d.getDate()).padStart(2, '0');
+          parsedParams.gameDate = `${yr}${mo}${da}`;
+        } catch {}
       }
       if (missing.length) {
         const msg = fk === 'who_wins'
@@ -397,6 +444,42 @@ export default function GradePropsPage() {
     } finally {
       const button = document.getElementById(`autograde-${airtableId}`);
       if (button) button.disabled = false;
+    }
+  };
+
+  const handlePreviewOne = async (airtableId) => {
+    try {
+      const prop = (propsList || []).find(p => p.airtableId === airtableId) || null;
+      let parsedParams = {};
+      if (prop?.formulaParams) {
+        try { parsedParams = JSON.parse(prop.formulaParams); } catch {}
+      }
+      // Inject fallbacks for espnGameID/gameDate
+      if (!parsedParams.espnGameID && prop?.propESPNLookup) parsedParams.espnGameID = String(prop.propESPNLookup);
+      if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
+        try {
+          const d = new Date(prop.propEventTimeLookup);
+          const yr = d.getFullYear();
+          const mo = String(d.getMonth() + 1).padStart(2, '0');
+          const da = String(d.getDate()).padStart(2, '0');
+          parsedParams.gameDate = `${yr}${mo}${da}`;
+        } catch {}
+      }
+      // Prefer dataSource from params; else infer from league
+      if (!parsedParams.dataSource) {
+        const lg = String(prop?.propLeagueLookup || '').toLowerCase();
+        parsedParams.dataSource = (lg === 'nfl') ? 'nfl' : 'major-mlb';
+      }
+      setPreviews((prev) => ({ ...prev, [airtableId]: { loading: true, error: '', request: { airtableId, dryRun: true, overrideFormulaParams: parsedParams }, response: null } }));
+      const res = await fetch('/api/admin/gradePropByFormula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ airtableId, dryRun: true, overrideFormulaParams: parsedParams }),
+      });
+      const data = await res.json();
+      setPreviews((prev) => ({ ...prev, [airtableId]: { loading: false, error: res.ok ? '' : (data?.error || 'Preview failed'), request: { airtableId, dryRun: true, overrideFormulaParams: parsedParams }, response: data } }));
+    } catch (e) {
+      setPreviews((prev) => ({ ...prev, [airtableId]: { loading: false, error: e?.message || 'Preview failed', request: null, response: null } }));
     }
   };
 
@@ -556,8 +639,11 @@ export default function GradePropsPage() {
                           fp.espnGameID && hasGameDate && fp.metric && fp.teamAbvA && fp.teamAbvB && (fp.winnerRule || 'higher')
                         );
                       })();
+                      const hasEspnId = Boolean(fp.espnGameID || prop.propESPNLookup);
+                      const hasGameDate = Boolean(fp.gameDate || prop.propEventTimeLookup);
+                      const metricsOk = Array.isArray(fp.metrics) && fp.metrics.length >= 2;
                       const readyMulti = isMulti && Boolean(
-                        fp.espnGameID && fp.gameDate && Array.isArray(fp.metrics) && fp.metrics.length &&
+                        hasEspnId && hasGameDate && metricsOk &&
                         String(fp.entity || 'player').toLowerCase() === 'player' && fp.playerId && fp.sides && fp.sides.A && fp.sides.B &&
                         fp.sides.A.comparator && fp.sides.A.threshold != null &&
                         fp.sides.B.comparator && fp.sides.B.threshold != null
@@ -573,22 +659,32 @@ export default function GradePropsPage() {
                       })();
                       if (!isAuto || (!isWhoWins && !isStatOU && !isH2H && !isMulti && !isTeamH2H && !isTeamOU)) return null;
                       return (
-                        <button
-                          id={`autograde-${prop.airtableId}`}
-                          onClick={() => handleAutoGradeOne(prop.airtableId)}
-                          className="px-3 py-1 rounded ml-2 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                          disabled={!(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU)}
-                          title={(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU) ? 'Auto grade this prop' : (
-                            isWhoWins ? 'Complete setup (espnGameID, gameDate, side maps) to enable auto grade'
-                            : isStatOU ? 'Complete setup (espnGameID, gameDate, entity=player, playerId, metric, sides) to enable auto grade'
-                            : isH2H ? 'Complete setup (espnGameID, gameDate, metric, playerAId, playerBId, winnerRule) to enable auto grade'
-                            : isTeamH2H ? 'Complete setup (espnGameID, gameDate, metric, teamAbvA, teamAbvB, winnerRule) to enable auto grade'
-                            : isTeamOU ? 'Complete setup (espnGameID, gameDate, metric, teamAbv, sides) to enable auto grade'
-                            : 'Complete setup (espnGameID, gameDate, metrics[], entity=player, playerId, sides) to enable auto grade'
-                          )}
-                        >
-                          Auto grade this prop
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="px-3 py-1 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
+                            onClick={() => handlePreviewOne(prop.airtableId)}
+                            title="Preview (dry run) the grading request and response"
+                          >
+                            Preview grading
+                          </button>
+                          <button
+                            id={`autograde-${prop.airtableId}`}
+                            onClick={() => handleAutoGradeOne(prop.airtableId)}
+                            className="px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                            disabled={!(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU)}
+                            title={(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU) ? 'Auto grade this prop' : (
+                              isWhoWins ? 'Complete setup (espnGameID, gameDate, side maps) to enable auto grade'
+                              : isStatOU ? 'Complete setup (espnGameID, gameDate, entity=player, playerId, metric, sides) to enable auto grade'
+                              : isH2H ? 'Complete setup (espnGameID, gameDate, metric, playerAId, playerBId, winnerRule) to enable auto grade'
+                              : isTeamH2H ? 'Complete setup (espnGameID, gameDate, metric, teamAbvA, teamAbvB, winnerRule) to enable auto grade'
+                              : isTeamOU ? 'Complete setup (espnGameID, gameDate, metric, teamAbv, sides) to enable auto grade'
+                              : 'Complete setup (espnGameID, gameDate, metrics[], entity=player, playerId, sides) to enable auto grade'
+                            )}
+                          >
+                            Auto grade this prop
+                          </button>
+                        </div>
                       );
                     } catch { return null; }
                   })()}
@@ -601,6 +697,71 @@ export default function GradePropsPage() {
                     onChange={(e) => handleResultChange(prop.airtableId, e.target.value)}
                     className="w-full border px-2 py-1 rounded"
                   />
+                </div>
+                {false && <div />}
+                {(() => {
+                  const p = previews[prop.airtableId] || {};
+                  if (!p.loading && !p.error && !p.response) return null;
+                  return (
+                    <div className="mt-2 p-2 bg-gray-50 border rounded text-xs">
+                      {p.loading && <div>Preview loading…</div>}
+                      {!!p.error && <div className="text-red-600">{p.error}</div>}
+                      {p.request && (
+                        <div className="mt-1">
+                          <div className="font-medium">Request</div>
+                          <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words">{JSON.stringify(p.request, null, 2)}</pre>
+                        </div>
+                      )}
+                      {p.response && (
+                        <div className="mt-1">
+                          <div className="font-medium">Response</div>
+                          <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words">{JSON.stringify(p.response, null, 2)}</pre>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Formula debug */}
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs bg-gray-200 rounded"
+                    onClick={() => setDebugOpen((prev) => ({ ...prev, [prop.airtableId]: !prev[prop.airtableId] }))}
+                  >
+                    {debugOpen[prop.airtableId] ? 'Hide formula' : 'Show formula'}
+                  </button>
+                  {debugOpen[prop.airtableId] && (
+                    <div className="mt-2 p-2 bg-gray-50 border rounded">
+                      {(() => {
+                        try {
+                          const fk = String(prop?.formulaKey || '');
+                          const fp = prop?.formulaParams ? JSON.parse(prop.formulaParams) : {};
+                          const eff = { ...(fp || {}) };
+                          if (!eff.espnGameID && prop?.propESPNLookup) eff.espnGameID = String(prop.propESPNLookup);
+                          if (!eff.gameDate && prop?.propEventTimeLookup) {
+                            try {
+                              const d = new Date(prop.propEventTimeLookup);
+                              const yr = d.getFullYear();
+                              const mo = String(d.getMonth() + 1).padStart(2, '0');
+                              const da = String(d.getDate()).padStart(2, '0');
+                              eff.gameDate = `${yr}${mo}${da}`;
+                            } catch {}
+                          }
+                          const ds = (() => {
+                            const dsParam = String(eff.dataSource || '').toLowerCase();
+                            if (dsParam) return dsParam;
+                            const lg = String(prop?.propLeagueLookup || '').toLowerCase();
+                            return lg === 'nfl' ? 'nfl' : 'major-mlb';
+                          })();
+                          if (ds) eff.dataSource = ds;
+                          const debugObj = { formulaKey: fk, params: eff };
+                          return (
+                            <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words">{JSON.stringify(debugObj, null, 2)}</pre>
+                          );
+                        } catch { return null; }
+                      })()}
+                    </div>
+                  )}
                 </div>
                 {false && (
                   <div className="mt-2 p-2 bg-gray-50 border rounded" />

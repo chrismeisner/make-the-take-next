@@ -11,6 +11,9 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
 );
 
+// Ensure all timestamps are serialized as ISO 8601 UTC strings
+const toIso = (t) => (t ? new Date(t).toISOString() : null);
+
 // Helper: Fetch all packs from Airtable and map to our data structure
 // If a view name is provided, we will use that Airtable view to drive filtering/sorting.
 // Otherwise, default to active/graded filter.
@@ -50,9 +53,9 @@ async function fetchAllPacks(viewName) {
 	  packType: fields.packType || "unknown",
 	  packLeague: fields.packLeague || null,
 	  packStatus: fields.packStatus || "Unknown",
-	  packOpenTime: fields.packOpenTime || null,
-	  packCloseTime: fields.packCloseTime || null,
-	  eventTime: fields.eventTime || null,
+	  packOpenTime: toIso(fields.packOpenTime) || null,
+	  packCloseTime: toIso(fields.packCloseTime) || null,
+	  eventTime: toIso(fields.eventTime) || null,
 	  firstPlace: fields.firstPlace || "",
 	  createdAt: record._rawJson.createdTime,
 	  propsCount: (fields.Props || []).length,
@@ -124,14 +127,32 @@ export default async function handler(req, res) {
       const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
       const userPhone = token?.phone || null;
 
+      // Ensure all timestamps returned to the client are ISO 8601 UTC strings
+      const toIso = (t) => (t ? new Date(t).toISOString() : null);
+
       // Filter: active/graded/coming-soon (case-insensitive) if status present
       const { rows: packRows } = await query(
-        `SELECT id, pack_url, title, prize, cover_url, league, created_at, pack_status
-         FROM packs
-         WHERE LOWER(COALESCE(pack_status, '')) IN ('active','graded','coming-soon')
-            OR pack_status IS NULL
-         ORDER BY created_at DESC NULLS LAST
-         LIMIT 200`
+        `SELECT p.id,
+                p.pack_id,
+                p.pack_url,
+                p.title,
+                p.summary,
+                p.prize,
+                p.cover_url,
+                p.league,
+                p.created_at,
+                p.pack_status,
+                p.pack_open_time,
+                p.pack_close_time,
+                p.event_id,
+                e.event_time,
+                e.title AS event_title
+           FROM packs p
+           LEFT JOIN events e ON e.id = p.event_id
+          WHERE LOWER(COALESCE(p.pack_status, '')) IN ('active','graded','coming-soon','draft')
+             OR p.pack_status IS NULL
+          ORDER BY p.created_at DESC NULLS LAST
+          LIMIT 200`
       );
 
       const packIdToUrl = new Map(packRows.map(r => [r.id, r.pack_url]));
@@ -158,33 +179,85 @@ export default async function handler(req, res) {
         userMap = new Map(rows.map(r => [r.pack_id, Number(r.c)]));
       }
 
+      // Props counts per pack
+      const { rows: propsCounts } = await query(
+        `SELECT pack_id, COUNT(*)::int AS c
+           FROM props
+          WHERE pack_id IS NOT NULL
+          GROUP BY pack_id`
+      );
+      const propsCountMap = new Map(propsCounts.map(r => [r.pack_id, Number(r.c)]));
+
+      // Open/close window derived from props per pack (optional)
+      const { rows: windowRows } = await query(
+        `SELECT pack_id,
+                MIN(open_time) AS open_time,
+                MAX(close_time) AS close_time
+           FROM props
+          WHERE pack_id IS NOT NULL
+          GROUP BY pack_id`
+      );
+      const openTimeMap = new Map(windowRows.map(r => [r.pack_id, r.open_time]));
+      const closeTimeMap = new Map(windowRows.map(r => [r.pack_id, r.close_time]));
+
       const packsData = packRows.map((r) => ({
         airtableId: r.id, // legacy field name kept for shape compatibility
-        eventTitle: null,
+        eventId: r.event_id || null,
+        eventTitle: r.event_title || null,
         propEventRollup: [],
-        packID: r.id, // no Airtable id in PG; expose internal id
+        packID: r.pack_id || r.id, // expose external text id if present, else fallback to internal uuid
         packTitle: r.title || "Untitled Pack",
         packURL: r.pack_url || "",
         packCover: r.cover_url || null,
         packPrize: r.prize || "",
         prizeSummary: "",
-        packSummary: "",
+        packSummary: r.summary || "",
         packType: "",
         packLeague: r.league || null,
         packStatus: r.pack_status || "",
-        packOpenTime: null,
-        packCloseTime: null,
-        eventTime: null,
+        packOpenTime: toIso(r.pack_open_time) || toIso(openTimeMap.get(r.id)) || null,
+        packCloseTime: toIso(r.pack_close_time) || toIso(closeTimeMap.get(r.id)) || null,
+        eventTime: toIso(r.event_time),
         firstPlace: "",
-        createdAt: r.created_at || null,
-        propsCount: 0,
+        createdAt: toIso(r.created_at) || null,
+        propsCount: propsCountMap.get(r.id) || 0,
         winnerProfileID: null,
         packWinnerRecordIds: [],
         takeCount: totalMap.get(r.id) || 0,
         userTakesCount: userMap.get(r.id) || 0,
       }));
 
-      console.log('[api/packs PG] count=', packsData.length, 'examples=', packsData.slice(0,5).map(p=>p.packURL));
+      // Readable, emoji-enhanced summary for terminal
+      try {
+        const statusEmoji = (s) => {
+          const v = String(s || '').toLowerCase().replace(/\s+/g, '-');
+          if (v === 'open' || v === 'active') return '🟢 open';
+          if (v === 'coming-soon' || v === 'coming-up') return '🟠 coming-soon';
+          if (v === 'closed') return '🔴 closed';
+          if (v === 'completed') return '⚫ completed';
+          if (v === 'graded') return '🔵 graded';
+          return '⚪ unknown';
+        };
+        const fmt = (t) => (t ? new Date(t).toISOString() : '—');
+        const yesNo = (v) => (v ? '✅' : '❌');
+        console.log(`\n=== /api/packs [postgres] count=${packsData.length} ===`);
+        packsData.slice(0, 20).forEach((p, i) => {
+          const coverUrl = Array.isArray(p?.packCover) && p.packCover.length > 0
+            ? p.packCover[0]?.url
+            : (typeof p?.packCover === 'string' ? p.packCover : null);
+          console.log(`\n#${String(i + 1).padStart(2, '0')} ${p.packURL ? `(${p.packURL})` : ''}`);
+          console.log(`  🆔 id: ${p.packID || p.id || p.airtableId}`);
+          console.log(`  📛 title: ${p.packTitle || 'Untitled'}`);
+          console.log(`  🏷️ league: ${p.packLeague || '—'}`);
+          console.log(`  📊 status: ${statusEmoji(p.packStatus)}`);
+          console.log(`  🧩 props: ${p.propsCount ?? 0}`);
+          console.log(`  👥 takes: ${p.takeCount ?? 0} total, ${p.userTakesCount ?? 0} you`);
+          console.log(`  🕒 window: ${fmt(p.packOpenTime)} → ${fmt(p.packCloseTime)}`);
+          console.log(`  🖼️ cover: ${yesNo(!!coverUrl)}`);
+        });
+      } catch (logErr) {
+        console.warn('[api/packs PG] pretty log failed =>', logErr?.message || logErr);
+      }
 
       // Optional shadow read: compare with Airtable list and log differences
       try {
@@ -235,6 +308,28 @@ export default async function handler(req, res) {
       if (packURL) {
         const { packs } = createRepositories();
         const updated = await packs.updateByPackURL(packURL, req.body || {});
+        // In Postgres mode, if client provided a props[] list, sync membership to this pack
+        if (getDataBackend() === 'postgres' && Array.isArray(req.body?.props)) {
+          try {
+            const packUUID = updated?.id;
+            if (packUUID) {
+              // Fetch current prop ids linked to this pack
+              const { rows: existingRows } = await query('SELECT id FROM props WHERE pack_id = $1', [packUUID]);
+              const existing = new Set(existingRows.map(r => r.id));
+              const desired = new Set(req.body.props.filter((x) => typeof x === 'string' && x));
+              const toLink = [...desired].filter((id) => !existing.has(id));
+              const toUnlink = [...existing].filter((id) => !desired.has(id));
+              if (toLink.length > 0) {
+                await query('UPDATE props SET pack_id = $1, updated_at = NOW() WHERE id = ANY($2::uuid[])', [packUUID, toLink]);
+              }
+              if (toUnlink.length > 0) {
+                await query('UPDATE props SET pack_id = NULL, updated_at = NOW() WHERE id = ANY($1::uuid[]) AND pack_id = $2', [toUnlink, packUUID]);
+              }
+            }
+          } catch (mErr) {
+            console.error('[api/packs PATCH PG] props membership sync failed =>', mErr?.message || mErr);
+          }
+        }
         // Optional dual-write to Airtable for safety during staging
         if (getDataBackend() === 'postgres' && process.env.DUAL_WRITE_AIRTABLE === '1') {
           try {
@@ -311,26 +406,105 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace } = req.body;
+      // Prize can be provided directly or aliased from firstPlace
+      const prize = (req.body && (req.body.prize || firstPlace)) || null;
       if (!packTitle || !packURL) {
         return res.status(400).json({ success: false, error: "Missing required fields: packTitle and packURL" });
       }
 
       const { packs } = createRepositories();
+      // Map linked Event(s) to Postgres event UUID if backend is Postgres
+      let pgEventUUID = null;
+      let derivedLeague = null;
+      if (getDataBackend() === 'postgres') {
+        try {
+          const atEventIds = Array.isArray(events) && events.length > 0
+            ? events
+            : (typeof eventId === 'string' && eventId.startsWith('rec') ? [eventId] : []);
+          if (atEventIds.length > 0) {
+            const atId = atEventIds[0];
+            console.log('[api/packs POST] Resolving Airtable Event to Postgres:', { atId });
+            const evRec = await base('Events').find(atId);
+            const f = evRec?.fields || {};
+            const espnGameID = f.espnGameID || null;
+            const title = f.eventTitle || f.title || null;
+            const league = f.eventLeague || null;
+            const eventTimeISO = f.eventTime ? new Date(f.eventTime).toISOString() : null;
+            if (espnGameID) {
+              const upsertSql = `INSERT INTO events (espn_game_id, title, event_time, league, event_id)
+                                 VALUES ($1,$2,$3,$4,$5)
+                                 ON CONFLICT (espn_game_id) DO UPDATE SET
+                                   title = EXCLUDED.title,
+                                   event_time = EXCLUDED.event_time,
+                                   league = EXCLUDED.league
+                                 RETURNING id`;
+              const { rows } = await query(upsertSql, [espnGameID, title, eventTimeISO, league, espnGameID]);
+              pgEventUUID = rows[0]?.id || null;
+            } else {
+              const upsertSql = `INSERT INTO events (title, event_time, league, event_id)
+                                 VALUES ($1,$2,$3,$4)
+                                 ON CONFLICT (event_id) DO UPDATE SET
+                                   title = EXCLUDED.title,
+                                   event_time = EXCLUDED.event_time,
+                                   league = EXCLUDED.league
+                                 RETURNING id`;
+              const { rows } = await query(upsertSql, [title, eventTimeISO, league, atId]);
+              pgEventUUID = rows[0]?.id || null;
+            }
+            console.log('[api/packs POST] Resolved PG event UUID:', pgEventUUID);
+            if (league) {
+              try { derivedLeague = String(league).toLowerCase(); } catch {}
+            }
+          }
+        } catch (mapErr) {
+          console.error('[api/packs POST] Failed to map/link Event to Postgres =>', mapErr);
+        }
+      }
+      // If still not resolved from Airtable mapping, allow direct Postgres UUID passthrough
+      let finalEventId = pgEventUUID;
+      if (getDataBackend() === 'postgres' && !finalEventId) {
+        // Prefer explicit eventId if it's a UUID
+        if (eventId && typeof eventId === 'string' && !eventId.startsWith('rec')) {
+          finalEventId = eventId;
+        }
+        // Or use first element from events[] if that looks like a UUID
+        if (!finalEventId && Array.isArray(events) && events.length > 0) {
+          const candidate = events.find((e) => typeof e === 'string' && !e.startsWith('rec'));
+          if (candidate) finalEventId = candidate;
+        }
+        // If we have a finalEventId, derive league from Postgres events table
+        if (finalEventId && !derivedLeague) {
+          try {
+            const { rows } = await query('SELECT league FROM events WHERE id = $1 LIMIT 1', [finalEventId]);
+            const leagueVal = rows?.[0]?.league || null;
+            if (leagueVal) derivedLeague = String(leagueVal).toLowerCase();
+          } catch (e) {
+            console.warn('[api/packs POST] Failed to derive league from Postgres event =>', e?.message || e);
+          }
+        }
+      }
+
       // Prefer DAL create in both backends
       const created = await packs.createOne({
-        packTitle, packSummary, packURL, packType, packLeague, packStatus,
+        packTitle, packSummary, packURL, packType,
+        packLeague: (packLeague ? String(packLeague).toLowerCase() : null) || derivedLeague || null,
+        packStatus,
         packOpenTime, packCloseTime, packCoverUrl,
+        prize,
+        eventId: finalEventId,
         events, props,
       });
       // Optional dual-write to Airtable
       if (getDataBackend() === 'postgres' && process.env.DUAL_WRITE_AIRTABLE === '1') {
         try {
           const fields = { packTitle, packSummary, packURL, packType, packLeague, packStatus };
+          if (created?.packID) fields.packID = created.packID;
           if (packOpenTime) fields.packOpenTime = packOpenTime;
           if (packCloseTime) fields.packCloseTime = packCloseTime;
           if (packCoverUrl) fields.packCover = [{ url: packCoverUrl }];
           if (Array.isArray(events)) fields.Event = events;
           if (Array.isArray(props)) fields.Props = props;
+          if (prize) fields.packPrize = prize;
           await base('Packs').create([{ fields }], { typecast: true });
         } catch (dwErr) {
           console.error('[api/packs POST] dual-write Airtable failed =>', dwErr);

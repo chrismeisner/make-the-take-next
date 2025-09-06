@@ -1,5 +1,5 @@
 import { resolveSourceConfig } from "../../../../lib/apiSources";
-import { normalizeMajorMlbScoreboard } from "../../../../lib/normalize";
+import { normalizeMajorMlbScoreboard, normalizeNflScoreboardFromWeekly } from "../../../../lib/normalize";
 
 export default async function handler(req, res) {
 
@@ -11,14 +11,16 @@ export default async function handler(req, res) {
     return `${yr}${mo}${da}`;
   }
 
-  const { gameDate, gameID } = req.query || {};
-  const src = resolveSourceConfig('major-mlb');
+  const { gameDate, gameID, source: sourceParam, year, week } = req.query || {};
+  const src = resolveSourceConfig(sourceParam || 'major-mlb');
   const dateToUse = gameDate || formatDateYYYYMMDD(new Date());
   try {
     console.log('[api-tester/status] Incoming request', {
       gameDate: dateToUse,
       gameID: gameID || undefined,
       source: src.source,
+      year: year || undefined,
+      week: week || undefined,
     });
   } catch {}
 
@@ -37,6 +39,13 @@ export default async function handler(req, res) {
       url.searchParams.set('month', mm);
       url.searchParams.set('day', dd);
       // limit optional; omit to use default
+    } else if (src.source === 'nfl') {
+      // nfl schedule weekly requires year and week
+      const yyyy = String(year || new Date().getFullYear());
+      const wk = String(week || 1);
+      url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+      url.searchParams.set('year', yyyy);
+      url.searchParams.set('week', wk);
     } else {
       return res.status(400).json({ success: false, error: 'Unsupported source for status' });
     }
@@ -66,7 +75,12 @@ export default async function handler(req, res) {
     } catch {}
     // Normalize scoreboard into our common shape
     const raw = data?.body || data || {};
-    const allGames = normalizeMajorMlbScoreboard(raw);
+    let allGames = [];
+    if (src.source === 'major-mlb') {
+      allGames = normalizeMajorMlbScoreboard(raw);
+    } else if (src.source === 'nfl') {
+      allGames = normalizeNflScoreboardFromWeekly(raw);
+    }
 
     // If gameID provided, filter locally to only that game (some upstreams ignore gameID)
     let games = allGames;

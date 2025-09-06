@@ -16,6 +16,7 @@ export default function AdminEditPackPage() {
   const [packTitle, setPackTitle] = useState('');
   const [packURL, setPackURL] = useState('');
   const [packSummary, setPackSummary] = useState('');
+  const [packPrize, setPackPrize] = useState('');
   const [packLeague, setPackLeague] = useState('');
   const [packCoverUrl, setPackCoverUrl] = useState('');
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
@@ -60,6 +61,8 @@ export default function AdminEditPackPage() {
         setPackURL(found.packURL || '');
         setPackSummary(found.packSummary || '');
         setPackLeague((found.packLeague || '').toString());
+        // Prize is surfaced from packs list when available (Postgres path provides prize)
+        if (found.packPrize) setPackPrize(found.packPrize);
         setPackCoverUrl(found.packCover || '');
         if (found.packCover) setCoverPreviewUrl(found.packCover);
         setPackStatus(found.packStatus || 'active');
@@ -146,7 +149,7 @@ export default function AdminEditPackPage() {
     const loadEventTime = async () => {
       if (!packEventId) return;
       try {
-        const evRes = await fetch(`/api/admin/events/${packEventId}`);
+        const evRes = await fetch(`/api/admin/events/${encodeURIComponent(packEventId)}`);
         const evJson = await evRes.json();
         if (evRes.ok && evJson.success && evJson.event?.eventTime) {
           setPackEventTimeISO(evJson.event.eventTime);
@@ -166,10 +169,28 @@ export default function AdminEditPackPage() {
         const results = await Promise.all(
           missing.map(async (id) => {
             try {
-              const res = await fetch(`/api/admin/events/${id}`);
+              const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
               const json = await res.json();
               if (res.ok && json.success && json.event) {
-                return { id, title: json.event.eventTitle || id, time: json.event.eventTime || null };
+                // Collect basic facts about the event for quick display
+                const ev = json.event;
+                let coverUrl = null;
+                try {
+                  const fieldVal = ev.eventCover;
+                  if (Array.isArray(fieldVal) && fieldVal.length > 0) {
+                    const first = fieldVal[0];
+                    coverUrl = (first && typeof first === 'object') ? (first.url || first?.thumbnails?.large?.url || first?.thumbnails?.full?.url) : null;
+                  }
+                } catch {}
+                return {
+                  id,
+                  title: ev.eventTitle || id,
+                  time: ev.eventTime || null,
+                  league: ev.eventLeague || null,
+                  coverUrl: coverUrl || null,
+                  homeTeamLogo: ev.homeTeamLogo || null,
+                  awayTeamLogo: ev.awayTeamLogo || null,
+                };
               }
             } catch {}
             return { id, title: id, time: null };
@@ -178,7 +199,9 @@ export default function AdminEditPackPage() {
         if (!cancelled) {
           setEventInfoById((prev) => {
             const next = { ...prev };
-            results.forEach(({ id, title, time }) => { next[id] = { eventTitle: title, eventTime: time }; });
+            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo }) => {
+              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo };
+            });
             return next;
           });
         }
@@ -243,6 +266,15 @@ export default function AdminEditPackPage() {
     return null;
   };
 
+  const handleRemoveLinkedEvent = () => {
+    if (!packEventId) return;
+    setPackEventIds(prev => {
+      const next = (prev || []).filter(id => id !== packEventId);
+      setPackEventId(next.length > 0 ? next[0] : '');
+      return next;
+    });
+  };
+
   const handleUseEventCover = async () => {
     try {
       // Prefer linked Event on the pack
@@ -297,11 +329,13 @@ export default function AdminEditPackPage() {
       const payload = { packId, packTitle, packURL };
       if (packSummary) payload.packSummary = packSummary;
       if (packLeague) payload.packLeague = packLeague.toLowerCase();
+      if (packPrize) payload.prize = packPrize;
       if (packCoverUrl) payload.packCoverUrl = packCoverUrl;
       if (packStatus) payload.packStatus = packStatus;
       if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
       if (packCloseTime) payload.packCloseTime = new Date(packCloseTime).toISOString();
-      if (propsList.length) payload.props = propsList.map(p => p.airtableId);
+      // Always include props array to allow server to sync membership (including unlinking all)
+      payload.props = propsList.map(p => p.airtableId);
       if (Array.isArray(packEventIds) && packEventIds.length > 0) {
         payload.events = packEventIds;
       } else if (packEventId) {
@@ -353,12 +387,34 @@ export default function AdminEditPackPage() {
                 <div className="font-medium">
                   Primary: {packEventId ? (eventInfoById[packEventId]?.eventTitle || packEventId) : '—'}
                 </div>
+                {packEventId && (
+                  <div className="text-xs text-gray-600">
+                    {(() => {
+                      const info = eventInfoById[packEventId] || {};
+                      const league = info.eventLeague ? String(info.eventLeague).toUpperCase() : null;
+                      const t = info.eventTime ? new Date(info.eventTime).toLocaleString() : null;
+                      return [league, t].filter(Boolean).join(' · ');
+                    })()}
+                  </div>
+                )}
                 {packEventIds.length > 1 && (
                   <div className="text-gray-600">
                     Additional:
                     <ul className="list-disc list-inside">
                       {packEventIds.filter(id => id !== packEventId).map((id) => (
-                        <li key={id}>{eventInfoById[id]?.eventTitle || id}</li>
+                        <li key={id}>
+                          <div className="flex flex-col">
+                            <span className="text-sm">{eventInfoById[id]?.eventTitle || id}</span>
+                            <span className="text-xs text-gray-500">
+                              {(() => {
+                                const info = eventInfoById[id] || {};
+                                const league = info.eventLeague ? String(info.eventLeague).toUpperCase() : null;
+                                const t = info.eventTime ? new Date(info.eventTime).toLocaleString() : null;
+                                return [league, t].filter(Boolean).join(' · ');
+                              })()}
+                            </span>
+                          </div>
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -425,6 +481,75 @@ export default function AdminEditPackPage() {
             </div>
           )}
         </div>
+        {packEventId && (
+          <div className="mt-3 p-3 border rounded bg-gray-50">
+            <h3 className="text-sm font-semibold mb-2">Linked Event Details</h3>
+            {(() => {
+              const info = eventInfoById[packEventId] || {};
+              // Fallbacks from props if event API is sparse
+              const fallbackTitle = (() => {
+                try {
+                  const firstWithTitle = (propsList || []).find(p => p.eventTitle);
+                  return firstWithTitle ? firstWithTitle.eventTitle : null;
+                } catch { return null; }
+              })();
+              const fallbackTimeISO = (() => {
+                try {
+                  const times = (propsList || []).map(p => new Date(p.eventTime).getTime()).filter((t) => Number.isFinite(t));
+                  if (!times.length) return null;
+                  const earliest = Math.min(...times);
+                  return new Date(earliest).toISOString();
+                } catch { return null; }
+              })();
+              const title = info.eventTitle || fallbackTitle || packEventId;
+              const league = info.eventLeague ? String(info.eventLeague).toUpperCase() : null;
+              const timeSource = info.eventTime || fallbackTimeISO;
+              const time = timeSource
+                ? new Date(timeSource).toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    timeZoneName: 'short',
+                  })
+                : null;
+              const cover = info.eventCoverUrl || (() => {
+                try {
+                  const firstWithCover = (propsList || []).find(p => p.propCoverUrl);
+                  return firstWithCover ? firstWithCover.propCoverUrl : null;
+                } catch { return null; }
+              })();
+              const homeLogo = info.homeTeamLogo || null;
+              const awayLogo = info.awayTeamLogo || null;
+              return (
+                <div className="flex items-start gap-3">
+                  {cover ? (
+                    <img src={cover} alt="event cover" className="h-16 w-16 object-cover rounded" />
+                  ) : (
+                    <div className="h-16 w-16 bg-gray-200 rounded flex items-center justify-center text-gray-500 text-xs">No Cover</div>
+                  )}
+                  <div className="flex-1">
+                    <div className="text-base font-medium">{title}</div>
+                    <div className="text-xs text-gray-600">{[league, time].filter(Boolean).join(' · ')}</div>
+                    {(homeLogo || awayLogo) && (
+                      <div className="mt-2 flex items-center gap-2">
+                        {awayLogo && <img src={awayLogo} alt="away team" className="h-6 w-6 object-contain" />}
+                        <span className="text-xs text-gray-500">vs</span>
+                        {homeLogo && <img src={homeLogo} alt="home team" className="h-6 w-6 object-contain" />}
+                      </div>
+                    )}
+                    <div className="mt-2 text-xs">
+                      <a href={`/admin/events/${encodeURIComponent(packEventId)}`} className="text-blue-600 underline">View event</a>
+                      <span className="mx-2 text-gray-400">|</span>
+                      <button type="button" onClick={handleRemoveLinkedEvent} className="text-red-600 underline">Remove linked event</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700">Pack Title</label>
           <input
@@ -475,6 +600,16 @@ export default function AdminEditPackPage() {
             value={packSummary}
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Prize</label>
+          <input
+            type="text"
+            value={packPrize}
+            onChange={(e) => setPackPrize(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+            placeholder="e.g., $100 Gift Card"
           />
         </div>
         <div>
@@ -570,7 +705,7 @@ export default function AdminEditPackPage() {
                   if (ids.length === 0) return;
                   const times = await Promise.all(ids.map(async (id) => {
                     try {
-                      const res = await fetch(`/api/admin/events/${id}`);
+                      const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
                       const json = await res.json();
                       return res.ok && json.success && json.event?.eventTime ? new Date(json.event.eventTime).getTime() : NaN;
                     } catch { return NaN; }
@@ -597,7 +732,7 @@ export default function AdminEditPackPage() {
                   if (ids.length === 0) return;
                   const times = await Promise.all(ids.map(async (id) => {
                     try {
-                      const res = await fetch(`/api/admin/events/${id}`);
+                      const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
                       const json = await res.json();
                       return res.ok && json.success && json.event?.eventTime ? new Date(json.event.eventTime).getTime() : NaN;
                     } catch { return NaN; }

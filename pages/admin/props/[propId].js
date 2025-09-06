@@ -25,6 +25,25 @@ export default function EditPropPage() {
   const [PropSideBShort, setPropSideBShort] = useState('');
   const [PropSideBTake, setPropSideBTake] = useState('');
   const [PropSideBMoneyline, setPropSideBMoneyline] = useState('');
+  const profitFromMoneyline = (moneyline, stake = 250) => {
+    const n = typeof moneyline === 'number' ? moneyline : parseFloat(moneyline);
+    if (!Number.isFinite(n) || n === 0 || !Number.isFinite(stake)) return null;
+    if (n > 0) return (n / 100) * stake;
+    if (n < 0) return (100 / Math.abs(n)) * stake;
+    return null;
+  };
+  const payoutFromMoneyline = (moneyline, stake = 250) => {
+    const profit = profitFromMoneyline(moneyline, stake);
+    return profit == null ? null : profit + stake;
+    };
+  const computedValueA = useMemo(() => {
+    const p = profitFromMoneyline(PropSideAMoneyline);
+    return p == null ? null : Math.round(p);
+  }, [PropSideAMoneyline]);
+  const computedValueB = useMemo(() => {
+    const p = profitFromMoneyline(PropSideBMoneyline);
+    return p == null ? null : Math.round(p);
+  }, [PropSideBMoneyline]);
   const [teams, setTeams] = useState([]);
   const [propOpenTime, setPropOpenTime] = useState('');
   const [propCloseTime, setPropCloseTime] = useState('');
@@ -35,6 +54,7 @@ export default function EditPropPage() {
   const [gradingType, setGradingType] = useState('individual'); // 'individual' | 'h2h'
   const [formulaKey, setFormulaKey] = useState('');
   const [formulaParamsText, setFormulaParamsText] = useState('');
+  const [dataSource, setDataSource] = useState('major-mlb');
   const [autoGrading, setAutoGrading] = useState(false);
   // Built-in formula definitions (MVP: hardcoded)
   const DEFAULT_FORMULAS = [
@@ -127,6 +147,10 @@ export default function EditPropPage() {
   const [sideBThreshold, setSideBThreshold] = useState('');
   const [formulaTeamAbv, setFormulaTeamAbv] = useState('');
   const [formulaPlayerId, setFormulaPlayerId] = useState('');
+  // Sample readout (preview)
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [previewData, setPreviewData] = useState(null);
   const [playersById, setPlayersById] = useState({});
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playersError, setPlayersError] = useState('');
@@ -233,6 +257,15 @@ export default function EditPropPage() {
         setGradingMode(p.gradingMode || 'manual');
         setFormulaKey(p.formulaKey || '');
         setFormulaParamsText(p.formulaParams || '');
+        // Initialize dataSource from params or event league
+        try {
+          const obj = p.formulaParams ? JSON.parse(p.formulaParams) : {};
+          const leagueLc = String(p?.event?.eventLeague || '').toLowerCase();
+          setDataSource(String(obj?.dataSource || (leagueLc === 'nfl' ? 'nfl' : 'major-mlb')));
+        } catch {
+          const leagueLc = String(p?.event?.eventLeague || '').toLowerCase();
+          setDataSource(leagueLc === 'nfl' ? 'nfl' : 'major-mlb');
+        }
         // Initialize simple Auto Grade UI state from persisted prop
         try {
           const mode = String(p.gradingMode || '').toLowerCase();
@@ -505,8 +538,15 @@ export default function EditPropPage() {
       const gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
       const espnId = String(event?.espnGameID || '').trim();
       const params = new URLSearchParams();
-      params.set('source', 'major-mlb');
-      if (gameDate) params.set('gameDate', gameDate);
+      // Use selected data source. For NFL, status endpoint requires year/week instead of gameDate.
+      const src = dataSource || 'major-mlb';
+      params.set('source', src);
+      if (src === 'major-mlb') {
+        if (gameDate) params.set('gameDate', gameDate);
+      } else if (src === 'nfl') {
+        // Derive likely NFL year/week is non-trivial; call without year/week and just show no scoreboard if unavailable.
+        // We still pass no date filters; the endpoint needs year/week to return games.
+      }
       if (espnId) params.set('gameID', espnId);
       const resp = await fetch(`/api/admin/api-tester/status?${params.toString()}`);
       const json = await resp.json();
@@ -615,12 +655,12 @@ export default function EditPropPage() {
     setMetricOptions([]);
     (async () => {
       try {
-        const resp = await fetch(`/api/admin/api-tester/boxscore?source=major-mlb&gameID=${encodeURIComponent(gid)}`);
+        const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(gid)}`);
         const json = await resp.json();
         if (resp.ok && json?.success) {
           let keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
           // For team H2H and team OU ensure classic team metrics are present
-          if (autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under') {
+          if ((autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under') && (dataSource || 'major-mlb') === 'major-mlb') {
             keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
           }
           setMetricOptions(keys);
@@ -633,7 +673,7 @@ export default function EditPropPage() {
         setMetricLoading(false);
       }
     })();
-  }, [autoGradeKey, event?.espnGameID]);
+  }, [autoGradeKey, event?.espnGameID, dataSource]);
   // For Team Stat H2H, we use team-level scoreboard metrics (R, H, E)
   useEffect(() => {
     if (autoGradeKey !== 'team_stat_h2h') return;
@@ -687,7 +727,7 @@ export default function EditPropPage() {
     setPlayersError('');
     (async () => {
       try {
-        const box = await fetch(`/api/admin/api-tester/boxscore?source=major-mlb&gameID=${encodeURIComponent(espnId)}`);
+        const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
         const boxJson = await box.json();
         let map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
         if (!Object.keys(map || {}).length && abvs.length) {
@@ -728,7 +768,7 @@ export default function EditPropPage() {
     (async () => {
       try {
         // 1) Try boxscore to get normalized players map
-        const box = await fetch(`/api/admin/api-tester/boxscore?source=major-mlb&gameID=${encodeURIComponent(espnId)}`);
+        const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
         const boxJson = await box.json();
         let map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
         // 2) Fallback to roster by team if boxscore map is empty
@@ -888,6 +928,25 @@ export default function EditPropPage() {
         {/* Auto Grade Type (Formulas) */}
         <div className="mb-4 p-3 bg-white rounded border">
           <div className="text-lg font-semibold">Auto Grade</div>
+          <label className="block text-sm font-medium text-gray-700 mt-2">Auto Grade Source</label>
+          <select
+            className="mt-1 block w-full border rounded px-2 py-1"
+            value={dataSource}
+            onChange={(e) => {
+              const v = e.target.value;
+              setDataSource(v);
+              try {
+                const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+                obj.dataSource = v;
+                setFormulaParamsText(JSON.stringify(obj, null, 2));
+              } catch {
+                setFormulaParamsText(JSON.stringify({ dataSource: v }, null, 2));
+              }
+            }}
+          >
+            <option value="major-mlb">MLB</option>
+            <option value="nfl">NFL</option>
+          </select>
           <label className="block text-sm font-medium text-gray-700 mt-2">Auto Grade Type</label>
           <select
             className="mt-1 block w-full border rounded px-2 py-1"
@@ -1531,52 +1590,50 @@ export default function EditPropPage() {
             </div>
           )}
         </div>
-        {/* Auto Grade (MVP) */}
+        {/* Auto Grade (MVP) + Sample Readout */}
         <div className="mb-4 p-3 bg-white rounded border">
           <div className="text-lg font-semibold">Auto Grade (MVP)</div>
           <p className="text-sm text-gray-600 mt-1">Preview the data sources we'll consult to grade this prop.</p>
-          {(() => {
-            try {
-              const dt = event?.eventTime ? new Date(event.eventTime) : null;
-              const gameDate = dt ? `${dt.getFullYear()}${String(dt.getMonth()+1).padStart(2,'0')}${String(dt.getDate()).padStart(2,'0')}` : '';
-              const rawHome = String(event?.homeTeamAbbreviation || '').toUpperCase();
-              const rawAway = String(event?.awayTeamAbbreviation || '').toUpperCase();
-              const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-              const norm = (v) => map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-              const homeAbv = norm(rawHome);
-              const awayAbv = norm(rawAway);
-              const statusUrl = `/api/admin/api-tester/status?gameDate=${gameDate}`;
-              const espnId = String(event?.espnGameID || '').trim();
-              const boxEspnUrl = espnId ? `/api/admin/api-tester/boxscore?source=major-mlb&gameID=${encodeURIComponent(espnId)}` : '';
-              return (
-                <div className="mt-3 text-sm">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="mt-3 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <div className="font-medium">Derived</div>
+                <div className="text-gray-700">ESPN GameID: {String(event?.espnGameID || '') || '–'}</div>
+                <div className="text-gray-700">Source: <span className="font-mono">{dataSource}</span></div>
+              </div>
+              <div>
+                <div className="font-medium">Sample Readout</div>
+                {(!event?.espnGameID) && <div className="text-gray-600">Link an event to show preview.</div>}
+                {event?.espnGameID && previewLoading && <div className="text-gray-600">Loading preview…</div>}
+                {event?.espnGameID && !!previewError && <div className="text-red-600">{previewError}</div>}
+                {event?.espnGameID && !previewLoading && !previewError && previewData && (
+                  <div className="space-y-1">
+                    {previewData.scoreboard && (
+                      <div>
+                        {(function(){
+                          try {
+                            const g = previewData.scoreboard;
+                            const away = g.away || g.awayTeam;
+                            const home = g.home || g.homeTeam;
+                            const awayR = g?.lineScore?.away?.R ?? '';
+                            const homeR = g?.lineScore?.home?.R ?? '';
+                            const status = g.currentInning || g.gameStatus || '';
+                            return `${away} @ ${home} — ${awayR} - ${homeR} ${status ? '('+status+')' : ''}`;
+                          } catch { return null; }
+                        })()}
+                      </div>
+                    )}
                     <div>
-                      <div className="font-medium">Derived</div>
-                      <div className="text-gray-700">Game Date: {gameDate || '–'}</div>
-                      <div className="text-gray-700">Away/Home: {awayAbv || '–'} @ {homeAbv || '–'}</div>
-                      <div className="text-gray-700">ESPN GameID: {espnId || '–'}</div>
+                      <span className="text-gray-600">Players:</span> {Object.keys(previewData.normalized?.playersById || {}).length}
                     </div>
-                    <div>
-                      <div className="font-medium">Endpoints</div>
-                      <ul className="list-disc ml-5">
-                        <li>
-                          <a className="text-blue-600 underline" href={statusUrl} target="_blank" rel="noopener noreferrer">Status / Scoreboard</a>
-                        </li>
-                        {boxEspnUrl && (
-                          <li>
-                            <a className="text-blue-600 underline" href={boxEspnUrl} target="_blank" rel="noopener noreferrer">Box score (Major MLB)</a>
-                          </li>
-                        )}
-                      </ul>
+                    <div className="truncate">
+                      <span className="text-gray-600">Stat Keys:</span> {(previewData.normalized?.statKeys || []).slice(0, 8).join(', ') || '—'}{(previewData.normalized?.statKeys || []).length > 8 ? '…' : ''}
                     </div>
                   </div>
-                </div>
-              );
-            } catch (e) {
-              return null;
-            }
-          })()}
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="border rounded p-3 hidden">
           <div className="flex items-center gap-3">
@@ -1889,6 +1946,8 @@ export default function EditPropPage() {
               <>
                 <label className="block text-sm mt-2">Moneyline</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={PropSideAMoneyline} onChange={(e) => setPropSideAMoneyline(e.target.value)} />
+                <label className="block text-sm mt-2">Value A</label>
+                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueA} readOnly />
               </>
             )}
           </div>
@@ -1902,6 +1961,8 @@ export default function EditPropPage() {
               <>
                 <label className="block text-sm mt-2">Moneyline</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={PropSideBMoneyline} onChange={(e) => setPropSideBMoneyline(e.target.value)} />
+                <label className="block text-sm mt-2">Value B</label>
+                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueB} readOnly />
               </>
             )}
           </div>

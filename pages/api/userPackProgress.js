@@ -1,6 +1,8 @@
 // File: /pages/api/userPackProgress.js
 import { getSession } from "next-auth/react";
 import Airtable from "airtable";
+import { getDataBackend } from "../../lib/runtimeConfig";
+import { query } from "../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -26,6 +28,37 @@ export default async function handler(req, res) {
   }
 
   try {
+    const isPG = getDataBackend() === 'postgres';
+    if (isPG) {
+      // Resolve pack by external text pack_id or by id fallback
+      const { rows: packsRows } = await query(
+        `SELECT id FROM packs WHERE pack_id = $1 OR id = $1 LIMIT 1`,
+        [packID]
+      );
+      if (packsRows.length === 0) {
+        return res.status(404).json({ success: false, error: "Pack not found" });
+      }
+      const pgPackId = packsRows[0].id;
+      // Count all props for this pack
+      const { rows: propCountRows } = await query(
+        `SELECT COUNT(*)::int AS c FROM props WHERE pack_id = $1`,
+        [pgPackId]
+      );
+      const totalCount = propCountRows[0]?.c || 0;
+      // Count user's latest takes for props belonging to this pack
+      const { rows: completedRows } = await query(
+        `SELECT COUNT(DISTINCT t.prop_id)::int AS c
+           FROM takes t
+           JOIN props p ON p.id = t.prop_id
+          WHERE t.take_status = 'latest'
+            AND t.take_mobile = $1
+            AND p.pack_id = $2`,
+        [session.user.phone, pgPackId]
+      );
+      const completedCount = completedRows[0]?.c || 0;
+      return res.status(200).json({ success: true, completedCount, totalCount });
+    }
+
 	console.log("Fetching pack record for packID:", packID);
 	const packRecords = await base("Packs")
 	  .select({

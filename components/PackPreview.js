@@ -50,6 +50,24 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const now = Date.now();
   const nextEventMs = eventMsList.find(ms => ms > now) ?? null;
 
+  function parseToMs(val) {
+    if (val == null) return NaN;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^\d{11,}$/.test(trimmed)) {
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : NaN;
+      }
+      const ms = new Date(trimmed).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    }
+    try {
+      const ms = new Date(val).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    } catch { return NaN; }
+  }
+
   function formatDropDate(ms) {
     if (!Number.isFinite(ms)) return 'TBD';
     const d = new Date(ms);
@@ -63,19 +81,48 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
       const v = n % 100;
       return s[(v - 20) % 10] || s[v] || s[0];
     };
-    return `${weekday}, ${month} ${day}${ordinal(day)}`;
+    const timeStr = d.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+      hour12: true,
+    });
+    return `${weekday}, ${month} ${day}${ordinal(day)} at ${timeStr}`;
   }
 
   // Determine which time to count down to on the preview pill
   const statusNorm = String(pack.packStatus || '').toLowerCase();
   const isOpenLike = statusNorm === 'open' || statusNorm === 'active';
   const isComingSoon = statusNorm === 'coming up' || statusNorm === 'coming soon' || statusNorm === 'coming-soon' || statusNorm === 'upcoming';
+  const packCloseMs = parseToMs(pack.packCloseTime);
+  const packOpenMs = parseToMs(pack.packOpenTime);
   const pillEventTime = isOpenLike
-    ? (pack.packCloseTime || nextEventMs || earliestEventMs)
+    ? (Number.isFinite(packCloseMs) ? packCloseMs : (nextEventMs || earliestEventMs))
     : (isComingSoon
       ? earliestEventMs
       : (nextEventMs || earliestEventMs));
   
+  // Derive a simple status chip for display
+  const statusInfo = (() => {
+    const s = String(pack.packStatus || '').toLowerCase().replace(/\s+/g, '-');
+    if (s === 'open' || s === 'active') {
+      return { label: 'Active', classes: 'bg-green-100 text-green-800 border border-green-200' };
+    }
+    if (s === 'coming-soon' || s === 'coming-up' || s === 'upcoming') {
+      return { label: 'Coming soon', classes: 'bg-orange-100 text-orange-800 border border-orange-200' };
+    }
+    if (s === 'closed') {
+      return { label: 'Closed', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
+    }
+    if (s === 'completed') {
+      return { label: 'Completed', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
+    }
+    if (s === 'graded') {
+      return { label: 'Graded', classes: 'bg-blue-100 text-blue-800 border border-blue-200' };
+    }
+    return { label: '', classes: '' };
+  })();
+
 
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
@@ -152,6 +199,19 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
 			<div className="mt-1" />
+			{statusInfo.label && (
+				<div className="mt-1">
+					<span className={`${statusInfo.classes} inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium`}>
+						{statusInfo.label}
+					</span>
+				</div>
+			)}
+			{pack.packPrize && (
+				<div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
+					<span aria-hidden>🏆</span>
+					<span>{pack.packPrize}</span>
+				</div>
+			)}
 			{isOpenLike && propsCount > 0 && (
 				<div className="mt-1 text-xs md:text-sm text-gray-700">
 					{propsCount} {propsCount === 1 ? 'Prop Available' : 'Props Available'}

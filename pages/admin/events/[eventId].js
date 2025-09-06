@@ -16,7 +16,7 @@ export default function AdminEventDetail() {
     if (status !== 'authenticated' || !eventId) return;
     const fetchEvent = async () => {
       try {
-        const res = await fetch(`/api/admin/events/${eventId}`);
+        const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}`);
         const data = await res.json();
         if (data.success) setEvent(data.event);
         else console.error(data.error);
@@ -33,7 +33,7 @@ export default function AdminEventDetail() {
     const fetchProps = async () => {
       setLoadingProps(true);
       try {
-        const res = await fetch(`/api/admin/events/${eventId}/props`);
+        const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/props`);
         const data = await res.json();
         if (data.success) setPropsList(data.props);
         else console.error(data.error);
@@ -68,6 +68,12 @@ export default function AdminEventDetail() {
         <dt className="font-medium">League</dt>
         <dd>{event.eventLeague}</dd>
       </dl>
+
+      {/* Edit Event (cover url or file upload) */}
+      <div className="mt-6 p-4 bg-white border rounded">
+        <h2 className="text-lg font-semibold mb-2">Edit Event</h2>
+        <EditEventForm event={event} onUpdated={(ev) => setEvent(ev)} />
+      </div>
 
       <div className="mt-4">
         <Link href={`/admin/events/${eventId}/create-prop`}>
@@ -116,5 +122,105 @@ export default function AdminEventDetail() {
         )}
       </div>
     </div>
+  );
+}
+
+function EditEventForm({ event, onUpdated }) {
+  const [coverUrl, setCoverUrl] = useState(() => {
+    try {
+      const fieldVal = event?.eventCover;
+      if (Array.isArray(fieldVal) && fieldVal.length) {
+        const first = fieldVal[0];
+        return first?.url || '';
+      }
+      return '';
+    } catch { return ''; }
+  });
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const uploadAndGetUrl = async () => {
+    if (!file) return null;
+    const toBase64 = (f) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(f);
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = (err) => reject(err);
+    });
+    const fileData = await toBase64(file);
+    const r = await fetch('/api/admin/uploadEventCover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, fileData, eventId: event.id })
+    });
+    const j = await r.json();
+    if (!r.ok || !j?.success) throw new Error(j?.error || 'Upload failed');
+    return j.url;
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      let finalUrl = coverUrl;
+      if (file) {
+        finalUrl = await uploadAndGetUrl();
+      }
+      const r = await fetch(`/api/admin/events/${encodeURIComponent(event.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverUrl: finalUrl || null })
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.success) throw new Error(j?.error || 'Failed to update');
+      onUpdated && onUpdated(j.event);
+      setFile(null);
+      setPreview(null);
+    } catch (e2) {
+      setError(e2.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSave} className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Cover URL</label>
+        <input
+          type="text"
+          className="mt-1 block w-full border rounded px-2 py-1"
+          value={coverUrl}
+          onChange={(e) => setCoverUrl(e.target.value)}
+          placeholder="https://..."
+        />
+        {coverUrl && (
+          <img src={coverUrl} alt="Event Cover" className="mt-2 h-32 object-contain" />)
+        }
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Or upload image</label>
+        <input
+          type="file"
+          accept="image/*"
+          className="mt-1 block w-full"
+          onChange={(e) => {
+            const f = e.target.files && e.target.files[0];
+            setFile(f || null);
+            setPreview(f ? URL.createObjectURL(f) : null);
+          }}
+        />
+        {preview && (
+          <img src={preview} alt="Preview" className="mt-2 h-32 object-contain" />
+        )}
+      </div>
+      {error && <div className="text-sm text-red-600">{error}</div>}
+      <button type="submit" disabled={saving} className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+        {saving ? 'Saving…' : 'Save Changes'}
+      </button>
+    </form>
   );
 }

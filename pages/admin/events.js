@@ -1,6 +1,7 @@
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useModal } from '../../contexts/ModalContext';
 
 const oddsmakerOptions = [
   { label: 'ESPN BET (58)', value: '58' },
@@ -18,8 +19,9 @@ const oddsmakerOptions = [
 
 export default function AdminEventsPage() {
   const { data: session, status } = useSession();
+  const { openModal, closeModal } = useModal();
   const [events, setEvents] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+  const [selectedDate, setSelectedDate] = useState('');
   const [filterText, setFilterText] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedLeague, setSelectedLeague] = useState('');
@@ -69,6 +71,23 @@ export default function AdminEventsPage() {
     <div className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-4">Events Management</h1>
       <div className="mb-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            openModal('fetchEvents', {
+              onFetched: async () => {
+                try {
+                  const res = await fetch('/api/admin/events');
+                  const data = await res.json();
+                  if (data.success) setEvents(data.events);
+                } catch {}
+              },
+            });
+          }}
+          className="px-3 py-2 rounded text-white bg-emerald-600 hover:bg-emerald-700"
+        >
+          Fetch Events
+        </button>
         <button
           type="button"
           disabled={jobRunningProps}
@@ -259,11 +278,6 @@ export default function AdminEventsPage() {
                   <Link href={`/admin/events/${ev.id}/create-prop`}>
                     <button className="px-2 py-1 text-green-600 hover:underline mr-2">
                       Create Prop
-                    </button>
-                  </Link>
-                  <Link href={`/admin/packs/new?eventId=${ev.id}`}>
-                    <button className="px-2 py-1 text-purple-600 hover:underline mr-2">
-                      Create Pack
                     </button>
                   </Link>
                   <button className="px-2 py-1 text-red-600 hover:underline">

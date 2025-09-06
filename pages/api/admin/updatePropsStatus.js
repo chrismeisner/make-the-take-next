@@ -3,6 +3,8 @@ import Airtable from "airtable";
 import { sendSMS } from "../../../lib/twilioService";
 import { aggregateTakeStats } from "../../../lib/leaderboard";
 import { awardThresholdsForUpdatedProps } from "../../../lib/achievements";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { query } from "../../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -29,6 +31,66 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Postgres path: update props, optionally grade related pack(s)
+    if (getDataBackend() === 'postgres') {
+      // Build updates for props table
+      const updatedPropRecordIds = [];
+      const updatedPropFieldIds = [];
+      const batch = [];
+      for (const u of updates) {
+        const id = u.airtableId || u.id || null; // this is the PG UUID from UI
+        if (!id) continue;
+        updatedPropRecordIds.push(id);
+        if (u.propID) updatedPropFieldIds.push(u.propID);
+        const fields = { prop_status: u.propStatus };
+        if (u.propResult !== undefined) fields.prop_result = u.propResult;
+        // Set graded_at when transitioning to a terminal status
+        if (['gradeda','gradedb','push'].includes(String(u.propStatus || '').toLowerCase())) {
+          fields.graded_at = new Date().toISOString();
+        }
+        batch.push({ id, fields });
+      }
+      // Execute updates
+      for (const b of batch) {
+        const keys = Object.keys(b.fields);
+        if (keys.length === 0) continue;
+        const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+        const vals = keys.map((k) => b.fields[k]);
+        vals.push(b.id);
+        // eslint-disable-next-line no-await-in-loop
+        await query(`UPDATE props SET ${sets}, updated_at = NOW() WHERE id = $${keys.length + 1}`, vals);
+      }
+
+      // If packURL provided, locate pack and check if all props graded/pushed to set pack graded
+      const detailsPacks = [];
+      if (packURL) {
+        const { rows: packRows } = await query('SELECT id, pack_url, title, pack_status FROM packs WHERE pack_url = $1 LIMIT 1', [packURL]);
+        if (packRows.length) {
+          const pk = packRows[0];
+          const { rows: propRows } = await query('SELECT prop_status FROM props WHERE pack_id = $1', [pk.id]);
+          const allGraded = propRows.length > 0 && propRows.every(r => ['gradedA','gradedB','push'].includes(String(r.prop_status || '').toLowerCase()));
+          if (allGraded && String(pk.pack_status || '').toLowerCase() !== 'graded') {
+            await query('UPDATE packs SET pack_status = $1 WHERE id = $2', ['graded', pk.id]);
+          }
+          detailsPacks.push({ airtableId: pk.id, packURL: pk.pack_url, packTitle: pk.title, wasGraded: allGraded, alreadyGraded: String(pk.pack_status || '').toLowerCase() === 'graded', smsSentCount: 0, smsRecipients: [], containsUpdatedPropRecordIds: updatedPropRecordIds });
+        }
+      }
+
+      // Response details mirroring Airtable path shape
+      details.updatedProps = updates.map(u => ({ airtableId: u.airtableId, propID: u.propID, propStatus: u.propStatus, propResult: u.propResult }));
+      details.packsProcessed = detailsPacks;
+      details.propToPacks = [];
+
+      // Achievements placeholder (still Airtable-centric)
+      try {
+        const achievementResults = await awardThresholdsForUpdatedProps(null, updatedPropFieldIds);
+        details.achievementsCreated = (achievementResults || []).filter((r) => Array.isArray(r.achievementKeys) && r.achievementKeys.length > 0);
+      } catch (achErr) {
+        details.achievementsError = achErr.message;
+      }
+
+      return res.status(200).json({ success: true, smsCount: 0, details });
+    }
     // Prepare updates, computing final popularity percentages for graded props
     const formatted = [];
     // Collect both Airtable record IDs and business propIDs for later use

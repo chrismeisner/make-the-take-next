@@ -204,25 +204,10 @@ export default async function handler(req, res) {
 	  createdTime: profRec._rawJson.createdTime,
 	};
 
-	// 5) Achievements (Postgres when available, fallback to Airtable)
+	// 5) Achievements (remove for Postgres; keep Airtable path only)
 	let achievementsValueTotal = 0;
 	let achievements = [];
-	if (isPG) {
-	  try {
-		const { rows } = await query('SELECT achievement_key, title, description, value, created_at FROM achievements a JOIN profiles p ON a.profile_id = p.id WHERE p.profile_id = $1', [profileID]);
-		achievements = rows.map((r) => ({
-		  id: r.achievement_key || r.created_at,
-		  achievementKey: r.achievement_key || '',
-		  achievementTitle: r.title || '',
-		  achievementDescription: r.description || '',
-		  achievementValue: typeof r.value === 'number' ? r.value : 0,
-		  createdTime: r.created_at ? new Date(r.created_at).toISOString() : null,
-		}));
-		achievementsValueTotal = achievements.reduce((sum, a) => sum + (a.achievementValue || 0), 0);
-	  } catch (achErr) {
-		console.error('[profile] PG achievements fetch error =>', achErr);
-	  }
-	} else {
+	if (!isPG) {
 	  try {
 		let achRecs = await base('Achievements')
 		  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 5000 })
@@ -266,7 +251,7 @@ export default async function handler(req, res) {
 
 	// 7) Tokens summary consistent with Marketplace
 	const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
-	const tokensEarned = achievementsValueTotal; // Achievements-based diamonds (includes signup bonus)
+	const tokensEarned = !isPG ? achievementsValueTotal : 0; // disable achievements in PG mode
 	const tokensBalance = tokensEarned - tokensSpent;
 
 	// Creator packs/leaderboard (leave existing Airtable logic for now)

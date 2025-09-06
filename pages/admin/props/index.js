@@ -19,11 +19,13 @@ export default function AdminPropsPage() {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [leagueFilter, setLeagueFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState('asc');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [fromDateTime, setFromDateTime] = useState('');
   const [toDateTime, setToDateTime] = useState('');
 
   const [savingRow, setSavingRow] = useState(null);
+  const [deletingRow, setDeletingRow] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null, title: '' });
 
   const allowedStatuses = ['open', 'closed', 'gradeda', 'gradedb', 'push'];
 
@@ -37,16 +39,9 @@ export default function AdminPropsPage() {
     return `${y}-${m}-${d}T${hh}:${mm}`;
   };
 
-  // Default date range to today on first load
+  // Show all props by default; no initial date filtering
   useEffect(() => {
-    if (!fromDateTime && !toDateTime) {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-      end.setHours(23, 59, 0, 0);
-      setFromDateTime(formatDateTimeLocal(start));
-      setToDateTime(formatDateTimeLocal(end));
-    }
+    // Intentionally left blank to avoid setting default date range
   }, []);
 
   const loadPage = async (offset = '') => {
@@ -110,6 +105,8 @@ export default function AdminPropsPage() {
       })
       .filter((p) => {
         const ms = p.eventTime ? new Date(p.eventTime).getTime() : null;
+        // If no date filters are set, do not filter by time
+        if (fromMs == null && toMs == null) return true;
         if (ms == null) return false;
         if (fromMs != null && ms < fromMs) return false;
         if (toMs != null && ms > toMs) return false;
@@ -120,7 +117,7 @@ export default function AdminPropsPage() {
         const tb = b.eventTime ? new Date(b.eventTime).getTime() : 0;
         return sortOrder === 'asc' ? ta - tb : tb - ta;
       });
-  }, [items, searchText, statusFilter, leagueFilter, sortOrder]);
+  }, [items, searchText, statusFilter, leagueFilter, sortOrder, fromDateTime, toDateTime]);
 
   const handleStatusChange = async (airtableId, newStatus) => {
     setSavingRow(airtableId);
@@ -137,6 +134,33 @@ export default function AdminPropsPage() {
       alert(e.message);
     } finally {
       setSavingRow(null);
+    }
+  };
+
+  const requestDelete = (id, title) => {
+    setConfirmDelete({ open: true, id, title: title || 'this prop' });
+  };
+
+  const cancelDelete = () => setConfirmDelete({ open: false, id: null, title: '' });
+
+  const confirmDeleteNow = async () => {
+    if (!confirmDelete.id) return;
+    const id = confirmDelete.id;
+    setDeletingRow(id);
+    try {
+      const res = await fetch('/api/props', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propId: id })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to delete');
+      setItems(prev => prev.filter(p => p.airtableId !== id));
+      cancelDelete();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDeletingRow(null);
     }
   };
 
@@ -305,11 +329,23 @@ export default function AdminPropsPage() {
                         <button className="px-2 py-1 text-blue-600 hover:underline">Public</button>
                       </Link>
                     )}
-                    {p.propID && (
-                      <Link href={`/admin/gradeProps?ids=${encodeURIComponent(p.propID)}`}>
+                    {(() => {
+                      const idForGrade = p.propID || p.airtableId;
+                      if (!idForGrade) return null;
+                      return (
+                      <Link href={`/admin/gradeProps?ids=${encodeURIComponent(idForGrade)}`}>
                         <button className="px-2 py-1 text-purple-600 hover:underline">Grade</button>
                       </Link>
-                    )}
+                      );
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => requestDelete(p.airtableId, p.propShort || p.propTitle || 'Untitled')}
+                      disabled={deletingRow === p.airtableId}
+                      className={`px-2 py-1 ${deletingRow === p.airtableId ? 'text-gray-400' : 'text-red-600 hover:underline'}`}
+                    >
+                      {deletingRow === p.airtableId ? 'Deleting…' : 'Delete'}
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -317,6 +353,30 @@ export default function AdminPropsPage() {
           </tbody>
         </table>
       </div>
+      {confirmDelete.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-2">Delete prop?</h2>
+            <p className="text-sm text-gray-700 mb-4">Are you sure you want to permanently delete “{confirmDelete.title}”? This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteNow}
+                className="px-3 py-2 rounded text-white bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
         </>
       )}
     </div>

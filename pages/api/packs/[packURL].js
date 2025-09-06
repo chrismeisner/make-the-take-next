@@ -70,6 +70,9 @@ export default async function handler(req, res) {
         espnGameID = ev.espnGameID || null;
         eventLeague = ev.eventLeague || null;
         packEventTime = ev.eventTime || null;
+        // surface PG event fields in a consistent shape used elsewhere
+        if (!ev.eventTitle && ev.title) ev.eventTitle = ev.title;
+        if (!ev.eventCover && ev.eventCoverURL) ev.eventCover = [{ url: ev.eventCoverURL }];
         // For Postgres adapter, home/away logos are provided directly
         if (ev.homeTeamLogo || ev.awayTeamLogo) {
           homeTeamInfoCover = ev.homeTeamLogo ? { recordId: null, teamLogo: [{ url: ev.homeTeamLogo, filename: 'home-team-logo' }], teamLogoURL: ev.homeTeamLogo } : null;
@@ -172,6 +175,10 @@ export default async function handler(req, res) {
 		// - "hometeam": use home team logo (prefer prop-level event, fallback to pack-level)
 		// - "awayteam": use away team logo (prefer prop-level event, fallback to pack-level)
 		let propCover = [];
+		// When using Postgres, map props.cover_url into the attachment-like shape
+		if (isPG && f.cover_url && typeof f.cover_url === 'string') {
+		  propCover = [{ url: f.cover_url, filename: 'cover' }];
+		}
 		const coverSource = String(f.propCoverSource || 'custom').toLowerCase();
 		const hasEventCover = Array.isArray(f.eventCover) && f.eventCover.length > 0;
 		const hasCustomCover = Array.isArray(f.propCover) && f.propCover.length > 0;
@@ -240,6 +247,21 @@ export default async function handler(req, res) {
 		  }
 		}
 
+		// Final PG fallback: if still empty, try using pack-level event cover or team logos
+		if (isPG && (!Array.isArray(propCover) || propCover.length === 0)) {
+		  // Prefer event cover if surfaced
+		  if (Array.isArray(packFields.packCover) && packFields.packCover.length > 0) {
+			// packFields.packCover is already an attachment-like array
+			propCover = [{ url: packFields.packCover[0].url, filename: packFields.packCover[0].filename || 'pack-cover' }];
+		  } else if (homeLogoUrl) {
+			propCover = [{ url: homeLogoUrl, filename: 'home-team-logo' }];
+		  } else if (awayLogoUrl) {
+			propCover = [{ url: awayLogoUrl, filename: 'away-team-logo' }];
+		  } else if (Array.isArray(f.eventCover) && f.eventCover[0]?.url) {
+			propCover = [{ url: f.eventCover[0].url, filename: f.eventCover[0].filename || 'event-cover' }];
+		  }
+		}
+
 		return {
 		  airtableId: p.id,
 		  propID: f.propID || null,
@@ -258,20 +280,21 @@ export default async function handler(req, res) {
 		  propSideATake: f.PropSideATake || "",
 		  propSideBTake: f.PropSideBTake || "",
 		  // Add value-model fields for Vegas valueModel
-		  propValueModel: f.propValueModel || null,
+		  // Default to 'vegas' when numeric side values are present
+		  propValueModel: f.propValueModel || ((f.propSideAValue != null || f.propSideBValue != null) ? 'vegas' : null),
 		  propSideAValue: f.propSideAValue || null,
 		  propSideBValue: f.propSideBValue || null,
 		  contentImageUrls,
 		  contentLinks,
 		  propCover,
 		  propOrder: f.propOrder || 0,
-		  // new per-prop ESPN lookup fields
-		  propESPNLookup: f.propESPNLookup || null,
-		  propLeagueLookup: f.propLeagueLookup || null,
+		  // new per-prop ESPN lookup fields (fallback to pack-level event in Postgres)
+		  propESPNLookup: f.propESPNLookup || espnGameID || null,
+		  propLeagueLookup: f.propLeagueLookup || eventLeague || null,
 		  espnGameID,
 		  eventLeague,
-		  // Event time lookup on the prop record
-		  propEventTimeLookup: f.propEventTimeLookup || null,
+		  // Event time lookup on the prop record (fallback to pack-level event time)
+		  propEventTimeLookup: f.propEventTimeLookup || packEventTime || null,
 		  propEventTitleLookup: f.propEventTitleLookup || null,
 		  propEventMatchup: f.propEventMatchup || null,
 		};
@@ -467,6 +490,7 @@ export default async function handler(req, res) {
 	  }));
 	}
 
+	const toIso = (t) => (t ? new Date(t).toISOString() : null);
 	const packData = {
 	  packID: packFields.packID,
 	  packTitle: packFields.packTitle || "Untitled Pack",
@@ -477,8 +501,8 @@ export default async function handler(req, res) {
 	  packCreatorID,
 	  packCreatorUsername,
 	  packURL: packFields.packURL,
-	  packOpenTime: packFields.packOpenTime || null,
-	  packCloseTime: packFields.packCloseTime || null,
+	  packOpenTime: toIso(packFields.packOpenTime) || null,
+	  packCloseTime: toIso(packFields.packCloseTime) || null,
 	  packEventId,
 	  packEventIds,
 	  props: propsData,
@@ -487,7 +511,7 @@ export default async function handler(req, res) {
 	  prizeSummary: packFields.prizeSummary || "",
 	  packPrizeURL: packFields.packPrizeURL || "",
 	  packCover,
-	  eventTime: packEventTime,
+	  eventTime: toIso(packEventTime) || null,
 	  espnGameID,
 	  eventLeague,
 	  homeTeam: null,

@@ -25,6 +25,7 @@ export default function Layout({ children }) {
       subItems: [
         { label: "Events", href: "/admin/events" },
         { label: "Contests", href: "/admin/contests" },
+        { label: "Teams", href: "/admin/teams" },
         { label: "Packs", href: "/admin/packs" },
         { label: "Props", href: "/admin/props" },
         { label: "API Tester", href: "/admin/api-tester" },

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Airtable from "airtable";
+import { getDataBackend } from "../../lib/runtimeConfig";
 
 // OPTIONAL: if you need node-canvas or firebase, add them, but probably not for prizes
 // import { createCanvas, loadImage } from "canvas";
@@ -104,6 +105,10 @@ function PrizeCard({ prize }) {
  */
 export async function getServerSideProps() {
   try {
+    if (getDataBackend() === 'postgres') {
+      // Prizes page disabled in Postgres mode
+      return { props: { prizes: [] } };
+    }
 	// 1) Query "Prizes" table for all records with prizeStatus = "available"
 	const records = await base("Prizes")
 	  .select({

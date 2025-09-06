@@ -1,7 +1,9 @@
 import { getToken } from 'next-auth/jwt';
 import Airtable from 'airtable';
 import { resolveSourceConfig } from '../../../lib/apiSources';
-import { normalizeMajorMlbScoreboard } from '../../../lib/normalize';
+import { normalizeMajorMlbScoreboard, normalizeNflScoreboardFromWeekly } from '../../../lib/normalize';
+import { getDataBackend } from '../../../lib/runtimeConfig';
+import { query } from '../../../lib/db/postgres';
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -153,6 +155,236 @@ export default async function handler(req, res) {
     referer: req.headers['referer'] || '',
   });
 
+  // Postgres path: load prop by UUID or text prop_id; compute and update prop_status
+  if (getDataBackend() === 'postgres') {
+    try {
+      if (!airtableId) {
+        return res.status(400).json({ success: false, error: 'Missing airtableId' });
+      }
+      // Load prop with joined event info
+      const { rows } = await query(
+        `SELECT p.*, e.espn_game_id, e.event_time, e.league, e.week
+           FROM props p
+      LEFT JOIN events e ON e.id = p.event_id
+          WHERE p.id::text = $1 OR p.prop_id = $1
+          LIMIT 1`,
+        [airtableId]
+      );
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Prop not found' });
+      }
+      const r = rows[0];
+      const gradingMode = String(r.grading_mode || '').toLowerCase();
+      const formulaKey = String(r.formula_key || '').toLowerCase();
+      let params = {};
+      try {
+        const raw = r.formula_params;
+        params = raw && typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      } catch {}
+      params = { ...(params || {}), ...(overrideParams || {}) };
+
+      if (gradingMode !== 'auto') {
+        return res.status(400).json({ success: false, error: 'Prop is not set to auto grading' });
+      }
+
+      // Helpers shared with AT path
+      const finish = async (newStatus, propResult) => {
+        if (!dryRun) {
+          const gradedAt = ['gradeda','gradedb','push'].includes(String(newStatus).toLowerCase()) ? new Date().toISOString() : null;
+          await query('UPDATE props SET prop_status = $1, prop_result = $2, graded_at = COALESCE($3, graded_at), updated_at = NOW() WHERE id::text = $4 OR prop_id = $4', [newStatus, propResult || null, gradedAt, airtableId]);
+        }
+        const elapsedMs = Date.now() - startedAt;
+        return res.status(200).json({ success: true, propStatus: newStatus, propResult, meta: { elapsedMs, dryRun } });
+      };
+
+      if (formulaKey === 'who_wins') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        // Prefer param gameDate; fallback to event_time
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) {
+          try {
+            const d = new Date(r.event_time);
+            const yr = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const da = String(d.getDate()).padStart(2, '0');
+            gameDate = `${yr}${mo}${da}`;
+          } catch {}
+        }
+        const sideAMap = String(params?.whoWins?.sideAMap || '').toLowerCase();
+        const sideBMap = String(params?.whoWins?.sideBMap || '').toLowerCase();
+        if (!espnGameID || !gameDate || !sideAMap || !sideBMap) {
+          return res.status(400).json({ success: false, error: 'Missing required params for who_wins (espnGameID, gameDate, whoWins.sideAMap, whoWins.sideBMap)' });
+        }
+        // Determine data source: prefer event league from DB; fallback to params
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+        try { console.log('[gradePropByFormula PG] who_wins leagueHint ->', { leagueHint, ds, gameDate, espnGameID }); } catch {}
+        let winnerSide = 'push';
+        let propResult = '';
+        if (ds === 'major-mlb') {
+          const src = resolveSourceConfig('major-mlb');
+          if (!src.ok) return res.status(500).json({ success: false, error: 'Major MLB source not configured' });
+          const yyyy = gameDate.slice(0, 4);
+          const mm = gameDate.slice(4, 6);
+          const dd = gameDate.slice(6, 8);
+          const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+          url.searchParams.set('year', yyyy);
+          url.searchParams.set('month', mm);
+          url.searchParams.set('day', dd);
+          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+          const data = await upstream.json().catch(() => ({}));
+          const raw = data?.body || data || {};
+          const games = normalizeMajorMlbScoreboard(raw) || [];
+          const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+          if (!game) return res.status(404).json({ success: false, error: `Game not found for espnGameID=${espnGameID} on ${gameDate}` });
+          const homeR = Number(game?.lineScore?.home?.R ?? NaN);
+          const awayR = Number(game?.lineScore?.away?.R ?? NaN);
+          if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+            return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
+          }
+          winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
+          propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
+        } else {
+          const src = resolveSourceConfig('nfl');
+          if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+          // Derive year/week from params first, then event_time, then default week 1
+          const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+          // If gameDate provided (YYYYMMDD), map to week using a heuristic: prefer r.week else 1
+          const wk = String(params?.nflWeek || r.week || 1);
+          const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+          url.searchParams.set('year', yyyy);
+          url.searchParams.set('week', wk);
+          try { console.log('[gradePropByFormula PG] NFL fetch', { year: yyyy, week: wk, espnGameID }); } catch {}
+          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+          const data = await upstream.json().catch(() => ({}));
+          const raw = data?.body || data || {};
+          const games = normalizeNflScoreboardFromWeekly(raw) || [];
+          const game = games.find((g) => String(g?.id || g?.gameID || g?.gameId || '').trim() === espnGameID);
+          if (!game) return res.status(404).json({ success: false, error: `NFL game not found for espnGameID=${espnGameID} (year=${yyyy}, week=${wk})` });
+          const homeR = Number(game?.lineScore?.home?.R ?? NaN);
+          const awayR = Number(game?.lineScore?.away?.R ?? NaN);
+          if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+            return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
+          }
+          winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
+          propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
+        }
+        let newStatus = 'push';
+        if (winnerSide !== 'push') {
+          newStatus = (winnerSide === sideAMap) ? 'gradedA' : (winnerSide === sideBMap) ? 'gradedB' : 'push';
+        }
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'player_multi_stat_ou') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        // Prefer param gameDate; fallback to event_time
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) {
+          try {
+            const d = new Date(r.event_time);
+            const yr = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const da = String(d.getDate()).padStart(2, '0');
+            gameDate = `${yr}${mo}${da}`;
+          } catch {}
+        }
+        const metrics = Array.isArray(params?.metrics) ? params.metrics.filter(Boolean) : [];
+        const sides = params?.sides || {};
+        const sideA = sides?.A || {};
+        const sideB = sides?.B || {};
+        const playerId = String(params?.playerId || '').trim();
+        if (!espnGameID || !gameDate || metrics.length < 2 || !playerId || !sideA?.comparator || sideA?.threshold == null || !sideB?.comparator || sideB?.threshold == null) {
+          return res.status(400).json({ success: false, error: 'Missing required params for player_multi_stat_ou (espnGameID, gameDate, metrics[>=2], playerId, sides.A/B comparator+threshold)' });
+        }
+        // Determine data source: prefer event league; fallback to params
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+        // Fetch and normalize boxscore players
+        let playersById = {};
+        if (ds === 'major-mlb') {
+          // Reuse the Airtable path MLB normalizer logic inline via helper defined above
+          const { playersById: mlbPlayers } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+          playersById = mlbPlayers || {};
+        } else if (ds === 'nfl') {
+          // Mirror normalization approach used in /api/admin/api-tester/boxscore for NFL
+          const src = resolveSourceConfig('nfl');
+          if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+          const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+          url.searchParams.set('id', String(espnGameID));
+          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+          const data = await upstream.json().catch(() => ({}));
+          const raw = data?.body || data || {};
+          // Build players map similar to api-tester normalization
+          const map = {};
+          try {
+            const teamBlocks = Array.isArray(raw?.players) ? raw.players : [];
+            for (const teamBlock of teamBlocks) {
+              const teamAbv = String(teamBlock?.team?.abbreviation || '').toUpperCase();
+              const statGroups = Array.isArray(teamBlock?.statistics) ? teamBlock.statistics : [];
+              for (const group of statGroups) {
+                const keys = Array.isArray(group?.keys) ? group.keys : [];
+                const athletes = Array.isArray(group?.athletes) ? group.athletes : [];
+                for (const row of athletes) {
+                  const athlete = row?.athlete || {};
+                  const id = String(athlete?.id || '').trim();
+                  const longName = athlete?.displayName || athlete?.shortName || '';
+                  const values = Array.isArray(row?.stats) ? row.stats : [];
+                  if (!id && !longName) continue;
+                  const playerKey = id || `${teamAbv || 'UNK'}:${longName || 'UNKNOWN'}`;
+                  const existing = map[playerKey] || { stats: {} };
+                  const stats = { ...existing.stats };
+                  const count = Math.min(keys.length, values.length);
+                  for (let i = 0; i < count; i++) {
+                    const key = String(keys[i]);
+                    const val = values[i];
+                    const num = (typeof val === 'number') ? val : (typeof val === 'string' && /^[+-]?\d*(?:\.\d+)?$/.test(val.trim()) ? parseFloat(val.trim()) : undefined);
+                    if (num !== undefined) stats[key] = num;
+                  }
+                  map[playerKey] = {
+                    id: playerKey,
+                    longName: longName || existing.longName || playerKey,
+                    teamAbv: teamAbv || existing.teamAbv || '',
+                    stats,
+                  };
+                }
+              }
+            }
+          } catch {}
+          playersById = map;
+        }
+        const player = playersById?.[playerId];
+        if (!player) return res.status(404).json({ success: false, error: `Player ${playerId} not found in boxscore` });
+        let sum = 0;
+        for (const key of metrics) {
+          const v = Number(player?.stats?.[key]);
+          if (Number.isFinite(v)) sum += v;
+        }
+        const aPass = compareWithComparator(sum, sideA.comparator, Number(sideA.threshold));
+        const bPass = compareWithComparator(sum, sideB.comparator, Number(sideB.threshold));
+        let newStatus = 'push';
+        if (aPass && !bPass) newStatus = 'gradedA';
+        else if (bPass && !aPass) newStatus = 'gradedB';
+        const propResult = `sum(${metrics.join('+')})=${sum}`;
+        return await finish(newStatus, propResult);
+      }
+
+      // Unsupported formula in Postgres mode
+      return res.status(400).json({ success: false, error: `Unsupported formula in Postgres mode: ${formulaKey || 'unknown'}` });
+    } catch (e) {
+      console.error('[gradePropByFormula PG] Error', e?.message || e);
+      return res.status(500).json({ success: false, error: e.message || 'Unknown error' });
+    }
+  }
+
   const baseId = process.env.AIRTABLE_BASE_ID;
   const apiKey = process.env.AIRTABLE_API_KEY;
   if (!baseId || !apiKey) {
@@ -193,41 +425,68 @@ export default async function handler(req, res) {
       if (!espnGameID || !gameDate || !sideAMap || !sideBMap) {
         return res.status(400).json({ success: false, error: 'Missing required params for who_wins (espnGameID, gameDate, whoWins.sideAMap, whoWins.sideBMap)' });
       }
-
-      // Fetch scoreboard for the date and locate our game by ESPN ID
-      const src = resolveSourceConfig('major-mlb');
-      if (!src.ok) throw new Error(src.error || 'Major MLB source not configured');
-      const yyyy = gameDate.slice(0, 4);
-      const mm = gameDate.slice(4, 6);
-      const dd = gameDate.slice(6, 8);
-      const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
-      url.searchParams.set('year', yyyy);
-      url.searchParams.set('month', mm);
-      url.searchParams.set('day', dd);
-      console.log('[gradePropByFormula] Fetching scoreboard', { url: url.toString(), gameDate, espnGameID });
-      const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
-      const data = await upstream.json().catch(() => ({}));
-      const raw = data?.body || data || {};
-      const games = normalizeMajorMlbScoreboard(raw) || [];
-      const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
-      if (!game) {
-        return res.status(404).json({ success: false, error: `Game not found for espnGameID=${espnGameID} on ${gameDate}` });
+      // Select source by params.dataSource, default to MLB
+      const source = String(params?.dataSource || '').toLowerCase() === 'nfl' ? 'nfl' : 'major-mlb';
+      let winnerSide = 'push';
+      let propResult = '';
+      if (source === 'major-mlb') {
+        const src = resolveSourceConfig('major-mlb');
+        if (!src.ok) throw new Error(src.error || 'Major MLB source not configured');
+        const yyyy = gameDate.slice(0, 4);
+        const mm = gameDate.slice(4, 6);
+        const dd = gameDate.slice(6, 8);
+        const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+        url.searchParams.set('year', yyyy);
+        url.searchParams.set('month', mm);
+        url.searchParams.set('day', dd);
+        console.log('[gradePropByFormula] Fetching MLB scoreboard', { url: url.toString(), gameDate, espnGameID });
+        const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+        const data = await upstream.json().catch(() => ({}));
+        const raw = data?.body || data || {};
+        const games = normalizeMajorMlbScoreboard(raw) || [];
+        const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+        if (!game) {
+          return res.status(404).json({ success: false, error: `Game not found for espnGameID=${espnGameID} on ${gameDate}` });
+        }
+        const homeR = Number(game?.lineScore?.home?.R ?? NaN);
+        const awayR = Number(game?.lineScore?.away?.R ?? NaN);
+        if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+          return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
+        }
+        winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
+        propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
+      } else if (source === 'nfl') {
+        const src = resolveSourceConfig('nfl');
+        if (!src.ok) throw new Error(src.error || 'NFL source not configured');
+        // NFL scoreboard is weekly; allow caller to optionally provide year/week, else try current week
+        const yyyy = String(params?.nflYear || new Date().getFullYear());
+        const wk = String(params?.nflWeek || 1);
+        const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+        url.searchParams.set('year', yyyy);
+        url.searchParams.set('week', wk);
+        console.log('[gradePropByFormula] Fetching NFL schedule weekly', { url: url.toString(), espnGameID });
+        const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+        const data = await upstream.json().catch(() => ({}));
+        const raw = data?.body || data || {};
+        const games = normalizeNflScoreboardFromWeekly(raw) || [];
+        const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+        if (!game) {
+          return res.status(404).json({ success: false, error: `NFL game not found for espnGameID=${espnGameID} (year=${yyyy}, week=${wk})` });
+        }
+        const homeR = Number(game?.lineScore?.home?.R ?? NaN);
+        const awayR = Number(game?.lineScore?.away?.R ?? NaN);
+        if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+          return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
+        }
+        winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
+        propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
       }
-      const homeR = Number(game?.lineScore?.home?.R ?? NaN);
-      const awayR = Number(game?.lineScore?.away?.R ?? NaN);
-      if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
-        return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
-      }
-      const winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
-      console.log('[gradePropByFormula] Computed winner', { homeR, awayR, winnerSide });
 
       // Map winner to A/B
       let newStatus = 'push';
       if (winnerSide !== 'push') {
         newStatus = (winnerSide === sideAMap) ? 'gradedA' : (winnerSide === sideBMap) ? 'gradedB' : 'push';
       }
-      const propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
-
       if (!dryRun) {
         await base('Props').update([
           {
