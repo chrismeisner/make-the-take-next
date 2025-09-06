@@ -69,19 +69,23 @@ export default function GradePackPage() {
       .finally(() => setLoading(false));
   }, [packURL]);
 
+  useEffect(() => {
+    if (!packURL) return;
+    if (loading) return;
+    if (scoresFetched) return;
+    if (!espnGameID || !eventLeague) return;
 
-        .then(() => fetch(`/api/packs/${packURL}`))
-        .then((res2) => res2.json())
-        .then((data2) => {
-          if (data2.success) {
-            setHomeTeamScore(data2.pack.homeTeamScore ?? null);
-            setAwayTeamScore(data2.pack.awayTeamScore ?? null);
-          }
-        })
-        .catch((err) => console.error("Error fetching live scores:", err))
-        .finally(() => setScoresFetched(true));
-    }
-  }, [loading, scoresFetched, espnGameID, eventLeague, packURL, eventTime]);
+    fetch(`/api/packs/${packURL}`)
+      .then((res2) => res2.json())
+      .then((data2) => {
+        if (data2.success) {
+          setHomeTeamScore(data2.pack.homeTeamScore ?? null);
+          setAwayTeamScore(data2.pack.awayTeamScore ?? null);
+        }
+      })
+      .catch((err) => console.error("Error fetching live scores:", err))
+      .finally(() => setScoresFetched(true));
+  }, [loading, scoresFetched, espnGameID, eventLeague, packURL]);
 
   const handleStatusChange = (id, value) => {
     setStatuses((prev) => ({ ...prev, [id]: value }));
