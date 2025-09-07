@@ -230,6 +230,9 @@ export default function EditPropPage() {
     try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; return Array.isArray(o.metrics) ? o.metrics : []; } catch { return []; }
   }, [formulaParamsText]);
 
+  // Auto-grading mode selection key (must be declared before effects that depend on it)
+  const [autoGradeKey, setAutoGradeKey] = useState('');
+
   // Inject unified schema fields into formula params based on selected auto grade type
   useEffect(() => {
     if (!autoGradeKey) return;
@@ -321,7 +324,6 @@ export default function EditPropPage() {
   const [eventReadoutLoading, setEventReadoutLoading] = useState(false);
   const [eventReadoutError, setEventReadoutError] = useState('');
   const [eventReadout, setEventReadout] = useState(null);
-  const [autoGradeKey, setAutoGradeKey] = useState('');
   const [sideAMap, setSideAMap] = useState('');
   const [sideBMap, setSideBMap] = useState('');
 
