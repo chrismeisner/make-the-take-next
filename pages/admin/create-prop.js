@@ -81,12 +81,49 @@ export default function CreatePropUnifiedPage() {
   const [metricError, setMetricError] = useState('');
   const [selectedMetric, setSelectedMetric] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState([]);
-  const [sideAMap, setSideAMap] = useState('');
-  const [sideBMap, setSideBMap] = useState('');
+  // Fallback NFL team metric catalog for future events (when live boxscore lacks statistics)
+  const nflTeamMetricFallback = useMemo(() => ([
+    'completionAttempts',
+    'defensiveTouchdowns',
+    'firstDowns',
+    'firstDownsPassing',
+    'firstDownsPenalty',
+    'firstDownsRushing',
+    'fourthDownEff',
+    'fumblesLost',
+    'interceptions',
+    'netPassingYards',
+    'possessionTime',
+    'redZoneAttempts',
+    'rushingAttempts',
+    'rushingYards',
+    'sacksYardsLost',
+    'thirdDownEff',
+    'totalDrives',
+    'totalOffensivePlays',
+    'totalPenaltiesYards',
+    'totalYards',
+    'turnovers',
+    'yardsPerPass',
+    'yardsPerPlay',
+    'yardsPerRushAttempt',
+  ]), []);
   const [teamAbvA, setTeamAbvA] = useState('');
   const [teamAbvB, setTeamAbvB] = useState('');
   const [formulaTeamAbv, setFormulaTeamAbv] = useState('');
   const [formulaPlayerId, setFormulaPlayerId] = useState('');
+  // Human-friendly label for metric keys (camelCase/snake_case -> Title Case)
+  const formatMetricLabel = (key) => {
+    try {
+      if (!key) return '';
+      const s = String(key);
+      if (s === s.toUpperCase() && s.length <= 3) return s; // Keep short acronyms like R/H/E/SO
+      const noUnderscore = s.replace(/_/g, ' ');
+      const spaced = noUnderscore.replace(/([a-z])([A-Z])/g, '$1 $2');
+      const words = spaced.split(/\s+/).filter(Boolean);
+      return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    } catch { return String(key || ''); }
+  };
   // Player H2H (and similar) inputs
   const [playerAId, setPlayerAId] = useState('');
   const [playerBId, setPlayerBId] = useState('');
@@ -266,36 +303,7 @@ export default function CreatePropUnifiedPage() {
     }
   }, [propCoverSource, teamOptions, event?.homeTeamLink, event?.awayTeamLink]);
 
-  // Moneyline populate helper (event required)
-  const handlePopulateMoneyline = async () => {
-    if (!event) return;
-    const gameId = event.espnGameID;
-    if (!gameId) { setError('Missing espnGameID on event'); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const leagueParam = `baseball/${event.eventLeague}`;
-      const url = `/api/admin/vegas-odds?eventId=${encodeURIComponent(gameId)}&league=${encodeURIComponent(leagueParam)}&providerId=58`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error(`Odds fetch failed: ${res.status}`);
-      const data = await res.json();
-      const awayRaw = event.awayTeam;
-      const homeRaw = event.homeTeam;
-      const away = Array.isArray(awayRaw) ? awayRaw[0] : awayRaw || '';
-      const home = Array.isArray(homeRaw) ? homeRaw[0] : homeRaw || '';
-      setPropSideAShort(away);
-      setPropSideBShort(home);
-      setPropShort(`Moneyline: ${away} vs ${home}`);
-      setPropSideAMoneyline(String(data.awayTeamOdds.moneyLine));
-      setPropSideBMoneyline(String(data.homeTeamOdds.moneyLine));
-      setPropSideATake(`${away} beat the ${home}`);
-      setPropSideBTake(`${home} beat the ${away}`);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Removed Moneyline populate helper
 
   // AI summary via modal (event required)
   const handleGenerateSummary = async (context, model) => {
@@ -344,7 +352,7 @@ export default function CreatePropUnifiedPage() {
     if (!(autoGradeKey && event?.espnGameID)) return;
     const gid = String(event.espnGameID || '').trim();
     if (!gid) return;
-    const needsMetrics = ['stat_over_under', 'player_h2h', 'player_multi_stat_ou', 'team_stat_over_under', 'team_stat_h2h'].includes(autoGradeKey);
+    const needsMetrics = ['stat_over_under', 'player_h2h', 'player_multi_stat_ou', 'player_multi_stat_h2h', 'team_stat_over_under', 'team_stat_h2h', 'team_multi_stat_ou', 'team_multi_stat_h2h'].includes(autoGradeKey);
     if (!needsMetrics) return;
     setMetricLoading(true);
     setMetricError('');
@@ -359,8 +367,8 @@ export default function CreatePropUnifiedPage() {
         if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && source === 'major-mlb') {
           keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
         }
-        // NFL team metrics from raw boxscore teams[].statistics[].name when Team Stat O/U selected
-        if (autoGradeKey === 'team_stat_over_under' && source === 'nfl') {
+        // NFL team metrics from raw boxscore teams[].statistics[].name when Team Stat O/U or team multi-stat selected
+        if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && source === 'nfl') {
           try {
             const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
             const nflTeamKeys = [];
@@ -373,12 +381,13 @@ export default function CreatePropUnifiedPage() {
             }
             if (nflTeamKeys.length) {
               const uniq = Array.from(new Set(nflTeamKeys));
-              uniq.sort((a, b) => String(a).localeCompare(String(b)));
               keys = uniq;
             }
           } catch {}
-          // Always include a manual 'points' metric option for team totals
-          keys = Array.from(new Set([...(keys || []), 'points']));
+          // Always include curated manual metrics and 'points' alongside dynamic options
+          keys = Array.from(new Set([...(keys || []), ...nflTeamMetricFallback, 'points']));
+          // Sort for stable UX
+          keys.sort((a, b) => String(a).localeCompare(String(b)));
         }
         setMetricOptions(keys);
       } catch (e) {
@@ -425,23 +434,46 @@ export default function CreatePropUnifiedPage() {
             }
           } catch {}
         }
+        // For NFL + metric 'points' in team stats views, fetch ESPN weekly scoreboard as source of truth
+        let espnWeekly = null;
+        try {
+          const isTeamView = ['team_stat_over_under','team_stat_h2h','team_multi_stat_ou','team_multi_stat_h2h'].includes(autoGradeKey);
+          const needsPoints = String(selectedMetric || '').toLowerCase() === 'points' || (Array.isArray(selectedMetrics) && selectedMetrics.map(s=>String(s||'').toLowerCase()).includes('points'));
+          if (isTeamView && needsPoints && ds === 'nfl') {
+            const yr = (() => { try { return new Date(event.eventTime).getFullYear(); } catch { return new Date().getFullYear(); } })();
+            const wk = event?.eventWeek || '';
+            const u = new URL('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+            u.searchParams.set('year', String(yr));
+            if (wk) u.searchParams.set('week', String(wk));
+            const r = await fetch(u.toString());
+            const j = await r.json();
+            espnWeekly = j || null;
+          }
+        } catch {}
+
         // Fetch boxscore normalized stats for selected source
         let normalized = { playersById: {}, statKeys: [] };
+        let rawTeams = [];
         try {
           const bs = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(gid)}`);
           const bj = await bs.json();
           if (bs.ok && bj?.normalized) {
             normalized = bj.normalized;
           }
+          try {
+            if (ds === 'nfl') {
+              rawTeams = Array.isArray(bj?.data?.teams) ? bj.data.teams : [];
+            }
+          } catch {}
         } catch {}
-        setPreviewData({ source: ds, scoreboard, normalized });
+        setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly });
       } catch (e) {
         setPreviewError(e?.message || 'Failed to load preview');
       } finally {
         setPreviewLoading(false);
       }
     })();
-  }, [event?.espnGameID, event?.eventTime, dataSource, autoGradeKey]);
+  }, [event?.espnGameID, event?.eventTime, event?.eventWeek, dataSource, autoGradeKey, selectedMetric]);
 
   // Team abv options derived from event
   const normalizeAbv = (val) => {
@@ -465,6 +497,70 @@ export default function CreatePropUnifiedPage() {
       }
     } catch {}
   }, [formulaParamsText]);
+
+  // Inject unified schema fields into formula params based on selected auto grade type
+  useEffect(() => {
+    if (!autoGradeKey) return;
+    try {
+      const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+      const source = dataSource || 'major-mlb';
+      const assign = (k, v) => { obj[k] = v; };
+      if (autoGradeKey === 'who_wins') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.metric) obj.metric = (source === 'nfl' ? 'points' : 'R');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'stat_over_under') {
+        assign('entity', 'player');
+        assign('statScope', 'single');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'team_stat_over_under') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'team_stat_h2h') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'player_h2h') {
+        assign('entity', 'player');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'player_multi_stat_ou') {
+        assign('entity', 'player');
+        assign('statScope', 'multi');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'player_multi_stat_h2h') {
+        assign('entity', 'player');
+        assign('statScope', 'multi');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'team_multi_stat_ou') {
+        assign('entity', 'team');
+        assign('statScope', 'multi');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'team_multi_stat_h2h') {
+        assign('entity', 'team');
+        assign('statScope', 'multi');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      }
+      // Always ensure identity and source details are present when event/dataSource known
+      if (event) {
+        const gid = String(event?.espnGameID || '').trim();
+        if (gid) obj.espnGameID = gid;
+        if (event?.eventTime) {
+          const d = new Date(event.eventTime);
+          obj.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+      }
+      if (source) obj.dataSource = source;
+      setFormulaParamsText(JSON.stringify(obj, null, 2));
+    } catch {}
+  }, [autoGradeKey, dataSource, event?.espnGameID, event?.eventTime]);
 
   // Derived helpers for Player H2H selectors
   const teamOptionsH2H = useMemo(() => {
@@ -581,6 +677,120 @@ export default function CreatePropUnifiedPage() {
         setFormulaParamsText(finalFormulaParamsText);
       } catch {}
     }
+    // Validate auto-grade formula for Player Single Stat O/U before submit
+    if (autoGradeKey === 'stat_over_under') {
+      try {
+        const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+        const eff = { ...(obj || {}) };
+        // Ensure metric present
+        if (!eff.metric && selectedMetric) {
+          eff.metric = selectedMetric;
+        }
+        // Ensure playerId present (entity=player)
+        const finalPlayerId = eff.playerId || formulaPlayerId || '';
+        if (!finalPlayerId) { setError('Please select a player for Player Single Stat O/U'); return; }
+        eff.playerId = finalPlayerId;
+        // Ensure sides
+        const sides = eff.sides || {};
+        const a = sides.A || {}; const b = sides.B || {};
+        if (!a.comparator || a.threshold == null || !b.comparator || b.threshold == null) {
+          setError('Please configure both sides comparators and thresholds'); return;
+        }
+        eff.sides = { A: { comparator: a.comparator, threshold: Number(a.threshold) }, B: { comparator: b.comparator, threshold: Number(b.threshold) } };
+        // Ensure IDs/time
+        if (!eff.espnGameID) {
+          const gid = String(event?.espnGameID || '').trim();
+          if (gid) eff.espnGameID = gid;
+        }
+        if (!eff.gameDate && event?.eventTime) {
+          const d = new Date(event.eventTime);
+          eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+        eff.entity = 'player';
+        if (dataSource) eff.dataSource = dataSource;
+        // Validate required
+        if (!eff.metric) { setError('Please select a metric for Player Single Stat O/U'); return; }
+        if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
+        if (!eff.gameDate) { setError('Missing game date on event'); return; }
+        // Persist effective params
+        finalFormulaParamsText = JSON.stringify(eff, null, 2);
+        setFormulaParamsText(finalFormulaParamsText);
+      } catch {}
+    }
+    // Validate auto-grade formula for Player H2H before submit
+    if (autoGradeKey === 'player_h2h') {
+      try {
+        const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+        const eff = { ...(obj || {}) };
+        // Ensure metric present
+        if (!eff.metric && selectedMetric) {
+          eff.metric = selectedMetric;
+        }
+        // Ensure player IDs present
+        if (!eff.playerAId && playerAId) {
+          eff.playerAId = playerAId;
+        }
+        if (!eff.playerBId && playerBId) {
+          eff.playerBId = playerBId;
+        }
+        // Ensure IDs/time
+        if (!eff.espnGameID) {
+          const gid = String(event?.espnGameID || '').trim();
+          if (gid) eff.espnGameID = gid;
+        }
+        if (!eff.gameDate && event?.eventTime) {
+          const d = new Date(event.eventTime);
+          eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+        // Winner rule and data source
+        eff.winnerRule = String(eff.winnerRule || winnerRule || 'higher').toLowerCase();
+        eff.entity = 'player';
+        if (dataSource) eff.dataSource = dataSource;
+
+        // Validate required
+        if (!eff.metric) { setError('Please select a metric for Player H2H'); return; }
+        if (!eff.playerAId || !eff.playerBId) { setError('Please select both players for Player H2H'); return; }
+        if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
+        if (!eff.gameDate) { setError('Missing game date on event'); return; }
+
+        // Persist effective params
+        finalFormulaParamsText = JSON.stringify(eff, null, 2);
+        setFormulaParamsText(finalFormulaParamsText);
+      } catch {}
+    }
+    // Validate auto-grade formula for Player Multi Stat H2H before submit
+    if (autoGradeKey === 'player_multi_stat_h2h') {
+      try {
+        const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+        const eff = { ...(obj || {}) };
+        // Ensure metrics present (>=2)
+        const list = Array.isArray(eff.metrics) ? eff.metrics.filter(Boolean) : (Array.isArray(selectedMetrics) ? selectedMetrics.filter(Boolean) : []);
+        if (list.length < 2) { setError('Please select at least 2 metrics for Player Multi Stat H2H'); return; }
+        eff.metrics = list;
+        // Ensure players present
+        if (!eff.playerAId && playerAId) eff.playerAId = playerAId;
+        if (!eff.playerBId && playerBId) eff.playerBId = playerBId;
+        if (!eff.playerAId || !eff.playerBId) { setError('Please select both players for Player Multi Stat H2H'); return; }
+        // IDs/time/source
+        if (!eff.espnGameID) {
+          const gid = String(event?.espnGameID || '').trim();
+          if (gid) eff.espnGameID = gid;
+        }
+        if (!eff.gameDate && event?.eventTime) {
+          const d = new Date(event.eventTime);
+          eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+        eff.entity = 'player';
+        eff.statScope = 'multi';
+        eff.compare = 'h2h';
+        eff.winnerRule = String(eff.winnerRule || winnerRule || 'higher').toLowerCase();
+        if (dataSource) eff.dataSource = dataSource;
+        if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
+        if (!eff.gameDate) { setError('Missing game date on event'); return; }
+        finalFormulaParamsText = JSON.stringify(eff, null, 2);
+        setFormulaParamsText(finalFormulaParamsText);
+      } catch {}
+    }
     setLoading(true);
     setError(null);
 
@@ -678,6 +888,27 @@ export default function CreatePropUnifiedPage() {
                 return (
                   <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View on ESPN</a>
                 );
+              })()}
+              {/* Team links on ESPN */}
+              {(() => {
+                try {
+                  const leagueLc = String(event?.eventLeague || '').toLowerCase();
+                  if (!leagueLc) return null;
+                  const homeId = String(event?.homeTeamExternalId || '').trim();
+                  const awayId = String(event?.awayTeamExternalId || '').trim();
+                  const homeName = Array.isArray(event?.homeTeam) ? (event.homeTeam[0] || 'Home Team') : (event?.homeTeam || 'Home Team');
+                  const awayName = Array.isArray(event?.awayTeam) ? (event.awayTeam[0] || 'Away Team') : (event?.awayTeam || 'Away Team');
+                  const links = [];
+                  if (homeId) {
+                    const href = `https://www.espn.com/${leagueLc}/team/_/id/${encodeURIComponent(homeId)}`;
+                    links.push(<div key="home-link"><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View {homeName} on ESPN</a></div>);
+                  }
+                  if (awayId) {
+                    const href = `https://www.espn.com/${leagueLc}/team/_/id/${encodeURIComponent(awayId)}`;
+                    links.push(<div key="away-link"><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View {awayName} on ESPN</a></div>);
+                  }
+                  return links.length ? (<div className="mt-2 space-y-1">{links}</div>) : null;
+                } catch { return null; }
               })()}
               {packsForEvent.length > 0 && (
                 <div className="mt-3">
@@ -859,36 +1090,74 @@ export default function CreatePropUnifiedPage() {
               onChange={(e) => setAutoGradeKey(e.target.value)}
             >
               <option value="">Manual Grade</option>
-              <option value="who_wins">Who Wins</option>
               <option value="stat_over_under">Player Single Stat O/U</option>
               <option value="team_stat_over_under">Team Single Stat O/U</option>
               <option value="team_stat_h2h">Team Stat H2H</option>
               <option value="player_h2h">Player H2H</option>
               <option value="player_multi_stat_ou">Player Multi Stat O/U</option>
+              <option value="player_multi_stat_h2h">Player Multi Stat H2H</option>
+              <option value="team_multi_stat_ou">Team Multi Stat O/U</option>
+              <option value="team_multi_stat_h2h">Team Multi Stat H2H</option>
             </select>
             {/* Minimal params UI for common cases */}
-            {autoGradeKey === 'who_wins' && (
-              <div className="mt-3 space-y-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm">Take A Team</label>
-                    <select className="mt-1 block w-full border rounded px-2 py-1" value={sideAMap} onChange={(e) => { setSideAMap(e.target.value); upsertRootParam('whoWins', { sideAMap: e.target.value, sideBMap }); }}>
-                      <option value="away">{awayTeamName || 'Away'}</option>
-                      <option value="home">{homeTeamName || 'Home'}</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm">Take B Team</label>
-                    <select className="mt-1 block w-full border rounded px-2 py-1" value={sideBMap} onChange={(e) => { setSideBMap(e.target.value); upsertRootParam('whoWins', { sideAMap, sideBMap: e.target.value }); }}>
-                      <option value="home">{homeTeamName || 'Home'}</option>
-                      <option value="away">{awayTeamName || 'Away'}</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
+            {false && <div />}
             {(autoGradeKey === 'stat_over_under' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && (
               <div className="mt-3 space-y-3">
+                {(autoGradeKey === 'team_stat_over_under') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Team Abv</label>
+                    <select
+                      className="mt-1 block w-full border rounded px-2 py-1"
+                      value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbv||''; } catch { return ''; } })()}
+                      onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                    >
+                      <option value="">Select team…</option>
+                      {teamOptionsH2H.map((abv) => (<option key={`ou-team-${abv}`} value={abv}>{abv}</option>))}
+                    </select>
+                  </div>
+                )}
+                {false && <div />}
+                {autoGradeKey === 'stat_over_under' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Team Abv</label>
+                      <select
+                        className="mt-1 block w-full border rounded px-2 py-1"
+                        value={formulaTeamAbv}
+                        onChange={(e)=>{ const v=e.target.value; setFormulaTeamAbv(v); upsertRootParam('teamAbv', v); try { if (v && formulaPlayerId) { const pEntry = (previewData?.normalized?.playersById && previewData.normalized.playersById[formulaPlayerId]) || null; const team = String(pEntry?.teamAbv || '').toUpperCase(); if (team !== String(v).toUpperCase()) { setFormulaPlayerId(''); upsertRootParam('playerId',''); } } } catch {} }}
+                      >
+                        <option value="">(optional) Team filter</option>
+                        {teamOptionsH2H.map((abv) => (<option key={`statou-team-${abv}`} value={abv}>{abv}</option>))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Player</label>
+                      <select
+                        className="mt-1 block w-full border rounded px-2 py-1"
+                        value={formulaPlayerId}
+                        onChange={(e)=>{ const v=e.target.value; setFormulaPlayerId(v); upsertRootParam('playerId', v); upsertRootParam('entity', 'player'); }}
+                        disabled={!previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0}
+                      >
+                        {(!previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0) ? (
+                          <option value="">No players found</option>
+                        ) : (
+                          <>
+                            <option value="">Select a player…</option>
+                            {Object.entries(previewData.normalized.playersById || {})
+                              .filter(([id, p]) => {
+                                if (!formulaTeamAbv) return true;
+                                return String(p?.teamAbv || '').toUpperCase() === String(formulaTeamAbv || '').toUpperCase();
+                              })
+                              .sort(([, a], [, b]) => String(a?.longName || '').localeCompare(String(b?.longName || '')))
+                              .map(([id, p]) => (
+                                <option key={`statou-player-${id}`} value={id}>{p?.longName || id} ({p?.teamAbv || ''})</option>
+                              ))}
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Metric</label>
@@ -901,13 +1170,154 @@ export default function CreatePropUnifiedPage() {
                         onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }}
                       >
                         <option value="">Select a metric…</option>
-                        {metricOptions.map((k) => (<option key={k} value={k}>{k}</option>))}
+                        {metricOptions.map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
                       </select>
                     ) : (
                       <input className="mt-1 block w-full border rounded px-2 py-1" value={selectedMetric} onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }} placeholder="e.g. SO" />
                     )}
                     {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
                   </div>
+                </div>
+                {autoGradeKey !== 'team_stat_h2h' && (
+                  <div className="border rounded p-3 bg-gray-50">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Per-side grading rule</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-sm font-semibold mb-1">Side A</div>
+                        <div className="flex items-center gap-2">
+                          <select value={sideAComparator} onChange={(e) => { const v = e.target.value; setSideAComparator(v); upsertSidesInParams({ A: { comparator: v, threshold: Number(sideAThreshold) || 0 } }); }} className="border rounded px-2 py-1">
+                            <option value="gte">Equal or more than</option>
+                            <option value="lte">Equal or less than</option>
+                          </select>
+                          <input type="number" value={sideAThreshold} onChange={(e) => { const v = e.target.value; setSideAThreshold(v); upsertSidesInParams({ A: { comparator: sideAComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 6" className="border rounded px-2 py-1 w-24" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold mb-1">Side B</div>
+                        <div className="flex items-center gap-2">
+                          <select value={sideBComparator} onChange={(e) => { const v = e.target.value; setSideBComparator(v); upsertSidesInParams({ B: { comparator: v, threshold: Number(sideBThreshold) || 0 } }); }} className="border rounded px-2 py-1">
+                            <option value="gte">Equal or more than</option>
+                            <option value="lte">Equal or less than</option>
+                          </select>
+                          <input type="number" value={sideBThreshold} onChange={(e) => { const v = e.target.value; setSideBThreshold(v); upsertSidesInParams({ B: { comparator: sideBComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 5" className="border rounded px-2 py-1 w-24" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Removed duplicate OU team selector (now rendered above the metric block) */}
+            {(autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_h2h') && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team A Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvA||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {teamOptionsH2H.map((abv) => (<option key={`h2h-a-${abv}`} value={abv}>{abv}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team B Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvB||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {teamOptionsH2H.map((abv) => (<option key={`h2h-b-${abv}`} value={abv}>{abv}</option>))}
+                  </select>
+                </div>
+              </div>
+            )}
+            {autoGradeKey === 'team_multi_stat_ou' && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Metrics (sum of 2+)</label>
+                  <div className="mt-1 space-y-2">
+                    {(selectedMetrics.length ? selectedMetrics : ['','']).map((value, idx) => (
+                      <div key={`metric-row-team-${idx}`} className="flex items-center gap-2">
+                        {metricLoading ? (
+                          <div className="text-xs text-gray-600">Loading metrics…</div>
+                        ) : metricOptions && metricOptions.length > 0 ? (
+                          <select
+                            className="block flex-1 border rounded px-2 py-1"
+                            value={value || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                              arr[idx] = v;
+                              const uniq = Array.from(new Set(arr.filter(Boolean)));
+                              setSelectedMetrics(uniq);
+                              upsertRootParam('metrics', uniq);
+                            }}
+                          >
+                            <option value="">Select a metric…</option>
+                            {metricOptions.map((k) => (<option key={`team-m-${idx}-${k}`} value={k}>{formatMetricLabel(k)}</option>))}
+                          </select>
+                        ) : (
+                          <input
+                            className="block flex-1 border rounded px-2 py-1"
+                            value={value || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                              arr[idx] = v;
+                              const uniq = Array.from(new Set(arr.filter(Boolean)));
+                              setSelectedMetrics(uniq);
+                              upsertRootParam('metrics', uniq);
+                            }}
+                            placeholder="e.g. rushingYards"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => {
+                            const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                            if (arr.length <= 2) return;
+                            arr.splice(idx, 1);
+                            const uniq = Array.from(new Set(arr.filter(Boolean)));
+                            setSelectedMetrics(uniq);
+                            upsertRootParam('metrics', uniq);
+                          }}
+                          disabled={(selectedMetrics.length ? selectedMetrics.length : 2) <= 2}
+                          title="Remove metric"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div>
+                      <button
+                        type="button"
+                        className="px-3 py-1 bg-gray-200 rounded"
+                        onClick={() => {
+                          const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                          arr.push('');
+                          setSelectedMetrics(arr);
+                        }}
+                      >
+                        Add metric
+                      </button>
+                      <div className="text-xs text-gray-600 mt-1">Minimum 2 metrics.</div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbv||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {teamOptionsH2H.map((abv) => (<option key={`tm-ou-${abv}`} value={abv}>{abv}</option>))}
+                  </select>
                 </div>
                 <div className="border rounded p-3 bg-gray-50">
                   <div className="text-sm font-medium text-gray-700 mb-2">Per-side grading rule</div>
@@ -919,7 +1329,7 @@ export default function CreatePropUnifiedPage() {
                           <option value="gte">Equal or more than</option>
                           <option value="lte">Equal or less than</option>
                         </select>
-                        <input type="number" value={sideAThreshold} onChange={(e) => { const v = e.target.value; setSideAThreshold(v); upsertSidesInParams({ A: { comparator: sideAComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 6" className="border rounded px-2 py-1 w-24" />
+                        <input type="number" value={sideAThreshold} onChange={(e) => { const v = e.target.value; setSideAThreshold(v); upsertSidesInParams({ A: { comparator: sideAComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 300" className="border rounded px-2 py-1 w-24" />
                       </div>
                     </div>
                     <div>
@@ -929,8 +1339,84 @@ export default function CreatePropUnifiedPage() {
                           <option value="gte">Equal or more than</option>
                           <option value="lte">Equal or less than</option>
                         </select>
-                        <input type="number" value={sideBThreshold} onChange={(e) => { const v = e.target.value; setSideBThreshold(v); upsertSidesInParams({ B: { comparator: sideBComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 5" className="border rounded px-2 py-1 w-24" />
+                        <input type="number" value={sideBThreshold} onChange={(e) => { const v = e.target.value; setSideBThreshold(v); upsertSidesInParams({ B: { comparator: sideBComparator, threshold: Number(v) || 0 } }); }} placeholder="e.g. 299" className="border rounded px-2 py-1 w-24" />
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {autoGradeKey === 'team_multi_stat_h2h' && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Metrics (sum of 2+)</label>
+                  <div className="mt-1 space-y-2">
+                    {(selectedMetrics.length ? selectedMetrics : ['','']).map((value, idx) => (
+                      <div key={`metric-row-teamh2h-${idx}`} className="flex items-center gap-2">
+                        {metricLoading ? (
+                          <div className="text-xs text-gray-600">Loading metrics…</div>
+                        ) : metricOptions && metricOptions.length > 0 ? (
+                          <select
+                            className="block flex-1 border rounded px-2 py-1"
+                            value={value || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                              arr[idx] = v;
+                              const uniq = Array.from(new Set(arr.filter(Boolean)));
+                              setSelectedMetrics(uniq);
+                              upsertRootParam('metrics', uniq);
+                            }}
+                          >
+                            <option value="">Select a metric…</option>
+                            {metricOptions.map((k) => (<option key={`teamh2h-m-${idx}-${k}`} value={k}>{formatMetricLabel(k)}</option>))}
+                          </select>
+                        ) : (
+                          <input
+                            className="block flex-1 border rounded px-2 py-1"
+                            value={value || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                              arr[idx] = v;
+                              const uniq = Array.from(new Set(arr.filter(Boolean)));
+                              setSelectedMetrics(uniq);
+                              upsertRootParam('metrics', uniq);
+                            }}
+                            placeholder="e.g. rushingYards"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => {
+                            const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                            if (arr.length <= 2) return;
+                            arr.splice(idx, 1);
+                            const uniq = Array.from(new Set(arr.filter(Boolean)));
+                            setSelectedMetrics(uniq);
+                            upsertRootParam('metrics', uniq);
+                          }}
+                          disabled={(selectedMetrics.length ? selectedMetrics.length : 2) <= 2}
+                          title="Remove metric"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div>
+                      <button
+                        type="button"
+                        className="px-3 py-1 bg-gray-200 rounded"
+                        onClick={() => {
+                          const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                          arr.push('');
+                          setSelectedMetrics(arr);
+                        }}
+                      >
+                        Add metric
+                      </button>
+                      <div className="text-xs text-gray-600 mt-1">Minimum 2 metrics.</div>
                     </div>
                   </div>
                 </div>
@@ -959,7 +1445,7 @@ export default function CreatePropUnifiedPage() {
                             }}
                           >
                             <option value="">Select a metric…</option>
-                            {metricOptions.map((k) => (<option key={`m-${idx}-${k}`} value={k}>{k}</option>))}
+                            {metricOptions.map((k) => (<option key={`m-${idx}-${k}`} value={k}>{formatMetricLabel(k)}</option>))}
                           </select>
                         ) : (
                           <input
@@ -1076,7 +1562,7 @@ export default function CreatePropUnifiedPage() {
                         onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); upsertRootParam('entity', 'player'); }}
                       >
                         <option value="">Select a metric…</option>
-                        {metricOptions.map((k) => (<option key={k} value={k}>{k}</option>))}
+                        {metricOptions.map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
                       </select>
                     ) : (
                       <input className="mt-1 block w-full border rounded px-2 py-1" value={selectedMetric} onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); upsertRootParam('entity', 'player'); }} placeholder="e.g. passingYards" />
@@ -1123,6 +1609,133 @@ export default function CreatePropUnifiedPage() {
                       <option value="">Select player…</option>
                       {playersB.map(([id, p]) => (
                         <option key={`B-${id}`} value={id}>{p?.longName || id}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            {autoGradeKey === 'player_multi_stat_h2h' && (
+              <div className="mt-3 space-y-3">
+                {/* Metrics multi-select (minimum 2) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Metrics</label>
+                  {metricLoading ? (
+                    <div className="mt-1 text-xs text-gray-600">Loading metrics…</div>
+                  ) : (
+                    <div className="space-y-2 mt-1">
+                      {(selectedMetrics.length ? selectedMetrics : ['', '']).map((m, idx) => (
+                        <div key={`pmsh2h-metric-${idx}`} className="flex items-center gap-2">
+                          {metricOptions && metricOptions.length > 0 ? (
+                            <select
+                              className="border rounded px-2 py-1 flex-1"
+                              value={m}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const next = [...(selectedMetrics.length ? selectedMetrics : ['', ''])];
+                                next[idx] = val;
+                                const uniq = Array.from(new Set(next.filter(Boolean)));
+                                setSelectedMetrics(next);
+                                upsertRootParam('metrics', uniq);
+                                upsertRootParam('entity', 'player');
+                              }}
+                            >
+                              <option value="">Select metric…</option>
+                              {metricOptions.map((k) => (
+                                <option key={`pmsh2h-opt-${k}`} value={k}>{formatMetricLabel(k)}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className="border rounded px-2 py-1 flex-1"
+                              value={m}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const next = [...(selectedMetrics.length ? selectedMetrics : ['', ''])];
+                                next[idx] = val;
+                                setSelectedMetrics(next);
+                                const uniq = Array.from(new Set(next.filter(Boolean)));
+                                upsertRootParam('metrics', uniq);
+                                upsertRootParam('entity', 'player');
+                              }}
+                              placeholder="e.g. passingYards"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            className="px-3 py-1 bg-gray-200 rounded"
+                            onClick={() => {
+                              const next = [...(selectedMetrics.length ? selectedMetrics : ['', ''])];
+                              next.splice(idx, 1);
+                              setSelectedMetrics(next);
+                              const uniq = Array.from(new Set(next.filter(Boolean)));
+                              upsertRootParam('metrics', uniq);
+                            }}
+                            disabled={(selectedMetrics.length ? selectedMetrics.length : 2) <= 2}
+                            title="Remove metric"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <div>
+                        <button
+                          type="button"
+                          className="px-3 py-1 bg-gray-200 rounded"
+                          onClick={() => {
+                            const arr = [...(selectedMetrics.length ? selectedMetrics : ['', ''])];
+                            arr.push('');
+                            setSelectedMetrics(arr);
+                          }}
+                        >
+                          Add metric
+                        </button>
+                        <div className="text-xs text-gray-600 mt-1">Minimum 2 metrics.</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Winner rule */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Winner Rule</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={winnerRule}
+                    onChange={(e) => { setWinnerRule(e.target.value); upsertRootParam('winnerRule', e.target.value); }}
+                  >
+                    <option value="higher">Higher wins</option>
+                    <option value="lower">Lower wins</option>
+                  </select>
+                </div>
+                {/* Players A/B */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border rounded p-3 bg-gray-50">
+                    <div className="text-sm font-semibold mb-2">Side A</div>
+                    <label className="block text-sm">Team</label>
+                    <select className="mt-1 block w-full border rounded px-2 py-1" value={teamAbvA} onChange={(e) => setTeamAbvA(e.target.value)}>
+                      <option value="">Select team…</option>
+                      {teamOptionsH2H.map((abv) => (<option key={`pmsh2h-A-${abv}`} value={abv}>{abv}</option>))}
+                    </select>
+                    <label className="block text-sm mt-2">Player</label>
+                    <select className="mt-1 block w-full border rounded px-2 py-1" value={playerAId} onChange={(e) => { setPlayerAId(e.target.value); upsertRootParam('playerAId', e.target.value); upsertRootParam('entity', 'player'); }} disabled={!teamAbvA}>
+                      <option value="">Select player…</option>
+                      {playersA.map(([id, p]) => (
+                        <option key={`pmsh2h-A-${id}`} value={id}>{p?.longName || id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="border rounded p-3 bg-gray-50">
+                    <div className="text-sm font-semibold mb-2">Side B</div>
+                    <label className="block text-sm">Team</label>
+                    <select className="mt-1 block w-full border rounded px-2 py-1" value={teamAbvB} onChange={(e) => setTeamAbvB(e.target.value)}>
+                      <option value="">Select team…</option>
+                      {teamOptionsH2H.map((abv) => (<option key={`pmsh2h-B-${abv}`} value={abv}>{abv}</option>))}
+                    </select>
+                    <label className="block text-sm mt-2">Player</label>
+                    <select className="mt-1 block w-full border rounded px-2 py-1" value={playerBId} onChange={(e) => { setPlayerBId(e.target.value); upsertRootParam('playerBId', e.target.value); upsertRootParam('entity', 'player'); }} disabled={!teamAbvB}>
+                      <option value="">Select player…</option>
+                      {playersB.map(([id, p]) => (
+                        <option key={`pmsh2h-B-${id}`} value={id}>{p?.longName || id}</option>
                       ))}
                     </select>
                   </div>
@@ -1178,11 +1791,327 @@ export default function CreatePropUnifiedPage() {
                       </div>
                     </div>
                   </div>
+                  {/* Auto-grade preview reflecting current selections */}
+                  {autoGradeKey && (
+                    <div className="mt-2 p-2 bg-white rounded border">
+                      <div className="font-medium mb-1">Auto-grade Preview</div>
+                      <div className="space-y-1">
+                        {(() => {
+                          try {
+                            const norm = previewData?.normalized || {};
+                            const players = norm.playersById || {};
+                            const getName = (id) => (players?.[id]?.longName || id);
+                            const getStat = (id, metric) => {
+                              try {
+                                const stats = players?.[id]?.stats || {};
+                                let v = stats?.[metric];
+                                if (v == null && typeof metric === 'string') {
+                                  v = stats?.[metric.toUpperCase()] ?? stats?.[metric.toLowerCase()];
+                                }
+                                const n = Number(v);
+                                return Number.isFinite(n) ? n : null;
+                              } catch { return null; }
+                            };
+                            const sumTeam = (abv, metric) => {
+                              const normalize = (v) => {
+                                try { return (typeof normalizeAbv === 'function') ? normalizeAbv(v) : String(v || '').toUpperCase(); } catch { return String(v || '').toUpperCase(); }
+                              };
+                              const target = normalize(abv);
+                              let total = 0;
+                              for (const p of Object.values(players)) {
+                                const team = normalize(p?.teamAbv || '');
+                                if (team !== target) continue;
+                                let v = p?.stats?.[metric];
+                                if (v == null && typeof metric === 'string') {
+                                  v = p?.stats?.[metric.toUpperCase()] ?? p?.stats?.[metric.toLowerCase()];
+                                }
+                                v = Number(v);
+                                if (Number.isFinite(v)) total += v;
+                              }
+                              return total;
+                            };
+                            const lines = [];
+                            if (autoGradeKey === 'stat_over_under') {
+                              if (formulaPlayerId && selectedMetric) {
+                                const v = getStat(formulaPlayerId, selectedMetric);
+                                lines.push(`Player ${getName(formulaPlayerId)} ${selectedMetric} = ${v == null ? '—' : v}`);
+                              } else {
+                                lines.push('Select a player and metric to preview.');
+                              }
+                            } else if (autoGradeKey === 'player_h2h') {
+                              if (playerAId && playerBId && selectedMetric) {
+                                const a = getStat(playerAId, selectedMetric);
+                                const b = getStat(playerBId, selectedMetric);
+                                lines.push(`A: ${getName(playerAId)} ${selectedMetric} = ${a == null ? '—' : a}`);
+                                lines.push(`B: ${getName(playerBId)} ${selectedMetric} = ${b == null ? '—' : b}`);
+                              } else {
+                                lines.push('Select both players and a metric to preview.');
+                              }
+                            } else if (autoGradeKey === 'player_multi_stat_ou') {
+                              const list = Array.isArray(selectedMetrics) ? selectedMetrics.filter(Boolean) : [];
+                              if (formulaPlayerId && list.length >= 2) {
+                                const vals = list.map((m) => getStat(formulaPlayerId, m)).map(v => (v==null?0:v));
+                                const sum = vals.reduce((a,b)=>a+b,0);
+                                lines.push(`Player ${getName(formulaPlayerId)} sum(${list.join('+')}) = ${sum}`);
+                              } else {
+                                lines.push('Pick a player and at least 2 metrics to preview.');
+                              }
+                            } else if (autoGradeKey === 'player_multi_stat_h2h') {
+                              const list = Array.isArray(selectedMetrics) ? selectedMetrics.filter(Boolean) : [];
+                              if (playerAId && playerBId && list.length >= 2) {
+                                const sumFor = (pid) => list.map((m)=>getStat(pid,m)).map(v=> (v==null?0:v)).reduce((a,b)=>a+b,0);
+                                const a = sumFor(playerAId); const b = sumFor(playerBId);
+                                lines.push(`A: ${getName(playerAId)} sum(${list.join('+')}) = ${a}`);
+                                lines.push(`B: ${getName(playerBId)} sum(${list.join('+')}) = ${b}`);
+                              } else {
+                                lines.push('Pick both players and at least 2 metrics to preview.');
+                              }
+                            } else if (autoGradeKey === 'team_stat_over_under') {
+                              try {
+                                const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+                                const abv = o.teamAbv || '';
+                                const metric = selectedMetric || o.metric || '';
+                                if (abv && metric) {
+                                  const src = String(previewData?.source || '').toLowerCase();
+                                  if (src === 'nfl') {
+                                    const teams = Array.isArray(previewData?.rawTeams) ? previewData.rawTeams : [];
+                                    const findVal = () => {
+                                      const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                      if (!t) return undefined;
+                                      const stat = (Array.isArray(t.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === String(metric).toLowerCase());
+                                      if (!stat) return undefined;
+                                      const v = Number(stat.value);
+                                      if (Number.isFinite(v)) return v;
+                                      const dv = String(stat.displayValue || '').trim();
+                                      const n = parseFloat(dv);
+                                      return Number.isFinite(n) ? n : undefined;
+                                    };
+                                    let v = findVal();
+                                    // ESPN truth for points
+                                    if (!Number.isFinite(v) && String(metric).toLowerCase() === 'points') {
+                                      try {
+                                        const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
+                                        const g = (() => {
+                                          try { return wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim()); } catch { return null; }
+                                        })();
+                                        if (g) {
+                                          const comps = Array.isArray(g?.competitions) ? g.competitions : [];
+                                          const comp = comps[0] || {};
+                                          const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
+                                          const findPts = (sideAbv) => {
+                                            const c = compsArr.find(ci => String(ci?.team?.abbreviation || '').toUpperCase() === String(sideAbv).toUpperCase());
+                                            const num = Number(c?.score);
+                                            return Number.isFinite(num) ? num : undefined;
+                                          };
+                                          v = findPts(abv);
+                                        }
+                                      } catch {}
+                                    }
+                                    lines.push(`Team ${abv} ${metric} (NFL team stat) = ${v == null ? '—' : v}`);
+                                  } else {
+                                    // Prefer scoreboard R/H/E if available and MLB
+                                    const mLc = String(metric).toUpperCase();
+                                    const sb = previewData?.scoreboard;
+                                    if (sb && (mLc === 'R' || mLc === 'H' || mLc === 'E')) {
+                                      const away = String(sb.away || ''); const home = String(sb.home || '');
+                                      const side = (String(abv).toUpperCase() === String(away).toUpperCase()) ? 'away' : 'home';
+                                      const v = Number(sb?.lineScore?.[side]?.[mLc]);
+                                      lines.push(`Team ${abv} ${mLc} (scoreboard) = ${Number.isFinite(v) ? v : '—'}`);
+                                    } else {
+                                      const total = sumTeam(abv, metric);
+                                      lines.push(`Team ${abv} ${metric} (boxscore sum) = ${Number.isFinite(total) ? total : '—'}`);
+                                    }
+                                  }
+                                } else {
+                                  lines.push('Select team and metric to preview.');
+                                }
+                              } catch { lines.push('Select team and metric to preview.'); }
+                            } else if (autoGradeKey === 'team_stat_h2h') {
+                              try {
+                                const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+                                const a = o.teamAbvA || ''; const b = o.teamAbvB || '';
+                                const metric = selectedMetric || o.metric || '';
+                                if (a && b && metric) {
+                                  const src = String(previewData?.source || '').toLowerCase();
+                                  if (src === 'nfl') {
+                                    const teams = Array.isArray(previewData?.rawTeams) ? previewData.rawTeams : [];
+                                    const findVal = (abv) => {
+                                      const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                      if (!t) return undefined;
+                                      const stat = (Array.isArray(t.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === String(metric).toLowerCase());
+                                      if (!stat) return undefined;
+                                      const v = Number(stat.value);
+                                      if (Number.isFinite(v)) return v;
+                                      const dv = String(stat.displayValue || '').trim();
+                                      const n = parseFloat(dv);
+                                      return Number.isFinite(n) ? n : undefined;
+                                    };
+                                    let va = findVal(a); let vb = findVal(b);
+                                    if (String(metric).toLowerCase() === 'points') {
+                                      try {
+                                        const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
+                                        const g = (() => {
+                                          try { return wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim()); } catch { return null; }
+                                        })();
+                                        if (g) {
+                                          const comps = Array.isArray(g?.competitions) ? g.competitions : [];
+                                          const comp = comps[0] || {};
+                                          const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
+                                          const findPts = (sideAbv) => {
+                                            const c = compsArr.find(ci => String(ci?.team?.abbreviation || '').toUpperCase() === String(sideAbv).toUpperCase());
+                                            const num = Number(c?.score);
+                                            return Number.isFinite(num) ? num : undefined;
+                                          };
+                                          if (!Number.isFinite(va)) va = findPts(a);
+                                          if (!Number.isFinite(vb)) vb = findPts(b);
+                                        }
+                                      } catch {}
+                                    }
+                                    lines.push(`A: ${a} ${metric} (NFL team stat) = ${va == null ? '—' : va}`);
+                                    lines.push(`B: ${b} ${metric} (NFL team stat) = ${vb == null ? '—' : vb}`);
+                                  } else {
+                                    const mLc = String(metric).toUpperCase();
+                                    const sb = previewData?.scoreboard;
+                                    if (sb && (mLc === 'R' || mLc === 'H' || mLc === 'E')) {
+                                      const away = String(sb.away || ''); const home = String(sb.home || '');
+                                      const sideOf = (abv) => (String(abv).toUpperCase() === String(away).toUpperCase()) ? 'away' : 'home';
+                                      const va = Number(sb?.lineScore?.[sideOf(a)]?.[mLc]);
+                                      const vb = Number(sb?.lineScore?.[sideOf(b)]?.[mLc]);
+                                      lines.push(`A: ${a} ${mLc} (scoreboard) = ${Number.isFinite(va)?va:'—'}`);
+                                      lines.push(`B: ${b} ${mLc} (scoreboard) = ${Number.isFinite(vb)?vb:'—'}`);
+                                    } else {
+                                      const ta = sumTeam(a, metric); const tb = sumTeam(b, metric);
+                                      lines.push(`A: ${a} ${metric} = ${Number.isFinite(ta)?ta:'—'}`);
+                                      lines.push(`B: ${b} ${metric} = ${Number.isFinite(tb)?tb:'—'}`);
+                                    }
+                                  }
+                                } else {
+                                  lines.push('Select both teams and a metric to preview.');
+                                }
+                              } catch { lines.push('Select both teams and a metric to preview.'); }
+                            } else if (autoGradeKey === 'team_multi_stat_ou') {
+                              try {
+                                const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+                                const abv = o.teamAbv || '';
+                                const list = Array.isArray(selectedMetrics) && selectedMetrics.length ? selectedMetrics : (Array.isArray(o.metrics)?o.metrics:[]);
+                                if (abv && list.length >= 2) {
+                                  const src = String(previewData?.source || '').toLowerCase();
+                                  let total = 0;
+                                  if (src === 'nfl') {
+                                    const teams = Array.isArray(previewData?.rawTeams) ? previewData.rawTeams : [];
+                                    const findTeamStat = (metric) => {
+                                      const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                      if (!t) return undefined;
+                                      const stats = Array.isArray(t.statistics) ? t.statistics : [];
+                                      const mLc = String(metric).toLowerCase();
+                                      const stat = stats.find(s => String(s?.name || '').toLowerCase() === mLc);
+                                      if (!stat) {
+                                        if (mLc === 'points') {
+                                          try {
+                                            const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
+                                            const g = wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim());
+                                            if (g) {
+                                              const comp = (Array.isArray(g.competitions) ? g.competitions : [])[0] || {};
+                                              const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
+                                              const c = compsArr.find(ci => String(ci?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                              const num = Number(c?.score);
+                                              return Number.isFinite(num) ? num : undefined;
+                                            }
+                                          } catch {}
+                                        }
+                                        return undefined;
+                                      }
+                                      const v = Number(stat.value);
+                                      if (Number.isFinite(v)) return v;
+                                      const dv = String(stat.displayValue || '').trim();
+                                      const n = parseFloat(dv);
+                                      return Number.isFinite(n) ? n : undefined;
+                                    };
+                                    for (const m of list) {
+                                      const v = findTeamStat(m);
+                                      if (Number.isFinite(v)) total += Number(v);
+                                    }
+                                  } else {
+                                    for (const p of Object.values(players)) {
+                                      if (String(p?.teamAbv || '').toUpperCase() !== String(abv).toUpperCase()) continue;
+                                      for (const m of list) { const v = Number(p?.stats?.[m]); if (Number.isFinite(v)) total += v; }
+                                    }
+                                  }
+                                  lines.push(`Team ${abv} sum(${list.join('+')}) = ${total}`);
+                                } else {
+                                  lines.push('Select team and at least 2 metrics to preview.');
+                                }
+                              } catch { lines.push('Select team and at least 2 metrics to preview.'); }
+                            } else if (autoGradeKey === 'team_multi_stat_h2h') {
+                              try {
+                                const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+                                const a = o.teamAbvA || ''; const b = o.teamAbvB || '';
+                                const list = Array.isArray(selectedMetrics) && selectedMetrics.length ? selectedMetrics : (Array.isArray(o.metrics)?o.metrics:[]);
+                                if (a && b && list.length >= 2) {
+                                  const src = String(previewData?.source || '').toLowerCase();
+                                  const sumFor = (abv) => {
+                                    let total = 0;
+                                    if (src === 'nfl') {
+                                      const teams = Array.isArray(previewData?.rawTeams) ? previewData.rawTeams : [];
+                                      const findTeamStat = (metric) => {
+                                        const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                        if (!t) return undefined;
+                                        const stats = Array.isArray(t.statistics) ? t.statistics : [];
+                                        const mLc = String(metric).toLowerCase();
+                                        const stat = stats.find(s => String(s?.name || '').toLowerCase() === mLc);
+                                        if (!stat) {
+                                          if (mLc === 'points') {
+                                            try {
+                                              const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
+                                              const g = wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim());
+                                              if (g) {
+                                                const comp = (Array.isArray(g.competitions) ? g.competitions : [])[0] || {};
+                                                const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
+                                                const c = compsArr.find(ci => String(ci?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+                                                const num = Number(c?.score);
+                                                return Number.isFinite(num) ? num : undefined;
+                                              }
+                                            } catch {}
+                                          }
+                                          return undefined;
+                                        }
+                                        const v = Number(stat.value);
+                                        if (Number.isFinite(v)) return v;
+                                        const dv = String(stat.displayValue || '').trim();
+                                        const n = parseFloat(dv);
+                                        return Number.isFinite(n) ? n : undefined;
+                                      };
+                                      for (const m of list) {
+                                        const v = findTeamStat(m);
+                                        if (Number.isFinite(v)) total += Number(v);
+                                      }
+                                    } else {
+                                      for (const p of Object.values(players)) {
+                                        if (String(p?.teamAbv || '').toUpperCase() !== String(abv).toUpperCase()) continue;
+                                        for (const m of list) { const v = Number(p?.stats?.[m]); if (Number.isFinite(v)) total += v; }
+                                      }
+                                    }
+                                    return total;
+                                  };
+                                  const sa = sumFor(a); const sb = sumFor(b);
+                                  lines.push(`A: ${a} sum(${list.join('+')}) = ${sa}`);
+                                  lines.push(`B: ${b} sum(${list.join('+')}) = ${sb}`);
+                                } else {
+                                  lines.push('Select both teams and at least 2 metrics to preview.');
+                                }
+                              } catch { lines.push('Select both teams and at least 2 metrics to preview.'); }
+                            }
+                            return lines.map((t, i) => (<div key={`agp-${i}`}>{t}</div>));
+                          } catch { return null; }
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
-          <button type="button" onClick={handlePopulateMoneyline} className="mb-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Populate Moneyline Props</button>
+          {false && <div />}
         </>
       )}
 

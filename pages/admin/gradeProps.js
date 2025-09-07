@@ -356,6 +356,14 @@ export default function GradePropsPage() {
         if (a.threshold == null) missing.push('sides.A.threshold');
         if (!b.comparator) missing.push('sides.B.comparator');
         if (b.threshold == null) missing.push('sides.B.threshold');
+      } else if (fk === 'player_multi_stat_h2h') {
+        ensureGameDateFromLookups();
+        const metrics = Array.isArray(parsedParams?.metrics) ? parsedParams.metrics.filter(Boolean) : [];
+        if (!parsedParams.espnGameID) missing.push('espnGameID');
+        if (!parsedParams.gameDate) missing.push('gameDate');
+        if (metrics.length < 2) missing.push('metrics[>=2]');
+        if (!parsedParams.playerAId) missing.push('playerAId');
+        if (!parsedParams.playerBId) missing.push('playerBId');
       } else if (fk === 'team_stat_over_under') {
         // Team Single Stat Over/Under preflight
         ensureGameDateFromLookups();
@@ -623,6 +631,7 @@ export default function GradePropsPage() {
                       const isTeamH2H = fk === 'team_stat_h2h';
                       const isTeamOU = fk === 'team_stat_over_under';
                       const isMulti = fk === 'player_multi_stat_ou';
+                      const isPlayerMultiH2H = fk === 'player_multi_stat_h2h';
                       const readyWhoWins = isWhoWins && Boolean(fp.espnGameID && fp.gameDate && fp.whoWins && fp.whoWins.sideAMap && fp.whoWins.sideBMap);
                       const readyStatOU = isStatOU && Boolean(
                         fp.espnGameID && fp.gameDate && fp.metric && fp.sides && fp.sides.A && fp.sides.B &&
@@ -632,6 +641,9 @@ export default function GradePropsPage() {
                       );
                       const readyH2H = isH2H && Boolean(
                         fp.espnGameID && fp.gameDate && fp.metric && fp.playerAId && fp.playerBId && fp.winnerRule
+                      );
+                      const readyPlayerMultiH2H = isPlayerMultiH2H && Boolean(
+                        fp.espnGameID && (fp.gameDate || prop.propEventTimeLookup) && Array.isArray(fp.metrics) && fp.metrics.filter(Boolean).length >= 2 && fp.playerAId && fp.playerBId && (fp.winnerRule || 'higher')
                       );
                       const readyTeamH2H = isTeamH2H && (() => {
                         const hasGameDate = Boolean(fp.gameDate || prop.propEventTimeLookup);
@@ -657,7 +669,7 @@ export default function GradePropsPage() {
                           fp.espnGameID && hasGameDate && fp.metric && fp.teamAbv && a.comparator && a.threshold != null && b.comparator && b.threshold != null
                         );
                       })();
-                      if (!isAuto || (!isWhoWins && !isStatOU && !isH2H && !isMulti && !isTeamH2H && !isTeamOU)) return null;
+                      if (!isAuto || (!isWhoWins && !isStatOU && !isH2H && !isMulti && !isPlayerMultiH2H && !isTeamH2H && !isTeamOU)) return null;
                       return (
                         <div className="flex items-center gap-2">
                           <button
@@ -672,11 +684,12 @@ export default function GradePropsPage() {
                             id={`autograde-${prop.airtableId}`}
                             onClick={() => handleAutoGradeOne(prop.airtableId)}
                             className="px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                            disabled={!(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU)}
+                            disabled={!(readyWhoWins || readyStatOU || readyH2H || readyPlayerMultiH2H || readyMulti || readyTeamH2H || readyTeamOU)}
                             title={(readyWhoWins || readyStatOU || readyH2H || readyMulti || readyTeamH2H || readyTeamOU) ? 'Auto grade this prop' : (
                               isWhoWins ? 'Complete setup (espnGameID, gameDate, side maps) to enable auto grade'
                               : isStatOU ? 'Complete setup (espnGameID, gameDate, entity=player, playerId, metric, sides) to enable auto grade'
                               : isH2H ? 'Complete setup (espnGameID, gameDate, metric, playerAId, playerBId, winnerRule) to enable auto grade'
+                              : isPlayerMultiH2H ? 'Complete setup (espnGameID, gameDate, metrics[>=2], playerAId, playerBId, winnerRule) to enable auto grade'
                               : isTeamH2H ? 'Complete setup (espnGameID, gameDate, metric, teamAbvA, teamAbvB, winnerRule) to enable auto grade'
                               : isTeamOU ? 'Complete setup (espnGameID, gameDate, metric, teamAbv, sides) to enable auto grade'
                               : 'Complete setup (espnGameID, gameDate, metrics[], entity=player, playerId, sides) to enable auto grade'

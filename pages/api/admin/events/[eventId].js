@@ -20,19 +20,24 @@ export default async function handler(req, res) {
       if (backend === 'postgres') {
         // Robust lookup by events.id (UUID as text), event_id (external text), or espn_game_id
         const makeSelect = (withCoverUrl) => `SELECT e.id,
-                                   e.title       AS "eventTitle",
-                                   e.event_time  AS "eventTime",
-                                   e.league      AS "eventLeague",
-                                   e.espn_game_id AS "espnGameID",
-                                   e.home_team    AS "homeTeamRaw",
-                                   e.away_team    AS "awayTeamRaw",
+                                   e.title         AS "eventTitle",
+                                   e.event_time    AS "eventTime",
+                                   e.league        AS "eventLeague",
+                                   e.espn_game_id  AS "espnGameID",
+                                   e.week          AS "eventWeek",
+                                   e.home_team     AS "homeTeamRaw",
+                                   e.away_team     AS "awayTeamRaw",
                                    e.home_team_id,
                                    e.away_team_id,
                                    ${withCoverUrl ? 'e.cover_url' : 'NULL::text'}   AS "eventCoverURL",
-                                   ht.logo_url   AS "homeTeamLogo",
-                                   at.logo_url   AS "awayTeamLogo",
-                                   ht.name       AS "homeTeamName",
-                                   at.name       AS "awayTeamName"
+                                   ht.logo_url     AS "homeTeamLogo",
+                                   at.logo_url     AS "awayTeamLogo",
+                                   ht.name         AS "homeTeamName",
+                                   at.name         AS "awayTeamName",
+                                   ht.team_id      AS "homeTeamExternalID",
+                                   at.team_id      AS "awayTeamExternalID",
+                                   ht.team_slug    AS "homeTeamAbbreviation",
+                                   at.team_slug    AS "awayTeamAbbreviation"
                               FROM events e
                          LEFT JOIN teams ht ON e.home_team_id = ht.id
                          LEFT JOIN teams at ON e.away_team_id = at.id`;
@@ -69,6 +74,7 @@ export default async function handler(req, res) {
           eventTime: r.eventTime,
           eventLeague: r.eventLeague,
           espnGameID: r.espnGameID || null,
+          eventWeek: typeof r.eventWeek === 'number' ? r.eventWeek : (r.eventWeek != null ? Number(r.eventWeek) : null),
           // Maintain compatibility with Airtable-based UI fields (attachment-like array)
           eventCover: r.eventCoverURL ? [{ url: r.eventCoverURL }] : [],
           // Maintain compatibility with Airtable-style single-item arrays for teams
@@ -78,6 +84,11 @@ export default async function handler(req, res) {
           awayTeamLink: r.away_team_id ? [r.away_team_id] : [],
           homeTeamLogo: r.homeTeamLogo || null,
           awayTeamLogo: r.awayTeamLogo || null,
+          // Convenience fields for downstream API usage
+          homeTeamExternalId: r.homeTeamExternalID || null,
+          awayTeamExternalId: r.awayTeamExternalID || null,
+          homeTeamAbbreviation: r.homeTeamAbbreviation || null,
+          awayTeamAbbreviation: r.awayTeamAbbreviation || null,
         };
         return res.status(200).json({ success: true, event });
       }

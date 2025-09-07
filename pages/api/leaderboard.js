@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       }
 
       const { rows: takeRows } = await query(
-        `SELECT take_mobile, prop_id_text
+        `SELECT take_mobile, prop_id_text, take_result, COALESCE(take_pts, 0) AS take_pts
            FROM takes
           WHERE take_status = 'latest'`
       );
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         filtered = filtered.filter(t => subjSet.has(t.prop_id_text));
       }
 
-      const pseudoTakes = filtered.map((r) => ({ fields: { takeMobile: r.take_mobile, takeResult: null } }));
+      const pseudoTakes = filtered.map((r) => ({ fields: { takeMobile: r.take_mobile, takeResult: r.take_result || null, takePTS: Number(r.take_pts) || 0, takeStatus: 'latest' } }));
       const statsList = aggregateTakeStats(pseudoTakes);
       const leaderboard = statsList.map((s) => ({
         phone: s.phone,

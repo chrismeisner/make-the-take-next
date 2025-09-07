@@ -127,6 +127,45 @@ export default function EditPropPage() {
       },
     },
     {
+      formulaKey: 'player_multi_stat_h2h',
+      displayName: 'Player Multi Stat H2H',
+      description: 'Compare two players by sum of multiple stats; winner per rule.',
+      dataSource: 'major-mlb',
+      defaultParams: {
+        gradingType: 'player_multi_stat_h2h',
+        entity: 'player',
+        metrics: [],
+        winnerRule: 'higher',
+      },
+    },
+    {
+      formulaKey: 'team_multi_stat_ou',
+      displayName: 'Team Multi Stat O/U',
+      description: 'Sum multiple team stats against A/B thresholds (>= or <=).',
+      dataSource: 'major-mlb',
+      defaultParams: {
+        gradingType: 'team_multi_stat_ou',
+        entity: 'team',
+        metrics: [],
+        sides: {
+          A: { comparator: 'gte', threshold: 1 },
+          B: { comparator: 'lte', threshold: 0 },
+        },
+      },
+    },
+    {
+      formulaKey: 'team_multi_stat_h2h',
+      displayName: 'Team Multi Stat H2H',
+      description: 'Head-to-head teams by sum of multiple team stats; winner per rule.',
+      dataSource: 'major-mlb',
+      defaultParams: {
+        gradingType: 'team_multi_stat_h2h',
+        entity: 'team',
+        metrics: [],
+        winnerRule: 'higher',
+      },
+    },
+    {
       formulaKey: 'team_stat_h2h',
       displayName: 'Team Stat H2H',
       description: 'Head-to-head teams comparing a single team stat to determine winner.',
@@ -159,10 +198,87 @@ export default function EditPropPage() {
   const [metricOptions, setMetricOptions] = useState([]);
   const [metricLoading, setMetricLoading] = useState(false);
   const [metricError, setMetricError] = useState('');
+  // Fallback NFL team metrics for future events
+  const nflTeamMetricFallback = useMemo(() => ([
+    'completionAttempts',
+    'defensiveTouchdowns',
+    'firstDowns',
+    'firstDownsPassing',
+    'firstDownsPenalty',
+    'firstDownsRushing',
+    'fourthDownEff',
+    'fumblesLost',
+    'interceptions',
+    'netPassingYards',
+    'possessionTime',
+    'redZoneAttempts',
+    'rushingAttempts',
+    'rushingYards',
+    'sacksYardsLost',
+    'thirdDownEff',
+    'totalDrives',
+    'totalOffensivePlays',
+    'totalPenaltiesYards',
+    'totalYards',
+    'turnovers',
+    'yardsPerPass',
+    'yardsPerPlay',
+    'yardsPerRushAttempt',
+  ]), []);
   // Multi metric selection state (for player_multi_stat_ou)
   const metricsSelected = useMemo(() => {
     try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; return Array.isArray(o.metrics) ? o.metrics : []; } catch { return []; }
   }, [formulaParamsText]);
+
+  // Inject unified schema fields into formula params based on selected auto grade type
+  useEffect(() => {
+    if (!autoGradeKey) return;
+    try {
+      const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+      const source = dataSource || 'major-mlb';
+      const assign = (k, v) => { obj[k] = v; };
+      if (autoGradeKey === 'who_wins') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.metric) obj.metric = (source === 'nfl' ? 'points' : 'R');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'stat_over_under') {
+        assign('entity', 'player');
+        assign('statScope', 'single');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'team_stat_over_under') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'ou');
+      } else if (autoGradeKey === 'team_stat_h2h') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'player_h2h') {
+        assign('entity', 'player');
+        assign('statScope', 'single');
+        assign('compare', 'h2h');
+        if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'player_multi_stat_ou') {
+        assign('entity', 'player');
+        assign('statScope', 'multi');
+        assign('compare', 'ou');
+      }
+      // Ensure identity and source details are present when event/dataSource known
+      if (event) {
+        const gid = String(event?.espnGameID || '').trim();
+        if (gid) obj.espnGameID = gid;
+        if (event?.eventTime) {
+          const d = new Date(event.eventTime);
+          obj.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+      }
+      if (source) obj.dataSource = source;
+      setFormulaParamsText(JSON.stringify(obj, null, 2));
+    } catch {}
+  }, [autoGradeKey, dataSource, event?.espnGameID, event?.eventTime]);
   const addMetric = (m) => {
     if (!m) return;
     try {
@@ -349,6 +465,46 @@ export default function EditPropPage() {
     setSaving(true);
     setError(null);
     try {
+      let finalFormulaParamsText = formulaParamsText;
+      if (autoGradeKey === 'player_multi_stat_ou') {
+        try {
+          const obj = finalFormulaParamsText && finalFormulaParamsText.trim() ? JSON.parse(finalFormulaParamsText) : {};
+          const eff = { ...(obj || {}) };
+          // Fill from current UI state if missing
+          if (!Array.isArray(eff.metrics) || eff.metrics.filter(Boolean).length < 2) {
+            const m = Array.isArray(metricsSelected) ? metricsSelected.filter(Boolean) : [];
+            if (m.length >= 2) eff.metrics = m;
+          }
+          if (!eff.playerId && formulaPlayerId) {
+            eff.playerId = formulaPlayerId;
+          }
+          if (event) {
+            const gid = String(event?.espnGameID || '').trim();
+            if (gid) eff.espnGameID = gid;
+            if (event?.eventTime) {
+              const d = new Date(event.eventTime);
+              eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+            }
+          }
+          eff.entity = 'player';
+          if (dataSource) eff.dataSource = dataSource;
+
+          // Validate effective params
+          const metrics = Array.isArray(eff.metrics) ? eff.metrics.filter(Boolean) : [];
+          if (metrics.length < 2) { setError('Please select at least 2 metrics for Player Multi Stat O/U'); setSaving(false); return; }
+          if (!eff.playerId) { setError('Please select a player for Player Multi Stat O/U'); setSaving(false); return; }
+          const sides = eff.sides || {};
+          const a = sides.A || {};
+          const b = sides.B || {};
+          if (!a.comparator || a.threshold == null || !b.comparator || b.threshold == null) { setError('Please configure both sides comparators and thresholds'); setSaving(false); return; }
+          if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); setSaving(false); return; }
+          if (!eff.gameDate) { setError('Missing game date on event'); setSaving(false); return; }
+
+          // Persist enriched params
+          finalFormulaParamsText = JSON.stringify(eff, null, 2);
+          setFormulaParamsText(finalFormulaParamsText);
+        } catch {}
+      }
       const payload = {
         propId,
         propStatus,
@@ -367,7 +523,7 @@ export default function EditPropPage() {
         propCoverSource,
         gradingMode: autoGradeKey ? 'auto' : 'manual',
         formulaKey: autoGradeKey || undefined,
-        formulaParams: formulaParamsText || undefined,
+        formulaParams: finalFormulaParamsText || undefined,
       };
       const res = await fetch('/api/props', {
         method: 'PATCH',
@@ -645,9 +801,9 @@ export default function EditPropPage() {
     }
   }, [autoGradeKey]);
 
-  // Load metric keys for Stat O/U, Player H2H, Player Multi Stat O/U, and Team Stat H2H (from API tester boxscore normalized.statKeys)
+  // Load metric keys for Stat O/U, Player H2H, Player Multi Stat O/U/H2H, and Team Stat O/U/H2H (from API tester boxscore normalized.statKeys)
   useEffect(() => {
-    if (!(autoGradeKey === 'stat_over_under' || autoGradeKey === 'player_h2h' || autoGradeKey === 'player_multi_stat_ou' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under')) return;
+    if (!(autoGradeKey === 'stat_over_under' || autoGradeKey === 'player_h2h' || autoGradeKey === 'player_multi_stat_ou' || autoGradeKey === 'player_multi_stat_h2h' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h')) return;
     const gid = String(event?.espnGameID || '').trim();
     if (!gid) return;
     setMetricLoading(true);
@@ -662,6 +818,30 @@ export default function EditPropPage() {
           // For team H2H and team OU ensure classic team metrics are present
           if ((autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under') && (dataSource || 'major-mlb') === 'major-mlb') {
             keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
+          }
+          // NFL team single/multi stat metrics: derive from team statistics names and include points
+          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && (dataSource || 'major-mlb') === 'nfl') {
+            try {
+              const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
+              const nflTeamKeys = [];
+              for (const t of teams) {
+                const stats = Array.isArray(t?.statistics) ? t.statistics : [];
+                for (const s of stats) {
+                  const name = String(s?.name || '').trim();
+                  if (name) nflTeamKeys.push(name);
+                }
+              }
+              if (nflTeamKeys.length) {
+                const uniq = Array.from(new Set(nflTeamKeys));
+                uniq.sort((a, b) => String(a).localeCompare(String(b)));
+                keys = uniq;
+              }
+            } catch {}
+            // Always include generic points in case boxscore schema differs
+            keys = Array.from(new Set([...(keys || []), 'points']));
+            if (!Array.isArray(keys) || keys.length === 0) {
+              keys = [...nflTeamMetricFallback, 'points'];
+            }
           }
           setMetricOptions(keys);
         } else {
@@ -1105,6 +1285,85 @@ export default function EditPropPage() {
               </div>
             </div>
           )}
+          {(autoGradeKey === 'team_multi_stat_h2h') && (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team A Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvA||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {(()=>{ try {
+                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
+                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
+                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
+                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
+                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
+                    } catch { return null; } })()}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team B Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvB||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {(()=>{ try {
+                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
+                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
+                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
+                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
+                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
+                    } catch { return null; } })()}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Winner</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return (o.winnerRule||'higher'); } catch { return 'higher'; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.winnerRule = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="higher">Higher wins</option>
+                    <option value="lower">Lower wins</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          {(autoGradeKey === 'team_multi_stat_ou') && (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team Abv</label>
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbv||''; } catch { return ''; } })()}
+                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                  >
+                    <option value="">Select team…</option>
+                    {(()=>{ try {
+                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
+                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
+                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
+                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
+                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
+                    } catch { return null; } })()}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
           {(autoGradeKey === 'stat_over_under') && (
             <div className="mt-3 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1135,7 +1394,7 @@ export default function EditPropPage() {
                 </div>
                 <div />
               </div>
-              {/* Team or Player selectors */}
+              {/* Team & Player selectors moved above per-side block */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Team Abv</label>
@@ -1156,14 +1415,14 @@ export default function EditPropPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Player ID</label>
+                  <label className="block text-sm font-medium text-gray-700">Player</label>
                   {playersLoading ? (
                     <div className="mt-1 text-xs text-gray-600">Loading players…</div>
                   ) : (
                     <select
                       className="mt-1 block w-full border rounded px-2 py-1"
                       value={formulaPlayerId}
-                      onChange={(e)=>{ const v=e.target.value; setFormulaPlayerId(v); upsertRootParam('playerId', v); }}
+                      onChange={(e)=>{ const v=e.target.value; setFormulaPlayerId(v); upsertRootParam('playerId', v); upsertRootParam('entity', 'player'); }}
                       disabled={Object.keys(playersById || {}).length === 0}
                     >
                       {Object.keys(playersById || {}).length === 0 ? (

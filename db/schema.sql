@@ -207,6 +207,11 @@ CREATE INDEX IF NOT EXISTS idx_takes_prop ON takes (prop_id);
 CREATE INDEX IF NOT EXISTS idx_takes_mobile_status ON takes (take_mobile, take_status);
 CREATE INDEX IF NOT EXISTS idx_takes_pack ON takes (pack_id);
 
+-- Store grading outcome per take to mirror Airtable takeResult
+ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_result TEXT;
+-- Store points earned per take (mirrors Airtable takePTS)
+ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_pts NUMERIC;
+
 -- Contests
 CREATE TABLE IF NOT EXISTS contests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

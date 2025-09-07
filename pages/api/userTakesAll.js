@@ -1,6 +1,8 @@
 // pages/api/userTakesAll.js
 import { getSession } from "next-auth/react";
 import Airtable from "airtable";
+import { getDataBackend } from "../../lib/runtimeConfig";
+import { query } from "../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -16,7 +18,27 @@ export default async function handler(req, res) {
   }
 
   try {
-	// Fetch all takes for this user that aren't overwritten
+	// Postgres path: mirror Airtable response shape
+	if (getDataBackend() === 'postgres') {
+	  const phone = session.user.phone;
+	  const { rows } = await query(
+		`SELECT id, prop_id_text, prop_side
+		   FROM takes
+		  WHERE take_mobile = $1
+		    AND take_status != 'overwritten'
+		  ORDER BY created_at ASC
+		  LIMIT 5000`,
+		[phone]
+	  );
+	  const userTakes = rows.map((r) => ({
+		propID: r.prop_id_text,
+		side: r.prop_side,
+		takeID: r.id,
+	  }));
+	  return res.status(200).json({ success: true, userTakes });
+	}
+
+	// Fetch all takes for this user that aren't overwritten (Airtable)
 	const records = await base("Takes")
 	  .select({
 		filterByFormula: `AND({takeMobile} = "${session.user.phone}", {takeStatus} != "overwritten")`,

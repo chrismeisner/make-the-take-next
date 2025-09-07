@@ -465,29 +465,57 @@ export default async function handler(req, res) {
 	// ---------------------------------------------
 	// 6. Build leaderboard
 	// ---------------------------------------------
-	// Replace manual aggregation with shared helper
-	const linkedTakesIds = packFields.Takes || [];
 	let leaderboard = [];
-	if (linkedTakesIds.length > 0) {
-	  const orFormula = `OR(${linkedTakesIds.map((id) => `RECORD_ID()="${id}"`).join(",")})`;
-	  const takesRecords = await base("Takes").select({
-		filterByFormula: orFormula,
-		maxRecords: 10000,
-	  }).all();
-
-	  // Aggregate stats using shared helper
-	  const statsList = aggregateTakeStats(takesRecords);
-
-	  leaderboard = statsList.map((s) => ({
-		phone: s.phone,
-		takes: s.takes,
-		points: s.points,
-		won: s.won,
-		lost: s.lost,
-		pending: s.pending,
-		pushed: s.pushed,
-		profileID: phoneToProfileID.get(s.phone) || null,
-	  }));
+	if (isPG) {
+	  try {
+		// Compute leaderboard from Postgres takes joined to this pack
+		const { rows: takeRows } = await query(
+		  `SELECT t.take_mobile, t.take_result, COALESCE(t.take_pts, 0) AS take_pts
+		     FROM takes t
+		     JOIN props p ON p.id = t.prop_id
+		     JOIN packs k ON k.id = p.pack_id
+		    WHERE t.take_status = 'latest'
+		      AND k.pack_url = $1`,
+		  [packURL]
+		);
+		// Convert to Airtable-like records for shared aggregator
+		const pseudo = takeRows.map((r) => ({ fields: { takeMobile: r.take_mobile, takeResult: r.take_result || null, takePTS: Number(r.take_pts) || 0, takeStatus: 'latest' } }));
+		const statsList = aggregateTakeStats(pseudo);
+		leaderboard = statsList.map((s) => ({
+		  phone: s.phone,
+		  takes: s.takes,
+		  points: s.points,
+		  won: s.won,
+		  lost: s.lost,
+		  pending: s.pending,
+		  pushed: s.pushed,
+		  profileID: phoneToProfileID.get(s.phone) || null,
+		}));
+	  } catch (pgLbErr) {
+		console.error('[packURL] PG leaderboard failed =>', pgLbErr);
+		leaderboard = [];
+	  }
+	} else {
+	  // Airtable path: use linked takes
+	  const linkedTakesIds = packFields.Takes || [];
+	  if (linkedTakesIds.length > 0) {
+		const orFormula = `OR(${linkedTakesIds.map((id) => `RECORD_ID()="${id}"`).join(",")})`;
+		const takesRecords = await base("Takes").select({
+		  filterByFormula: orFormula,
+		  maxRecords: 10000,
+		}).all();
+		const statsList = aggregateTakeStats(takesRecords);
+		leaderboard = statsList.map((s) => ({
+		  phone: s.phone,
+		  takes: s.takes,
+		  points: s.points,
+		  won: s.won,
+		  lost: s.lost,
+		  pending: s.pending,
+		  pushed: s.pushed,
+		  profileID: phoneToProfileID.get(s.phone) || null,
+		}));
+	  }
 	}
 
 	const toIso = (t) => (t ? new Date(t).toISOString() : null);

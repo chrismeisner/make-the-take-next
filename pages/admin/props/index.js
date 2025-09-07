@@ -113,8 +113,8 @@ export default function AdminPropsPage() {
         return true;
       })
       .sort((a, b) => {
-        const ta = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-        const tb = b.eventTime ? new Date(b.eventTime).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return sortOrder === 'asc' ? ta - tb : tb - ta;
       });
   }, [items, searchText, statusFilter, leagueFilter, sortOrder, fromDateTime, toDateTime]);
@@ -224,14 +224,14 @@ export default function AdminPropsPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Sort by Time</label>
+          <label className="block text-sm font-medium text-gray-700">Sort by Created</label>
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           >
-            <option value="asc">Soonest</option>
-            <option value="desc">Latest</option>
+            <option value="asc">Oldest</option>
+            <option value="desc">Newest</option>
           </select>
         </div>
         <div>
@@ -282,7 +282,7 @@ export default function AdminPropsPage() {
             <tr>
               <th className="px-4 py-2 border text-left">Question</th>
               <th className="px-4 py-2 border text-left">Event</th>
-              <th className="px-4 py-2 border">Time</th>
+              <th className="px-4 py-2 border whitespace-nowrap w-40">Time</th>
               <th className="px-4 py-2 border">League</th>
               <th className="px-4 py-2 border">Status</th>
               <th className="px-4 py-2 border">Packs</th>
@@ -301,7 +301,7 @@ export default function AdminPropsPage() {
                 <td className="px-4 py-2 border align-top">
                   <div>{p.eventTitle || ''}</div>
                 </td>
-                <td className="px-4 py-2 border align-top text-sm">{renderEventTime(p.eventTime)}</td>
+                <td className="px-4 py-2 border align-top text-sm whitespace-nowrap w-40">{renderEventTime(p.eventTime)}</td>
                 <td className="px-4 py-2 border align-top text-sm">{p.eventLeague || ''}</td>
                 <td className="px-4 py-2 border align-top">
                   <div className="flex items-center gap-2">
@@ -320,7 +320,7 @@ export default function AdminPropsPage() {
                 </td>
                 <td className="px-4 py-2 border align-top text-center">{Array.isArray(p.linkedPacks) ? p.linkedPacks.length : 0}</td>
                 <td className="px-4 py-2 border align-top">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                     <Link href={`/admin/props/${p.airtableId}`}>
                       <button className="px-2 py-1 text-gray-700 hover:underline">Edit</button>
                     </Link>

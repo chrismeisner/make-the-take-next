@@ -116,6 +116,18 @@ async function fetchMajorMlbBoxscorePlayers(gameID) {
   return normalizeMajorMlbPlayers(raw);
 }
 
+// ESPN NFL weekly scoreboard (source of truth for team points)
+async function fetchEspnNflScoreboardWeekly(yearInput, weekInput) {
+  const year = String(yearInput || new Date().getFullYear());
+  const week = String(weekInput || 1);
+  const url = new URL('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+  url.searchParams.set('year', year);
+  url.searchParams.set('week', week);
+  const resp = await fetch(url.toString(), { method: 'GET' });
+  const data = await resp.json().catch(() => ({}));
+  return normalizeNflScoreboardFromWeekly(data) || [];
+}
+
 function toYYYYMMDD(dateLike) {
   const d = new Date(dateLike);
   const yr = d.getFullYear();
@@ -191,7 +203,36 @@ export default async function handler(req, res) {
       const finish = async (newStatus, propResult) => {
         if (!dryRun) {
           const gradedAt = ['gradeda','gradedb','push'].includes(String(newStatus).toLowerCase()) ? new Date().toISOString() : null;
-          await query('UPDATE props SET prop_status = $1, prop_result = $2, graded_at = COALESCE($3, graded_at), updated_at = NOW() WHERE id::text = $4 OR prop_id = $4', [newStatus, propResult || null, gradedAt, airtableId]);
+          // 1) Update prop row
+          await query(
+            'UPDATE props SET prop_status = $1, prop_result = $2, graded_at = COALESCE($3, graded_at), updated_at = NOW() WHERE id::text = $4 OR prop_id = $4',
+            [newStatus, propResult || null, gradedAt, airtableId]
+          );
+          // 2) Update take_result for all latest takes on this prop
+          //    won if side matches gradedA/B, lost otherwise; push -> push; other -> pending
+          await query(
+            `UPDATE takes t
+               SET take_result = CASE
+                 WHEN $1 IN ('gradedA','gradedB') THEN CASE
+                   WHEN $1 = 'gradedA' AND t.prop_side = 'A' THEN 'won'
+                   WHEN $1 = 'gradedB' AND t.prop_side = 'B' THEN 'won'
+                   ELSE 'lost'
+                 END
+                 WHEN $1 = 'push' THEN 'push'
+                 ELSE 'pending'
+               END
+                , take_pts = CASE
+                  WHEN $1 = 'gradedA' THEN CASE WHEN t.prop_side = 'A' THEN COALESCE(p.prop_side_a_value, 1) ELSE 0 END
+                  WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
+                  WHEN $1 = 'push' THEN 0
+                  ELSE 0
+                END
+             FROM props p
+            WHERE t.prop_id = p.id
+              AND (p.id::text = $2 OR p.prop_id = $2)
+              AND t.take_status = 'latest'`,
+            [newStatus, airtableId]
+          );
         }
         const elapsedMs = Date.now() - startedAt;
         return res.status(200).json({ success: true, propStatus: newStatus, propResult, meta: { elapsedMs, dryRun } });
@@ -249,29 +290,29 @@ export default async function handler(req, res) {
           winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
           propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
         } else {
+          // NFL: use nflboxscore for winner (points from team statistics if present)
           const src = resolveSourceConfig('nfl');
           if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
-          // Derive year/week from params first, then event_time, then default week 1
-          const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
-          // If gameDate provided (YYYYMMDD), map to week using a heuristic: prefer r.week else 1
-          const wk = String(params?.nflWeek || r.week || 1);
-          const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
-          url.searchParams.set('year', yyyy);
-          url.searchParams.set('week', wk);
-          try { console.log('[gradePropByFormula PG] NFL fetch', { year: yyyy, week: wk, espnGameID }); } catch {}
+          const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+          url.searchParams.set('id', String(espnGameID));
           const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
           const data = await upstream.json().catch(() => ({}));
           const raw = data?.body || data || {};
-          const games = normalizeNflScoreboardFromWeekly(raw) || [];
-          const game = games.find((g) => String(g?.id || g?.gameID || g?.gameId || '').trim() === espnGameID);
-          if (!game) return res.status(404).json({ success: false, error: `NFL game not found for espnGameID=${espnGameID} (year=${yyyy}, week=${wk})` });
-          const homeR = Number(game?.lineScore?.home?.R ?? NaN);
-          const awayR = Number(game?.lineScore?.away?.R ?? NaN);
-          if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+          const teams = Array.isArray(raw?.teams) ? raw.teams : [];
+          let homePts = NaN, awayPts = NaN;
+          try {
+            for (const t of teams) {
+              const stat = (Array.isArray(t?.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === 'points');
+              const v = stat ? Number(stat.value) : NaN;
+              if (t.homeAway === 'home' && Number.isFinite(v)) homePts = v;
+              if (t.homeAway === 'away' && Number.isFinite(v)) awayPts = v;
+            }
+          } catch {}
+          if (!Number.isFinite(homePts) || !Number.isFinite(awayPts)) {
             return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
           }
-          winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
-          propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
+          winnerSide = homePts > awayPts ? 'home' : (awayPts > homePts ? 'away' : 'push');
+          propResult = `HOME ${homePts} - ${awayPts} AWAY`;
         }
         let newStatus = 'push';
         if (winnerSide !== 'push') {
@@ -374,6 +415,581 @@ export default async function handler(req, res) {
         if (aPass && !bPass) newStatus = 'gradedA';
         else if (bPass && !aPass) newStatus = 'gradedB';
         const propResult = `sum(${metrics.join('+')})=${sum}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'stat_over_under') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) {
+          try { gameDate = toYYYYMMDD(r.event_time); } catch {}
+        }
+        const metric = String(params?.metric || '').trim();
+        const sides = params?.sides || {};
+        const sideA = sides?.A || {};
+        const sideB = sides?.B || {};
+        const entity = String(params?.entity || 'player').toLowerCase();
+        if (!espnGameID || !gameDate || !metric || !sideA?.comparator || sideA?.threshold == null || !sideB?.comparator || sideB?.threshold == null) {
+          return res.status(400).json({ success: false, error: 'Missing required params for stat_over_under (espnGameID, gameDate, metric, sides.A/B comparator+threshold)' });
+        }
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+        let valueNumber = NaN;
+        if (entity === 'player') {
+          // Player single stat
+          let playersById = {};
+          if (ds === 'major-mlb') {
+            const resp = await fetchMajorMlbBoxscorePlayers(espnGameID);
+            playersById = resp?.playersById || {};
+          } else {
+            // NFL: normalize players from boxscore
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+            url.searchParams.set('id', String(espnGameID));
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const map = {};
+            try {
+              const teamBlocks = Array.isArray(raw?.players) ? raw.players : [];
+              for (const teamBlock of teamBlocks) {
+                const teamAbv = String(teamBlock?.team?.abbreviation || '').toUpperCase();
+                const statGroups = Array.isArray(teamBlock?.statistics) ? teamBlock.statistics : [];
+                for (const group of statGroups) {
+                  const keys = Array.isArray(group?.keys) ? group.keys : [];
+                  const athletes = Array.isArray(group?.athletes) ? group.athletes : [];
+                  for (const row of athletes) {
+                    const athlete = row?.athlete || {};
+                    const id = String(athlete?.id || '').trim();
+                    const longName = athlete?.displayName || athlete?.shortName || '';
+                    const values = Array.isArray(row?.stats) ? row.stats : [];
+                    if (!id && !longName) continue;
+                    const playerKey = id || `${teamAbv || 'UNK'}:${longName || 'UNKNOWN'}`;
+                    const existing = map[playerKey] || { stats: {} };
+                    const stats = { ...existing.stats };
+                    const count = Math.min(keys.length, values.length);
+                    for (let i = 0; i < count; i++) {
+                      const key = String(keys[i]);
+                      const val = values[i];
+                      const num = (typeof val === 'number') ? val : (typeof val === 'string' && /^[+-]?\d*(?:\.\d+)?$/.test(val.trim()) ? parseFloat(val.trim()) : undefined);
+                      if (num !== undefined) stats[key] = num;
+                    }
+                    map[playerKey] = { id: playerKey, longName: longName || playerKey, teamAbv, stats };
+                  }
+                }
+              }
+            } catch {}
+            playersById = map;
+          }
+          const playerId = String(params?.playerId || '').trim();
+          if (!playerId) return res.status(400).json({ success: false, error: 'Missing playerId for stat_over_under (entity=player)' });
+          const player = playersById?.[playerId];
+          valueNumber = Number(player?.stats?.[metric]);
+        } else {
+          // Team single stat (MLB supported; NFL limited to points via scoreboard)
+          if (ds === 'major-mlb') {
+            try {
+              const src = resolveSourceConfig('major-mlb');
+              if (!src.ok) throw new Error('MLB source not configured');
+              const yyyy = gameDate.slice(0, 4);
+              const mm = gameDate.slice(4, 6);
+              const dd = gameDate.slice(6, 8);
+              const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+              url.searchParams.set('year', yyyy);
+              url.searchParams.set('month', mm);
+              url.searchParams.set('day', dd);
+              const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+              const data = await upstream.json().catch(() => ({}));
+              const raw = data?.body || data || {};
+              const games = normalizeMajorMlbScoreboard(raw) || [];
+              const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+              if (!game) throw new Error('Game not found');
+              const teamAbv = String(params?.teamAbv || '').toUpperCase();
+              const mLc = metric.toLowerCase();
+              const metricKey = (mLc === 'hits' || mLc === 'h') ? 'H' : (mLc === 'runs' || mLc === 'r') ? 'R' : (mLc === 'errors' || mLc === 'e') ? 'E' : metric;
+              const side = (teamAbv === game.away) ? 'away' : 'home';
+              valueNumber = Number(game?.lineScore?.[side]?.[metricKey]);
+              if (!Number.isFinite(valueNumber)) {
+                const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+                let total = 0;
+                for (const p of Object.values(playersById || {})) {
+                  if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
+                  const v = Number(p?.stats?.[metricKey] ?? p?.stats?.[metric] ?? p?.stats?.[mLc]);
+                  if (Number.isFinite(v)) total += v;
+                }
+                valueNumber = total;
+              }
+            } catch {}
+          } else {
+            // NFL limited: points only from scoreboard weekly
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+            const wk = String(params?.nflWeek || r.week || 1);
+            const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+            url.searchParams.set('year', yyyy);
+            url.searchParams.set('week', wk);
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const games = normalizeNflScoreboardFromWeekly(raw) || [];
+            const game = games.find((g) => String(g?.id || g?.gameID || g?.gameId || '').trim() === espnGameID);
+            if (game) {
+              const teamAbv = String(params?.teamAbv || '').toUpperCase();
+              const side = (teamAbv === game.away) ? 'away' : 'home';
+              if (metric.toLowerCase() === 'points') {
+                valueNumber = Number(game?.lineScore?.[side]?.R);
+              }
+            }
+          }
+        }
+        if (!Number.isFinite(valueNumber)) {
+          return res.status(409).json({ success: false, error: `Metric ${metric} not available` });
+        }
+        const aPass = compareWithComparator(valueNumber, sideA.comparator, Number(sideA.threshold));
+        const bPass = compareWithComparator(valueNumber, sideB.comparator, Number(sideB.threshold));
+        let newStatus = 'push';
+        if (aPass && !bPass) newStatus = 'gradedA';
+        else if (bPass && !aPass) newStatus = 'gradedB';
+        const propResult = `${entity} ${metric}=${valueNumber}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'player_h2h') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const metric = String(params?.metric || '').trim();
+        const playerAId = String(params?.playerAId || '').trim();
+        const playerBId = String(params?.playerBId || '').trim();
+        const winnerRule = String(params?.winnerRule || 'higher').toLowerCase();
+        if (!espnGameID || !gameDate || !metric || !playerAId || !playerBId) {
+          return res.status(400).json({ success: false, error: 'Missing required params for player_h2h (espnGameID, gameDate, metric, playerAId, playerBId)' });
+        }
+
+        // Determine data source by event league; fallback to params hint
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+
+        let vA = NaN, vB = NaN;
+        if (ds === 'nfl') {
+          // NFL: normalize players from boxscore
+          try {
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+            url.searchParams.set('id', String(espnGameID));
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const map = {};
+            try {
+              const teamBlocks = Array.isArray(raw?.players) ? raw.players : [];
+              for (const teamBlock of teamBlocks) {
+                const teamAbv = String(teamBlock?.team?.abbreviation || '').toUpperCase();
+                const statGroups = Array.isArray(teamBlock?.statistics) ? teamBlock.statistics : [];
+                for (const group of statGroups) {
+                  const keys = Array.isArray(group?.keys) ? group.keys : [];
+                  const athletes = Array.isArray(group?.athletes) ? group.athletes : [];
+                  for (const row of athletes) {
+                    const athlete = row?.athlete || {};
+                    const id = String(athlete?.id || '').trim();
+                    const longName = athlete?.displayName || athlete?.shortName || '';
+                    const values = Array.isArray(row?.stats) ? row.stats : [];
+                    if (!id && !longName) continue;
+                    const playerKey = id || `${teamAbv || 'UNK'}:${longName || 'UNKNOWN'}`;
+                    const existing = map[playerKey] || { stats: {} };
+                    const stats = { ...existing.stats };
+                    const count = Math.min(keys.length, values.length);
+                    for (let i = 0; i < count; i++) {
+                      const key = String(keys[i]);
+                      const val = values[i];
+                      const num = (typeof val === 'number') ? val : (typeof val === 'string' && /^[+-]?\d*(?:\.\d+)?$/.test(val.trim()) ? parseFloat(val.trim()) : undefined);
+                      if (num !== undefined) stats[key] = num;
+                    }
+                    map[playerKey] = { id: playerKey, longName: longName || playerKey, teamAbv, stats };
+                  }
+                }
+              }
+            } catch {}
+            const pA = map?.[playerAId];
+            const pB = map?.[playerBId];
+            vA = Number(pA?.stats?.[metric]);
+            vB = Number(pB?.stats?.[metric]);
+          } catch {}
+        } else {
+          // MLB path (existing)
+          const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+          const pA = playersById?.[playerAId];
+          const pB = playersById?.[playerBId];
+          vA = Number(pA?.stats?.[metric]);
+          vB = Number(pB?.stats?.[metric]);
+        }
+
+        if (!Number.isFinite(vA) || !Number.isFinite(vB)) {
+          return res.status(409).json({ success: false, error: `Metric ${metric} not available for players` });
+        }
+        let newStatus = 'push';
+        if (winnerRule === 'lower') newStatus = vA < vB ? 'gradedA' : (vB < vA ? 'gradedB' : 'push');
+        else newStatus = vA > vB ? 'gradedA' : (vB > vA ? 'gradedB' : 'push');
+        const propResult = `A:${playerAId} ${metric}=${vA} vs B:${playerBId} ${metric}=${vB}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'team_stat_over_under') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const teamAbv = String(params?.teamAbv || '').toUpperCase();
+        const metricRaw = String(params?.metric || '').trim();
+        const sides = params?.sides || {};
+        const sideA = sides?.A || {}; const sideB = sides?.B || {};
+        if (!espnGameID || !gameDate || !metricRaw || !teamAbv || !sideA?.comparator || sideA?.threshold == null || !sideB?.comparator || sideB?.threshold == null) {
+          return res.status(400).json({ success: false, error: 'Missing required params for team_stat_over_under (espnGameID, gameDate, metric, teamAbv, sides.A/B comparator+threshold)' });
+        }
+
+        // Determine data source by event league; fallback to params hint
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+
+        const mLc = metricRaw.toLowerCase();
+        const metric = (ds === 'major-mlb')
+          ? ((mLc === 'hits' || mLc === 'h') ? 'H' : (mLc === 'runs' || mLc === 'r') ? 'R' : (mLc === 'errors' || mLc === 'e') ? 'E' : metricRaw)
+          : metricRaw;
+
+        let value = NaN;
+        if (ds === 'nfl') {
+          // NFL: try team stat from boxscore; fallback to weekly scoreboard for points
+          try {
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+            url.searchParams.set('id', String(espnGameID));
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const teams = Array.isArray(raw?.teams) ? raw.teams : [];
+            const findTeamStat = (abv) => {
+              const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+              if (!t) return undefined;
+              const stats = Array.isArray(t.statistics) ? t.statistics : [];
+              const stat = stats.find(s => String(s?.name || '').toLowerCase() === mLc);
+              if (!stat) return undefined;
+              const v = Number(stat.value);
+              if (Number.isFinite(v)) return v;
+              const dv = String(stat.displayValue || '').trim();
+              const n = parseFloat(dv);
+              return Number.isFinite(n) ? n : undefined;
+            };
+            value = findTeamStat(teamAbv);
+          } catch {}
+          if (!Number.isFinite(value) && mLc === 'points') {
+            try {
+              const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+              const wk = String(params?.nflWeek || r.week || 1);
+              const games = await fetchEspnNflScoreboardWeekly(yyyy, wk);
+              const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+              if (game) {
+                const side = (teamAbv === game.away) ? 'away' : 'home';
+                const pts = Number(game?.lineScore?.[side]?.R);
+                if (Number.isFinite(pts)) value = pts;
+              }
+            } catch {}
+          }
+        } else {
+          // MLB behavior: scoreboard R/H/E, fallback to boxscore sum
+          try {
+            const src = resolveSourceConfig('major-mlb');
+            if (!src.ok) throw new Error('MLB source not configured');
+            const yyyy = gameDate.slice(0, 4); const mm = gameDate.slice(4, 6); const dd = gameDate.slice(6, 8);
+            const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+            url.searchParams.set('year', yyyy); url.searchParams.set('month', mm); url.searchParams.set('day', dd);
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {}; const games = normalizeMajorMlbScoreboard(raw) || [];
+            const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+            if (game) {
+              const side = (teamAbv === game.away) ? 'away' : 'home';
+              value = Number(game?.lineScore?.[side]?.[metric]);
+            }
+          } catch {}
+          if (!Number.isFinite(value)) {
+            try {
+              const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+              let total = 0;
+              for (const p of Object.values(playersById || {})) {
+                if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
+                const v = Number(p?.stats?.[metric] ?? p?.stats?.[mLc]);
+                if (Number.isFinite(v)) total += v;
+              }
+              value = total;
+            } catch {}
+          }
+        }
+
+        if (!Number.isFinite(value)) return res.status(409).json({ success: false, error: `Metric ${metricRaw} not available for team ${teamAbv}` });
+        const aPass = compareWithComparator(value, sideA.comparator, Number(sideA.threshold));
+        const bPass = compareWithComparator(value, sideB.comparator, Number(sideB.threshold));
+        let newStatus = 'push'; if (aPass && !bPass) newStatus = 'gradedA'; else if (bPass && !aPass) newStatus = 'gradedB';
+        const propResult = `team ${teamAbv} ${metric}=${value}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'team_stat_h2h') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const metric = String(params?.metric || '').trim();
+        const teamAbvA = String(params?.teamAbvA || '').toUpperCase();
+        const teamAbvB = String(params?.teamAbvB || '').toUpperCase();
+        const winnerRule = String(params?.winnerRule || 'higher').toLowerCase();
+        if (!espnGameID || !gameDate || !metric || !teamAbvA || !teamAbvB) {
+          return res.status(400).json({ success: false, error: 'Missing required params for team_stat_h2h (espnGameID, gameDate, metric, teamAbvA, teamAbvB)' });
+        }
+
+        // Determine data source by event league, fallback to params hint
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+
+        if (ds === 'nfl') {
+          // NFL path: try team statistics from boxscore first; fallback to weekly scoreboard for points
+          try {
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+            url.searchParams.set('id', String(espnGameID));
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const teams = Array.isArray(raw?.teams) ? raw.teams : [];
+            const mLc = metric.toLowerCase();
+            const findTeamStat = (abv) => {
+              const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === String(abv).toUpperCase());
+              if (!t) return undefined;
+              const stats = Array.isArray(t.statistics) ? t.statistics : [];
+              const stat = stats.find(s => String(s?.name || '').toLowerCase() === mLc);
+              if (!stat) return undefined;
+              const v = Number(stat.value);
+              if (Number.isFinite(v)) return v;
+              const dv = String(stat.displayValue || '').trim();
+              const n = parseFloat(dv);
+              return Number.isFinite(n) ? n : undefined;
+            };
+            let valueA = findTeamStat(teamAbvA);
+            let valueB = findTeamStat(teamAbvB);
+            // Fallback specifically for points via ESPN weekly scoreboard as source of truth
+            if ((!Number.isFinite(valueA) || !Number.isFinite(valueB)) && mLc === 'points') {
+              const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+              const wk = String(params?.nflWeek || r.week || 1);
+              const games = await fetchEspnNflScoreboardWeekly(yyyy, wk);
+              const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+              if (game) {
+                const sideOf = (abv) => (abv === game.away ? 'away' : 'home');
+                const altA = Number(game?.lineScore?.[sideOf(teamAbvA)]?.R);
+                const altB = Number(game?.lineScore?.[sideOf(teamAbvB)]?.R);
+                valueA = Number.isFinite(valueA) ? valueA : altA;
+                valueB = Number.isFinite(valueB) ? valueB : altB;
+              }
+            }
+            if (!Number.isFinite(valueA) || !Number.isFinite(valueB)) {
+              return res.status(409).json({ success: false, error: `Metric ${metric} not available for teams ${teamAbvA} vs ${teamAbvB}` });
+            }
+            let newStatus = 'push';
+            if (winnerRule === 'lower') newStatus = valueA < valueB ? 'gradedA' : (valueB < valueA ? 'gradedB' : 'push');
+            else newStatus = valueA > valueB ? 'gradedA' : (valueB > valueA ? 'gradedB' : 'push');
+            const propResult = `A:${teamAbvA} ${mLc}=${valueA} vs B:${teamAbvB} ${mLc}=${valueB}`;
+            return await finish(newStatus, propResult);
+          } catch (e) {
+            console.error('[gradePropByFormula PG] team_stat_h2h NFL error', e?.message || e);
+            return res.status(500).json({ success: false, error: 'NFL H2H grading failed' });
+          }
+        }
+
+        // MLB path (existing)
+        const src = resolveSourceConfig('major-mlb');
+        if (!src.ok) return res.status(500).json({ success: false, error: 'Major MLB source not configured' });
+        const yyyy = gameDate.slice(0, 4); const mm = gameDate.slice(4, 6); const dd = gameDate.slice(6, 8);
+        const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+        url.searchParams.set('year', yyyy); url.searchParams.set('month', mm); url.searchParams.set('day', dd);
+        const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+        const data = await upstream.json().catch(() => ({}));
+        const raw = data?.body || data || {}; const games = normalizeMajorMlbScoreboard(raw) || [];
+        const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+        if (!game) return res.status(404).json({ success: false, error: `Game not found for espnGameID=${espnGameID} on ${gameDate}` });
+        const mLc = metric.toLowerCase();
+        const metricKey = (mLc === 'hits' || mLc === 'h') ? 'H' : (mLc === 'runs' || mLc === 'r') ? 'R' : (mLc === 'errors' || mLc === 'e') ? 'E' : metric;
+        const sideOf = (abv) => (abv === game.away ? 'away' : 'home');
+        let valueA = Number(game?.lineScore?.[sideOf(teamAbvA)]?.[metricKey]);
+        let valueB = Number(game?.lineScore?.[sideOf(teamAbvB)]?.[metricKey]);
+        if (!Number.isFinite(valueA) || !Number.isFinite(valueB)) {
+          // Fallback: sum player stats by team from boxscore
+          try {
+            const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+            const sumFor = (teamAbv) => {
+              let total = 0; for (const p of Object.values(playersById || {})) { if (String(p.teamAbv || '').toUpperCase() !== teamAbv) continue; const v = Number(p?.stats?.[metricKey] ?? p?.stats?.[metric] ?? p?.stats?.[mLc]); if (Number.isFinite(v)) total += v; } return total;
+            };
+            valueA = sumFor(teamAbvA); valueB = sumFor(teamAbvB);
+          } catch {}
+        }
+        if (!Number.isFinite(valueA) || !Number.isFinite(valueB)) return res.status(409).json({ success: false, error: `Metric ${metric} not available for teams ${teamAbvA} vs ${teamAbvB}` });
+        let newStatus = 'push';
+        if (winnerRule === 'lower') newStatus = valueA < valueB ? 'gradedA' : (valueB < valueA ? 'gradedB' : 'push');
+        else newStatus = valueA > valueB ? 'gradedA' : (valueB > valueA ? 'gradedB' : 'push');
+        const propResult = `A:${teamAbvA} ${metricKey}=${valueA} vs B:${teamAbvB} ${metricKey}=${valueB}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'player_multi_stat_h2h') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const metrics = Array.isArray(params?.metrics) ? params.metrics.filter(Boolean) : [];
+        const playerAId = String(params?.playerAId || '').trim();
+        const playerBId = String(params?.playerBId || '').trim();
+        const winnerRule = String(params?.winnerRule || 'higher').toLowerCase();
+        if (!espnGameID || !gameDate || metrics.length < 2 || !playerAId || !playerBId) {
+          return res.status(400).json({ success: false, error: 'Missing required params for player_multi_stat_h2h (espnGameID, gameDate, metrics[>=2], playerAId, playerBId)' });
+        }
+
+        // Determine data source
+        const eventLeagueLc = String(r.league || '').toLowerCase();
+        let ds = eventLeagueLc === 'nfl' ? 'nfl' : (eventLeagueLc === 'mlb' ? 'major-mlb' : null);
+        if (!ds) {
+          const leagueHint = String(params?.dataSource || params?.league || '').toLowerCase().trim();
+          ds = (leagueHint.includes('nfl') || leagueHint.includes('football')) ? 'nfl' : 'major-mlb';
+        }
+
+        let sumA = 0, sumB = 0;
+        if (ds === 'nfl') {
+          // NFL: build players map from boxscore and sum metrics
+          try {
+            const src = resolveSourceConfig('nfl');
+            if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+            const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+            url.searchParams.set('id', String(espnGameID));
+            const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+            const data = await upstream.json().catch(() => ({}));
+            const raw = data?.body || data || {};
+            const map = {};
+            try {
+              const teamBlocks = Array.isArray(raw?.players) ? raw.players : [];
+              for (const teamBlock of teamBlocks) {
+                const teamAbv = String(teamBlock?.team?.abbreviation || '').toUpperCase();
+                const statGroups = Array.isArray(teamBlock?.statistics) ? teamBlock.statistics : [];
+                for (const group of statGroups) {
+                  const keys = Array.isArray(group?.keys) ? group.keys : [];
+                  const athletes = Array.isArray(group?.athletes) ? group.athletes : [];
+                  for (const row of athletes) {
+                    const athlete = row?.athlete || {};
+                    const id = String(athlete?.id || '').trim();
+                    const longName = athlete?.displayName || athlete?.shortName || '';
+                    const values = Array.isArray(row?.stats) ? row.stats : [];
+                    if (!id && !longName) continue;
+                    const playerKey = id || `${teamAbv || 'UNK'}:${longName || 'UNKNOWN'}`;
+                    const existing = map[playerKey] || { stats: {} };
+                    const stats = { ...existing.stats };
+                    const count = Math.min(keys.length, values.length);
+                    for (let i = 0; i < count; i++) {
+                      const key = String(keys[i]);
+                      const val = values[i];
+                      const num = (typeof val === 'number') ? val : (typeof val === 'string' && /^[+-]?\d*(?:\.\d+)?$/.test(val.trim()) ? parseFloat(val.trim()) : undefined);
+                      if (num !== undefined) stats[key] = num;
+                    }
+                    map[playerKey] = { id: playerKey, longName: longName || playerKey, teamAbv, stats };
+                  }
+                }
+              }
+            } catch {}
+            const pA = map?.[playerAId];
+            const pB = map?.[playerBId];
+            for (const k of metrics) {
+              const vA = Number(pA?.stats?.[k]); if (Number.isFinite(vA)) sumA += vA;
+              const vB = Number(pB?.stats?.[k]); if (Number.isFinite(vB)) sumB += vB;
+            }
+          } catch {}
+        } else {
+          // MLB: use normalized MLB players
+          const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+          const pA = playersById?.[playerAId];
+          const pB = playersById?.[playerBId];
+          for (const k of metrics) {
+            const vA = Number(pA?.stats?.[k]); if (Number.isFinite(vA)) sumA += vA;
+            const vB = Number(pB?.stats?.[k]); if (Number.isFinite(vB)) sumB += vB;
+          }
+        }
+
+        let newStatus = 'push';
+        if (winnerRule === 'lower') newStatus = sumA < sumB ? 'gradedA' : (sumB < sumA ? 'gradedB' : 'push');
+        else newStatus = sumA > sumB ? 'gradedA' : (sumB > sumA ? 'gradedB' : 'push');
+        const propResult = `A:${playerAId} sum=${sumA} vs B:${playerBId} sum=${sumB}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'team_multi_stat_ou') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const metrics = Array.isArray(params?.metrics) ? params.metrics.filter(Boolean) : [];
+        const teamAbv = String(params?.teamAbv || '').toUpperCase();
+        const sides = params?.sides || {}; const sideA = sides?.A || {}; const sideB = sides?.B || {};
+        if (!espnGameID || !gameDate || metrics.length < 2 || !teamAbv || !sideA?.comparator || sideA?.threshold == null || !sideB?.comparator || sideB?.threshold == null) {
+          return res.status(400).json({ success: false, error: 'Missing required params for team_multi_stat_ou (espnGameID, gameDate, metrics[>=2], teamAbv, sides.A/B comparator+threshold)' });
+        }
+        const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+        let total = 0;
+        for (const p of Object.values(playersById || {})) {
+          if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
+          for (const k of metrics) {
+            const v = Number(p?.stats?.[k]); if (Number.isFinite(v)) total += v;
+          }
+        }
+        const aPass = compareWithComparator(total, sideA.comparator, Number(sideA.threshold));
+        const bPass = compareWithComparator(total, sideB.comparator, Number(sideB.threshold));
+        let newStatus = 'push'; if (aPass && !bPass) newStatus = 'gradedA'; else if (bPass && !aPass) newStatus = 'gradedB';
+        const propResult = `team ${teamAbv} sum(${metrics.join('+')})=${total}`;
+        return await finish(newStatus, propResult);
+      }
+
+      if (formulaKey === 'team_multi_stat_h2h') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) { try { gameDate = toYYYYMMDD(r.event_time); } catch {} }
+        const metrics = Array.isArray(params?.metrics) ? params.metrics.filter(Boolean) : [];
+        const teamAbvA = String(params?.teamAbvA || '').toUpperCase();
+        const teamAbvB = String(params?.teamAbvB || '').toUpperCase();
+        const winnerRule = String(params?.winnerRule || 'higher').toLowerCase();
+        if (!espnGameID || !gameDate || metrics.length < 2 || !teamAbvA || !teamAbvB) {
+          return res.status(400).json({ success: false, error: 'Missing required params for team_multi_stat_h2h (espnGameID, gameDate, metrics[>=2], teamAbvA, teamAbvB)' });
+        }
+        const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+        const sumFor = (teamAbv) => {
+          let total = 0;
+          for (const p of Object.values(playersById || {})) {
+            if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
+            for (const k of metrics) { const v = Number(p?.stats?.[k]); if (Number.isFinite(v)) total += v; }
+          }
+          return total;
+        };
+        const vA = sumFor(teamAbvA); const vB = sumFor(teamAbvB);
+        let newStatus = 'push'; if (winnerRule === 'lower') newStatus = vA < vB ? 'gradedA' : (vB < vA ? 'gradedB' : 'push'); else newStatus = vA > vB ? 'gradedA' : (vB > vA ? 'gradedB' : 'push');
+        const propResult = `A:${teamAbvA} sum=${vA} vs B:${teamAbvB} sum=${vB}`;
         return await finish(newStatus, propResult);
       }
 
@@ -674,41 +1290,80 @@ export default async function handler(req, res) {
         : (mLc === 'errors' || mLc === 'e') ? 'E'
         : metricRaw;
 
-      // Try scoreboard line score first
+      // MLB: scoreboard R/H/E then fallback to boxscore sum; NFL: read team stat from nflboxscore
       let value = undefined;
-      try {
-        const src = resolveSourceConfig('major-mlb');
-        if (!src.ok) throw new Error(src.error || 'Major MLB source not configured');
-        const yyyy = gameDate.slice(0, 4);
-        const mm = gameDate.slice(4, 6);
-        const dd = gameDate.slice(6, 8);
-        const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
-        url.searchParams.set('year', yyyy);
-        url.searchParams.set('month', mm);
-        url.searchParams.set('day', dd);
-        const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
-        const data = await upstream.json().catch(() => ({}));
-        const raw = data?.body || data || {};
-        const games = normalizeMajorMlbScoreboard(raw) || [];
-        const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
-        if (game) {
-          const side = (teamAbv === game.away) ? 'away' : 'home';
-          value = Number(game?.lineScore?.[side]?.[metric]);
-        }
-      } catch {}
-
-      // Fallback: sum from boxscore players if not available
-      if (!Number.isFinite(value)) {
+      const leagueLc = String(r.league || '').toLowerCase();
+      if (leagueLc === 'mlb') {
         try {
-          const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
-          let total = 0;
-          for (const p of Object.values(playersById || {})) {
-            if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
-            const v = Number(p?.stats?.[metric] ?? p?.stats?.[mLc]);
-            if (Number.isFinite(v)) total += v;
+          const src = resolveSourceConfig('major-mlb');
+          if (!src.ok) throw new Error(src.error || 'Major MLB source not configured');
+          const yyyy = gameDate.slice(0, 4);
+          const mm = gameDate.slice(4, 6);
+          const dd = gameDate.slice(6, 8);
+          const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+          url.searchParams.set('year', yyyy);
+          url.searchParams.set('month', mm);
+          url.searchParams.set('day', dd);
+          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+          const data = await upstream.json().catch(() => ({}));
+          const raw = data?.body || data || {};
+          const games = normalizeMajorMlbScoreboard(raw) || [];
+          const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+          if (game) {
+            const side = (teamAbv === game.away) ? 'away' : 'home';
+            value = Number(game?.lineScore?.[side]?.[metric]);
           }
-          value = total;
         } catch {}
+        if (!Number.isFinite(value)) {
+          try {
+            const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
+            let total = 0;
+            for (const p of Object.values(playersById || {})) {
+              if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
+              const v = Number(p?.stats?.[metric] ?? p?.stats?.[mLc]);
+              if (Number.isFinite(v)) total += v;
+            }
+            value = total;
+          } catch {}
+        }
+      } else if (leagueLc === 'nfl') {
+        try {
+          const src = resolveSourceConfig('nfl');
+          if (!src.ok) throw new Error('NFL source not configured');
+          const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+          url.searchParams.set('id', String(espnGameID));
+          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+          const data = await upstream.json().catch(() => ({}));
+          const raw = data?.body || data || {};
+          const teams = Array.isArray(raw?.teams) ? raw.teams : [];
+          const stat = (() => {
+            const t = teams.find(ti => String(ti?.team?.abbreviation || '').toUpperCase() === teamAbv);
+            if (!t) return undefined;
+            return (Array.isArray(t.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === mLc);
+          })();
+          if (stat) {
+            const v = Number(stat.value);
+            if (Number.isFinite(v)) value = v; else {
+              const dv = String(stat.displayValue || '').trim();
+              const n = parseFloat(dv);
+              if (Number.isFinite(n)) value = n;
+            }
+          }
+        } catch {}
+        // Fallback for team points: use ESPN weekly scoreboard as source of truth
+        if (!Number.isFinite(value) && mLc === 'points') {
+          try {
+            const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+            const wk = String(params?.nflWeek || r.week || 1);
+            const games = await fetchEspnNflScoreboardWeekly(yyyy, wk);
+            const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+            if (game) {
+              const side = (teamAbv === game.away) ? 'away' : 'home';
+              const pts = Number(game?.lineScore?.[side]?.R);
+              if (Number.isFinite(pts)) value = pts;
+            }
+          } catch {}
+        }
       }
 
       if (!Number.isFinite(value)) {
