@@ -403,7 +403,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </button>
                 <div className="flex justify-center w-full">
                   <span className="text-sm text-gray-600">
-                    {(currentSlide || 0) + 1} of {totalSlides}
+                    {(currentSlide ?? 0) === 0
+                      ? 'Swipe to Play'
+                      : `${currentSlide} of ${props.length}`}
                   </span>
                 </div>
                 <button type="button" onClick={() => {
