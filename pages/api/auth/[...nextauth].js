@@ -33,13 +33,16 @@ async function ensureProfileRecord(phoneE164) {
   if (backend === "postgres") {
     const { profiles } = createRepositories();
     const row = await profiles.ensureByPhone(phoneE164);
-    const hasUsername = Boolean(row.username);
+    // In PG, we treat profile_id as the handle; missing if null/empty or default auto value pattern
+    const handle = (row.profile_id || "").trim();
+    const isGeneratedDefault = /^taker\d{6}$/.test(handle);
+    const isUsernameMissing = !handle || isGeneratedDefault;
     return {
       userId: row.id,
       profileID: row.profile_id,
       mobile: row.mobile_e164,
       superAdmin: Boolean(row.super_admin),
-      isUsernameMissing: !hasUsername,
+      isUsernameMissing,
     };
   }
 

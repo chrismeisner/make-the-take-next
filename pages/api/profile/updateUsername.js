@@ -24,16 +24,16 @@ export default async function handler(req, res) {
   try {
     const backend = getDataBackend();
     if (backend === "postgres") {
-      // Ensure uniqueness (case-insensitive)
+      // Ensure uniqueness (case-insensitive) on profile_id (handle)
       const { rows: taken } = await query(
-        "SELECT 1 FROM profiles WHERE LOWER(username) = LOWER($1) LIMIT 1",
+        "SELECT 1 FROM profiles WHERE LOWER(profile_id) = LOWER($1) LIMIT 1",
         [username]
       );
       if (taken.length > 0) {
         return res.status(409).json({ error: "Username already taken" });
       }
-      // Update current user's username
-      await query("UPDATE profiles SET username = $1 WHERE id = $2", [username, currentUser.userId]);
+      // Update current user's handle by writing profile_id
+      await query("UPDATE profiles SET profile_id = $1 WHERE id = $2", [username, currentUser.userId]);
       return res.status(200).json({ success: true, profile: { username } });
     }
 

@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 	  pf = {
 		profileID: r.profile_id,
 		profileMobile: r.mobile_e164,
-		profileUsername: r.username || '',
+		profileUsername: r.profile_id || '',
 		profileAvatar: [],
 	  };
 	  // Resolve favorite team via Postgres if present
