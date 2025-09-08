@@ -7,6 +7,7 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [generateCovers, setGenerateCovers] = useState(true);
 
   if (!isOpen) return null;
 
@@ -21,7 +22,7 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
       const res = await fetch('/api/admin/fetchNflEvents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: Number(year), week: Number(week) }),
+        body: JSON.stringify({ year: Number(year), week: Number(week), generateCovers: !!generateCovers }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -73,6 +74,15 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
               max="25"
             />
           </div>
+          <label className="inline-flex items-center text-sm text-gray-700">
+            <input
+              type="checkbox"
+              className="mr-2"
+              checked={generateCovers}
+              onChange={(e) => setGenerateCovers(e.target.checked)}
+            />
+            Generate event covers
+          </label>
           {error ? <div className="text-sm text-red-700">{error}</div> : null}
           {result ? (
             <div className="text-sm text-green-700">Processed {result.processedCount} events</div>

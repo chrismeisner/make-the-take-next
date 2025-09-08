@@ -10,6 +10,7 @@ export default function AdminEventDetail() {
   const [event, setEvent] = useState(null);
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(false);
+  const [generating, setGenerating] = useState(false);
   
 
   useEffect(() => {
@@ -73,6 +74,43 @@ export default function AdminEventDetail() {
       <div className="mt-6 p-4 bg-white border rounded">
         <h2 className="text-lg font-semibold mb-2">Edit Event</h2>
         <EditEventForm event={event} onUpdated={(ev) => setEvent(ev)} />
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+            disabled={generating}
+            onClick={async () => {
+              if (!event?.id) return;
+              setGenerating(true);
+              try {
+                const r = await fetch(`/api/admin/events/${encodeURIComponent(event.id)}/generateCover`, {
+                  method: 'POST'
+                });
+                const j = await r.json();
+                if (!r.ok || !j?.success) throw new Error(j?.error || 'Failed to generate');
+                // Refresh event data to reflect new cover
+                try {
+                  const r2 = await fetch(`/api/admin/events/${encodeURIComponent(event.id)}`);
+                  const j2 = await r2.json();
+                  if (j2?.success && j2?.event) setEvent(j2.event);
+                } catch {}
+              } catch (e) {
+                // eslint-disable-next-line no-console
+                console.error('Generate cover failed:', e);
+                alert(e.message || 'Failed to generate cover');
+              } finally {
+                setGenerating(false);
+              }
+            }}
+          >
+            {generating ? 'Generating…' : 'Generate Event Cover'}
+          </button>
+          {Array.isArray(event.eventCover) && event.eventCover[0]?.url && (
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <span>Current cover:</span>
+              <img src={event.eventCover[0].url} alt="Event Cover" className="h-12 w-12 object-cover rounded" />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-4">

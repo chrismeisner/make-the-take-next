@@ -93,7 +93,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { year, week } = req.body;
+    const { year, week, generateCovers } = req.body;
     console.log('[admin/fetchNflEvents] Request body →', { year, week });
     const src = resolveSourceConfig('nfl');
     if (!src.ok) {
@@ -348,6 +348,28 @@ export default async function handler(req, res) {
         awayTeam: awayTeamName,
         week: Number(week),
       });
+
+      // Optionally generate event covers as part of fetch
+      try {
+        if (generateCovers) {
+          if (backend === 'postgres') {
+            // Find the internal event id we just upserted
+            const { rows: eRows } = await query('SELECT id FROM events WHERE espn_game_id = $1 LIMIT 1', [String(espnGameID)]);
+            const internalId = eRows?.[0]?.id;
+            if (internalId) {
+              // Call internal API to generate cover for this event id
+              try {
+                const genRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/events/${internalId}/generateCover`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
+                // Ignore response; continue regardless
+                await genRes.text().catch(() => null);
+              } catch {}
+            }
+          } else if (backend === 'airtable') {
+            // Best-effort: lookup Airtable Event record by espnGameID and trigger generate via generic batch job if needed
+            // For Airtable, we rely on existing batch job endpoints; skipping here to keep flow simple
+          }
+        }
+      } catch (_) {}
     }
 
     if (eventsOut.length) {
