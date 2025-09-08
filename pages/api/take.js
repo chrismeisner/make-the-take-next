@@ -2,6 +2,7 @@
 
 import { getToken } from "next-auth/jwt";
 import { createRepositories } from "../../lib/dal/factory";
+import { getCurrentUser } from "../../lib/auth";
 
 export default async function handler(req, res) {
   console.log("[/api/take] Received request with method:", req.method);
@@ -10,13 +11,12 @@ export default async function handler(req, res) {
 	return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  // 1) Validate user token
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  console.log("[/api/take] Decoded token:", token ? { hasToken: true } : { hasToken: false });
-  if (!token || !token.phone) {
+  // 1) Validate user
+  const currentUser = await getCurrentUser(req);
+  if (!currentUser) {
 	return res.status(401).json({ success: false, error: "Unauthorized" });
   }
-  console.log("[/api/take] profileRecId (token.airtableId):", token.airtableId);
+  console.log("[/api/take] Authenticated user:", { phone: currentUser.phone, backend: currentUser.backend });
 
   // 2) Extract propID and propSide (receiptId optional) from request body
   const { propID, propSide, receiptId } = req.body;
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   );
 
   try {
-	const { props, takes } = createRepositories();
+	const { props, takes, profiles } = createRepositories();
 	// 3) Find the matching Prop record by propID
 	const propRec = await props.getByPropID(propID);
 	if (!propRec) {
@@ -71,15 +71,15 @@ export default async function handler(req, res) {
 	const chosenCount = propSide === "A" ? sideACount : sideBCount;
 	const takePopularity = totalCount > 0 ? chosenCount / totalCount : 0.5;
 
-	// 7) Create the new "latest" take
-	//    We'll link the "Profile" field to the user's profile record in Airtable
-	const profileRecId = token.airtableId; // e.g., "rec123..."
+	// 7) Ensure a profile exists for this phone and capture its ID (backend-agnostic)
+	const ensuredProfile = await profiles.ensureByPhone(currentUser.phone);
+	const profileRecId = ensuredProfile?.id || null;
 	const packLinks = propRec.Packs || [];
-	console.log("📦📝 [api/take] Submitting take:", { propID, propSide, phone: token.phone, receiptId, packLinks, teams, takePopularity });
+	console.log("📦📝 [api/take] Submitting take:", { propID, propSide, phone: currentUser.phone, receiptId, packLinks, teams, takePopularity });
 	const takeFields = {
 	  propID,
 	  propSide,
-	  takeMobile: token.phone,
+	  takeMobile: currentUser.phone,
 	  takeStatus: "latest",
 	  Prop: [propRec.id],    // link to the Prop record
 	  Profile: [profileRecId], // link to the user's Profile record
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
 	if (receiptId) takeFields.receiptID = receiptId;
 	// Include takeRef if present in referer URL
 	if (takeRef) takeFields.takeRef = takeRef;
-	const newTakeID = await takes.createLatestTake({ propID, propSide, phone: token.phone, fields: takeFields });
+	const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: takeFields });
 
 	// 8) Compute dynamic side counts for this prop
 	const recount = await takes.countBySides(propID);

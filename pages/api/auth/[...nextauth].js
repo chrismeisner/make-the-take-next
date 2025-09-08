@@ -4,6 +4,8 @@ import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import twilio from "twilio";
 import Airtable from "airtable";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { createRepositories } from "../../../lib/dal/factory";
 
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
@@ -27,9 +29,22 @@ async function ensureProfileRecord(phoneE164) {
   // Log the phone number to ensure it's in the correct format
   console.log("[NextAuth] ensureProfileRecord => phone:", phoneE164);
 
-  // Correct the formula
-  const filterByFormula = `{profileMobile} = "${phoneE164}"`;
+  const backend = getDataBackend();
+  if (backend === "postgres") {
+    const { profiles } = createRepositories();
+    const row = await profiles.ensureByPhone(phoneE164);
+    const hasUsername = Boolean(row.username);
+    return {
+      userId: row.id,
+      profileID: row.profile_id,
+      mobile: row.mobile_e164,
+      superAdmin: Boolean(row.super_admin),
+      isUsernameMissing: !hasUsername,
+    };
+  }
 
+  // Airtable path
+  const filterByFormula = `{profileMobile} = "${phoneE164}"`;
   const found = await base("Profiles")
 	.select({ filterByFormula, maxRecords: 1 })
 	.all();
@@ -109,16 +124,26 @@ export const authOptions = {
 		  throw new Error("Verification failed");
 		}
 
-		// Handle profile creation or retrieval from Airtable
+		// Create or retrieve profile via selected backend
 		try {
 		  const profile = await ensureProfileRecord(e164Phone);
 		  console.log("[NextAuth] authorize => success, returning user:", e164Phone, profile.profileID);
+		  const backend = getDataBackend();
+		  if (backend === "postgres") {
+			return {
+			  phone: e164Phone,
+			  profileID: profile.profileID,
+			  userId: profile.userId,
+			  superAdmin: Boolean(profile.superAdmin),
+			  isUsernameMissing: profile.isUsernameMissing,
+			};
+		  }
 		  return {
 			phone: e164Phone,
 			profileID: profile.profileID,
 			airtableId: profile.airtableId,
 			superAdmin: Boolean(profile.superAdmin),
-			isUsernameMissing: profile.isUsernameMissing
+			isUsernameMissing: profile.isUsernameMissing,
 		  };
 		} catch (err) {
 		  console.error("[NextAuth] Profile error:", err);
@@ -183,9 +208,16 @@ export const authOptions = {
 	  if (user) {
 		token.phone = user.phone;
 		token.profileID = user.profileID;
-		token.airtableId = user.airtableId;
-        token.isUsernameMissing = user.isUsernameMissing;
-        token.superAdmin = Boolean(user.superAdmin);
+		const backend = getDataBackend();
+		if (backend === "postgres") {
+		  token.userId = user.userId;
+		  delete token.airtableId;
+		} else {
+		  token.airtableId = user.airtableId;
+		  delete token.userId;
+		}
+		token.isUsernameMissing = user.isUsernameMissing;
+		token.superAdmin = Boolean(user.superAdmin);
 
 		// Debounce logs
 		const now = Date.now();
@@ -201,13 +233,16 @@ export const authOptions = {
 	// 2) Add them to session.user
 	async session({ session, token }) {
 	  if (token) {
-		session.user = {
+		const backend = getDataBackend();
+		const baseUser = {
 		  phone: token.phone,
 		  profileID: token.profileID,
-		  airtableId: token.airtableId,
-          isUsernameMissing: token.isUsernameMissing,
-          superAdmin: Boolean(token.superAdmin),
+		  isUsernameMissing: token.isUsernameMissing,
+		  superAdmin: Boolean(token.superAdmin),
 		};
+		session.user = backend === "postgres"
+		  ? { ...baseUser, userId: token.userId }
+		  : { ...baseUser, airtableId: token.airtableId };
 	  }
 
 	  const now = Date.now();
