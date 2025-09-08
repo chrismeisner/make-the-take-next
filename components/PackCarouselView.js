@@ -58,6 +58,8 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     return isNaN(idx) || idx < 0 ? 0 : idx;
   })();
   const [isClient, setIsClient] = useState(false);
+  // Total slides include 1 cover + N props
+  const totalSlides = 1 + props.length;
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -70,17 +72,21 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
       // Arrow keys navigate cards
       if (e.key === 'ArrowLeft') {
-        swiperRef.current?.slidePrev();
+        if (!swiperRef.current) return;
+        const idx = swiperRef.current.activeIndex ?? 0;
+        if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
         return;
       }
       if (e.key === 'ArrowRight') {
-        swiperRef.current?.slideNext();
+        if (!swiperRef.current) return;
+        const idx = swiperRef.current.activeIndex ?? 0;
+        if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
         return;
       }
       // Number keys select choice on current card
       if (e.key === '1' || e.key === '2') {
         // Use realIndex to ignore duplicated slides created by loop mode
-        const idx = swiperRef.current?.realIndex;
+        const idx = swiperRef.current?.activeIndex;
         // Skip the cover slide at index 0
         if (typeof idx === 'number' && idx > 0 && idx <= packData.props.length) {
           const prop = packData.props[idx - 1];
@@ -92,7 +98,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleChoiceSelect, packData.props]);
+  }, [handleChoiceSelect, packData.props, totalSlides]);
   // Countdown timer for event
   const [timeLeft, setTimeLeft] = useState(() => {
     if (!packData.eventTime) return null;
@@ -183,7 +189,11 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   }, [packData.homeTeam?.teamSlug, packData.awayTeam?.teamSlug]);
 
   const handleCoverClick = () => {
-    if (swiperRef.current) {
+    if (!swiperRef.current) return;
+    const idx = swiperRef.current.activeIndex ?? 0;
+    if (idx >= totalSlides - 1) {
+      swiperRef.current.slideTo(0);
+    } else {
       swiperRef.current.slideNext();
     }
   };
@@ -359,16 +369,16 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <div className="mx-auto max-w-[420px] overflow-visible">
                 <Swiper
                   initialSlide={initialSlide}
-                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.realIndex || 0); }}
+                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.activeIndex || 0); }}
                   style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
                   className="pb-24 sm:pb-12"
                   modules={[EffectCards, Mousewheel]}
-                  loop={true}
+                  loop={false}
                   effect="cards"
                   grabCursor={true}
                   mousewheel={{ forceToAxis: true, thresholdDelta: 10, sensitivity: 0.5 }}
                   cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
-                  onSlideChange={(swiper) => setCurrentSlide(swiper.realIndex || 0)}
+                  onSlideChange={(swiper) => setCurrentSlide(swiper.activeIndex || 0)}
                 >
                   {/* First slide: Pack Cover */}
                   <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
@@ -382,17 +392,25 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </Swiper>
               </div>
               <div className="mt-10 sm:mt-8 relative w-full flex items-center justify-center">
-                <button type="button" onClick={() => swiperRef.current && swiperRef.current.slidePrev()} className="absolute left-0 p-2">
+                <button type="button" onClick={() => {
+                  if (!swiperRef.current) return;
+                  const idx = swiperRef.current.activeIndex ?? 0;
+                  if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
+                }} className="absolute left-0 p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
                 <div className="flex justify-center w-full">
                   <span className="text-sm text-gray-600">
-                    {Math.max(1, currentSlide)} of {props.length}
+                    {(currentSlide || 0) + 1} of {totalSlides}
                   </span>
                 </div>
-                <button type="button" onClick={() => swiperRef.current && swiperRef.current.slideNext()} className="absolute right-0 p-2">
+                <button type="button" onClick={() => {
+                  if (!swiperRef.current) return;
+                  const idx = swiperRef.current.activeIndex ?? 0;
+                  if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
+                }} className="absolute right-0 p-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
