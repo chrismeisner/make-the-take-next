@@ -63,12 +63,7 @@ export default function LoginRequiredModal({ isOpen, onClose, receiptId, packTit
       setError("Session not found after login");
       return;
     }
-    // If the user still hasn't set their username, prompt for it
-    if (session.user.isUsernameMissing) {
-      openModal("usernameRequired", { receiptId, packTitle, submitAllTakes, profileID: session.user.profileID });
-      setIsLoading(false);
-      return;
-    }
+    // Username flow disabled for now; proceed directly to submit
     // Submit takes now that we're authenticated
     const newTakeIDs = await submitAllTakes(receiptId);
     // Fire-and-forget SMS notification to the user

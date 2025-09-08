@@ -75,7 +75,7 @@ export default function LoginPage({ superAdminSecret }) {
 	const session = await getSession();
 	// If the user still hasn't picked a username, send them to that page.
 	if (session?.user?.isUsernameMissing) {
-	  router.push("/create-username");
+	  router.push("/");
 	  return;
 	}
   // Send users to dashboard after successful login

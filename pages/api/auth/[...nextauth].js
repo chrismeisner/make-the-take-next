@@ -257,13 +257,8 @@ export const authOptions = {
 	  return session;
 	},
 
-	// 3) Automatic redirect => dashboard or choose username
+	// 3) Automatic redirect => dashboard (disable create-username flow)
 	async redirect({ url, baseUrl, token }) {
-	  if (token?.isUsernameMissing) {
-		return `${baseUrl}/create-username`;
-	  }
-
-	  // After successful login, send users to the dashboard
 	  return baseUrl;
 	},
   },

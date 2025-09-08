@@ -3,7 +3,6 @@
 import React from "react";
 import { useModal } from "../contexts/ModalContext";
 import LoginRequiredModal from "./modals/LoginRequiredModal";
-import UsernameRequiredModal from "./modals/UsernameRequiredModal";
 import GlobalModal from "./modals/GlobalModal";
 import TeamsModal from "./modals/TeamsModal";
 import PointsModal from "./modals/PointsModal";
