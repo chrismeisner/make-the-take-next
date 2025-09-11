@@ -6,6 +6,7 @@ import { upsertEvent } from "../../../lib/airtableService";
 import { getDataBackend } from "../../../lib/runtimeConfig";
 import { query } from "../../../lib/db/postgres";
 import { createRepositories } from "../../../lib/dal/factory";
+import { withRouteTiming } from "../../../lib/timing";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -120,7 +121,7 @@ async function attachTotalTakeCount(packsData) {
   }));
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   // Postgres path for GET (staging/prod Postgres runtime)
   if (req.method === "GET" && getDataBackend() === 'postgres') {
     try {
@@ -548,3 +549,5 @@ export default async function handler(req, res) {
 	  .json({ success: false, error: "Failed to fetch packs." });
   }
 }
+
+export default withRouteTiming('/api/packs', handler);

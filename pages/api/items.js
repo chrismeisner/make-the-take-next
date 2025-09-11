@@ -1,11 +1,12 @@
 import Airtable from 'airtable';
 import { getDataBackend } from "../../lib/runtimeConfig";
 import { query } from "../../lib/db/postgres";
+import { withRouteTiming } from "../../lib/timing";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
@@ -60,3 +61,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Server error fetching items' });
   }
 }
+
+export default withRouteTiming('/api/items', handler);

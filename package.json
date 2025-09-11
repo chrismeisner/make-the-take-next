@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "perf:smoke": "node scripts/perf-smoke.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
