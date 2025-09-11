@@ -49,7 +49,7 @@ export default function MarketplacePage() {
     }
     async function fetchTokenBalance() {
       try {
-        const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
+        const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}?select=tokens`);
         const profileData = await profileRes.json();
         if (profileData?.success && typeof profileData.tokensBalance === 'number') {
           setTokenBalance(profileData.tokensBalance);
@@ -83,7 +83,7 @@ export default function MarketplacePage() {
       setTokenBalance(data.balanceAfter);
     } else {
       // Fallback: refetch profile to recompute balance
-      const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
+      const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}?select=tokens`);
       const profileData = await profileRes.json();
       if (profileData?.success && typeof profileData.tokensBalance === 'number') {
         setTokenBalance(profileData.tokensBalance);

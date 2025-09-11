@@ -59,7 +59,7 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
     let isMounted = true;
     async function fetchTokenBalance() {
       try {
-        const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}`);
+        const profileRes = await fetch(`/api/profile/${encodeURIComponent(session.user.profileID)}?select=tokens`);
         const profileData = await profileRes.json();
         if (!isMounted) return;
         if (profileData?.success && typeof profileData.tokensBalance === 'number') {

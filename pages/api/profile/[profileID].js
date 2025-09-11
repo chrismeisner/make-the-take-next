@@ -21,8 +21,64 @@ export default async function handler(req, res) {
   const { profileID } = req.query;
   const includeExchanges = String(req.query.includeExchanges || '').toLowerCase() === '1' || String(req.query.includeExchanges || '').toLowerCase() === 'true';
   const refreshBypass = String(req.query.refresh || '').toLowerCase() === '1' || String(req.query.refresh || '').toLowerCase() === 'true';
+  const select = String(req.query.select || '').toLowerCase();
 
   try {
+	// Fast path: tokens-only
+	if (select === 'tokens') {
+	  const isPG = getDataBackend() === 'postgres';
+	  if (isPG) {
+		let tokensEarned = 0;
+		let tokensSpent = 0;
+		try {
+		  const { rows } = await query(
+			`SELECT COALESCE(SUM(t.tokens),0) AS earned
+			   FROM takes t
+			   JOIN profiles p ON p.mobile_e164 = t.take_mobile
+			  WHERE p.profile_id = $1 AND t.take_status = 'latest'`,
+			[profileID]
+		  );
+		  tokensEarned = Number(rows?.[0]?.earned) || 0;
+		} catch {}
+		try {
+		  const { rows } = await query(
+			`SELECT COALESCE(SUM(e.exchange_tokens),0) AS spent
+			   FROM exchanges e
+			   JOIN profiles p ON e.profile_id = p.id
+			  WHERE p.profile_id = $1`,
+			[profileID]
+		  );
+		  tokensSpent = Number(rows?.[0]?.spent) || 0;
+		} catch {}
+		const tokensBalance = tokensEarned - tokensSpent;
+		return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensBalance });
+	  }
+	  // Airtable fallback (less efficient but scoped)
+	  let tokensEarned = 0;
+	  let tokensSpent = 0;
+	  try {
+		const found = await base('Profiles')
+		  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
+		  .all();
+		if (!found.length) {
+		  return res.status(404).json({ success: false, error: 'Profile not found' });
+		}
+		const pf = found[0].fields || {};
+		const phone = pf.profileMobile;
+		if (phone) {
+		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
+		  const takes = await base('Takes').select({ filterByFormula, maxRecords: 5000 }).all();
+		  const totalPoints = sumTakePoints(takes);
+		  tokensEarned = Math.floor(totalPoints * 0.2);
+		}
+		const exchFilter = `{profileID}="${profileID}"`;
+		const exchRecs = await base('Exchanges').select({ filterByFormula: exchFilter, maxRecords: 5000 }).all();
+		tokensSpent = exchRecs.reduce((sum, r) => sum + (Number(r.fields?.exchangeTokens) || 0), 0);
+	  } catch {}
+	  const tokensBalance = tokensEarned - tokensSpent;
+	  return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensBalance });
+	}
+
 	// 1) Fetch the profile record (Prefer Postgres when enabled)
 	let profRec = null;
 	let pf = null;
@@ -440,7 +496,6 @@ export default async function handler(req, res) {
 				}
 			  }
 		  }
-		}
 		}
 	  } catch (clErr) {
 		console.error('[profile] Error building creatorLeaderboard =>', clErr);
