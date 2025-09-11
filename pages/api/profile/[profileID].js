@@ -495,6 +495,7 @@ export default async function handler(req, res) {
 				  creatorLeaderboardCache.set(cacheKey, { leaderboard: creatorLeaderboard, updatedAtMs: nowMs });
 				}
 			  }
+			}
 		  }
 		}
 	  } catch (clErr) {
