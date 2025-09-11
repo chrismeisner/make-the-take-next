@@ -836,14 +836,25 @@ export default function GradePropsPage() {
                 )}
               </div>
               <div className="p-3 bg-gray-50 rounded border">
-                <p className="font-medium">Pack Result SMS</p>
+                <p className="font-medium">Packs Affected</p>
                 {resultLog.packsProcessed.length === 0 ? (
                   <p className="text-sm text-gray-600 mt-2">No packs graded by this save.</p>
                 ) : (
                   <ul className="list-disc list-inside text-sm mt-2">
                     {resultLog.packsProcessed.map((pk) => (
-                      <li key={pk.airtableId}>
-                        SMS results for Pack {pk.packTitle || pk.packURL || pk.airtableId}: sent to {pk.smsSentCount} user{pk.smsSentCount === 1 ? '' : 's'}
+                      <li key={pk.airtableId} className="mb-1">
+                        <span className="font-semibold">{pk.packTitle || pk.packURL || pk.airtableId}</span>
+                        {typeof pk.ungradedRemaining === 'number' && typeof pk.totalProps === 'number' && (
+                          <span className="ml-2 text-gray-700">({pk.totalProps - pk.ungradedRemaining}/{pk.totalProps} graded)</span>
+                        )}
+                        {pk.wasGraded && <span className="ml-2 px-2 py-0.5 rounded bg-green-100 text-green-800">Pack marked graded</span>}
+                        {pk.alreadyGraded && !pk.wasGraded && <span className="ml-2 px-2 py-0.5 rounded bg-gray-100 text-gray-800">Already graded</span>}
+                        {typeof pk.ungradedRemaining === 'number' && pk.ungradedRemaining > 0 && (
+                          <span className="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">{pk.ungradedRemaining} remaining</span>
+                        )}
+                        {typeof pk.smsSentCount === 'number' && (
+                          <span className="ml-2 text-gray-700">SMS: {pk.smsSentCount}</span>
+                        )}
                       </li>
                     ))}
                   </ul>

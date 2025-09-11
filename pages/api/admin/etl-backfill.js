@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID);
 
-  const report = { teams: { upserted: 0 }, events: { upserted: 0 }, profiles: { upserted: 0, linkedTeams: 0 }, packs: { upserted: 0, linkedEvents: 0 }, props: { upserted: 0, skippedNoPackLink: 0, linkedEvents: 0 }, items: { upserted: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
+  const report = { teams: { upserted: 0 }, events: { upserted: 0 }, profiles: { upserted: 0, linkedTeams: 0 }, packs: { upserted: 0, linkedEvents: 0 }, props: { upserted: 0, skippedNoPackLink: 0, linkedEvents: 0 }, items: { upserted: 0, updated: 0 }, prizes: { upserted: 0 }, contests: { upserted: 0, links: 0 } };
 
   try {
     // 0) Upsert Teams first (for downstream references)
@@ -206,22 +206,32 @@ export default async function handler(req, res) {
       console.error('[etl-backfill] contests import error =>', contestErr);
     }
 
-    // 1.5) Upsert Items
+    // 1.5) Upsert Items (with marketplace fields)
     const itemRecords = await base('Items').select({ pageSize: 100, view: 'Grid view' }).all();
     for (const rec of itemRecords) {
       const f = rec.fields || {};
       const itemID = f.itemID || rec.id;
       const title = f.itemTitle || f.itemName || '';
       const imageUrl = Array.isArray(f.itemImage) && f.itemImage[0]?.url ? f.itemImage[0].url : (f.itemImageURL || null);
+      const tokens = Number(f.itemTokens) || 0;
+      const brand = f.itemBrand || null;
+      const description = f.itemDescription || null;
+      const status = f.itemStatus || null;
+      const featured = Boolean(f.featured);
       const upsertSql = `
-        INSERT INTO items (item_id, title, image_url)
-        VALUES ($1,$2,$3)
+        INSERT INTO items (item_id, title, image_url, tokens, brand, description, status, featured)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (item_id) DO UPDATE SET
           title = EXCLUDED.title,
-          image_url = EXCLUDED.image_url
+          image_url = EXCLUDED.image_url,
+          tokens = EXCLUDED.tokens,
+          brand = EXCLUDED.brand,
+          description = EXCLUDED.description,
+          status = EXCLUDED.status,
+          featured = EXCLUDED.featured
         RETURNING id`;
-      const { rows } = await query(upsertSql, [itemID, title, imageUrl]);
-      if (rows[0]?.id) report.items.upserted += 1;
+      const { rows } = await query(upsertSql, [itemID, title, imageUrl, tokens, brand, description, status, featured]);
+      if (rows[0]?.id) report.items.upserted += 1; else report.items.updated += 1;
     }
 
     // 2) Upsert Props (link to pack_id when available via Airtable pack link)

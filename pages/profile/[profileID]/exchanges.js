@@ -14,7 +14,7 @@ export default function ExchangesPage() {
     if (!profileID) return;
     async function fetchExchanges() {
       try {
-        const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
+        const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}?includeExchanges=1`);
         const data = await res.json();
         if (data.success) {
           setUserExchanges(data.userExchanges || []);

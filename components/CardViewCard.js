@@ -207,7 +207,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
             label: prop.sideALabel,
             previewValue:
               prop.propValueModel === "vegas" && prop.propSideAValue != null
-                ? `+${Math.round(Number(prop.propSideAValue))}🦴`
+                ? `${(1 + Number(prop.propSideAValue) / 250).toFixed(2)}x`
                 : undefined,
             percentage: sideAPct,
           },
@@ -216,7 +216,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
             label: prop.sideBLabel,
             previewValue:
               prop.propValueModel === "vegas" && prop.propSideBValue != null
-                ? `+${Math.round(Number(prop.propSideBValue))}🦴`
+                ? `${(1 + Number(prop.propSideBValue) / 250).toFixed(2)}x`
                 : undefined,
             percentage: sideBPct,
           },

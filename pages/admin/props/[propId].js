@@ -190,6 +190,11 @@ export default function EditPropPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [previewData, setPreviewData] = useState(null);
+  // Auto grade (dry-run) preview state
+  const [gradePreviewLoading, setGradePreviewLoading] = useState(false);
+  const [gradePreviewError, setGradePreviewError] = useState('');
+  const [gradePreview, setGradePreview] = useState(null);
+  const [gradePreviewRequest, setGradePreviewRequest] = useState(null);
   const [playersById, setPlayersById] = useState({});
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playersError, setPlayersError] = useState('');
@@ -609,6 +614,56 @@ export default function EditPropPage() {
       setFormulaParamsText(JSON.stringify(obj, null, 2));
     } catch {
       setFormulaParamsText(JSON.stringify({ [key]: value }, null, 2));
+    }
+  };
+
+  // Build current formula params object for preview/dry-run
+  const buildCurrentFormulaParams = () => {
+    let parsed = {};
+    try { parsed = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; } catch {}
+    // Inject fallbacks for espnGameID/gameDate
+    if (!parsed.espnGameID && event?.espnGameID) parsed.espnGameID = String(event.espnGameID);
+    if (!parsed.gameDate && event?.eventTime) {
+      try {
+        const d = new Date(event.eventTime);
+        const yr = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const da = String(d.getDate()).padStart(2, '0');
+        parsed.gameDate = `${yr}${mo}${da}`;
+      } catch {}
+    }
+    // Prefer dataSource from params; else infer from event league
+    if (!parsed.dataSource) {
+      const lg = String(event?.eventLeague || dataSource || '').toLowerCase();
+      parsed.dataSource = (lg === 'nfl') ? 'nfl' : 'major-mlb';
+    }
+    return parsed;
+  };
+
+  // Trigger a dry-run auto-grade preview
+  const handleGradePreview = async () => {
+    try {
+      setGradePreviewLoading(true);
+      setGradePreviewError('');
+      setGradePreview(null);
+      const airtableId = propId;
+      const overrideFormulaParams = buildCurrentFormulaParams();
+      const request = { airtableId, dryRun: true, overrideFormulaParams };
+      setGradePreviewRequest(request);
+      const res = await fetch('/api/admin/gradePropByFormula', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGradePreviewError(data?.error || 'Preview failed');
+      }
+      setGradePreview(data);
+    } catch (e) {
+      setGradePreviewError(e?.message || 'Preview failed');
+    } finally {
+      setGradePreviewLoading(false);
     }
   };
 
@@ -1893,6 +1948,45 @@ export default function EditPropPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Auto grade preview data (dry-run) */}
+        <div className="mb-4 p-3 bg-white rounded border">
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold">Auto grade preview data</div>
+            <button
+              type="button"
+              onClick={handleGradePreview}
+              className="px-3 py-1.5 rounded bg-indigo-600 text-white disabled:opacity-60"
+              disabled={gradePreviewLoading}
+            >
+              {gradePreviewLoading ? 'Previewing…' : 'Preview'}
+            </button>
+          </div>
+          <p className="text-sm text-gray-600 mt-1">Runs the grader in dry-run to show potential values and grading result before saving.</p>
+          {!!gradePreviewError && (
+            <div className="mt-2 text-sm text-red-600">{gradePreviewError}</div>
+          )}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <div className="font-medium">Request</div>
+              <pre className="mt-1 text-xs bg-gray-50 p-2 rounded overflow-auto">
+                {(() => {
+                  try { return JSON.stringify(gradePreviewRequest || { airtableId: propId, dryRun: true, overrideFormulaParams: buildCurrentFormulaParams() }, null, 2); } catch { return ''; }
+                })()}
+              </pre>
+            </div>
+            <div>
+              <div className="font-medium">Response</div>
+              {gradePreviewLoading ? (
+                <div className="mt-1 text-sm text-gray-600">Loading…</div>
+              ) : (
+                <pre className="mt-1 text-xs bg-gray-50 p-2 rounded overflow-auto">
+                  {(() => { try { return JSON.stringify(gradePreview || {}, null, 2); } catch { return ''; } })()}
+                </pre>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useSession } from 'next-auth/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useModal } from '../../../contexts/ModalContext';
@@ -46,18 +46,47 @@ export default function AdminCreatePackPage() {
         const res = await fetch('/api/packs');
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Failed to load packs');
-        const statuses = Array.from(new Set(data.packs.map(p => p.packStatus)));
+        const normalizeStatus = (s) => {
+          const v = String(s || '').trim().toLowerCase();
+          if (v === 'coming soon' || v === 'coming-soon' || v === 'coming up' || v === 'coming-up' || v === 'upcoming') return 'coming-soon';
+          return v;
+        };
+        const statuses = Array.from(new Set((data.packs || []).map(p => normalizeStatus(p.packStatus)))).filter(Boolean);
         if (!statuses.includes('active')) statuses.unshift('active');
         if (!statuses.includes('draft')) statuses.unshift('draft');
-        setStatusOptions(statuses.sort());
+        if (!statuses.includes('coming-soon')) statuses.push('coming-soon');
+        setStatusOptions(Array.from(new Set(statuses)).sort());
       } catch (e) {
         console.error(e);
       }
     })();
   }, []);
 
-  // Removing URL-based prefill via eventId for security and UX consistency
-  // (intentionally no-op; event linking happens only via modal selection now)
+  // Prefill linked events when arriving with ?eventId or ?eventIds in the URL
+  const eventPrefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!router?.isReady) return;
+    if (eventPrefillAppliedRef.current) return;
+    const q = router.query || {};
+    const ids = (() => {
+      try {
+        let list = [];
+        if (Array.isArray(q.eventIds)) list = q.eventIds;
+        else if (typeof q.eventIds === 'string') list = q.eventIds.split(',').map(s => s.trim()).filter(Boolean);
+        if (typeof q.eventId === 'string' && q.eventId.trim()) list = [q.eventId.trim(), ...list];
+        return Array.from(new Set(list.filter(Boolean)));
+      } catch { return []; }
+    })();
+    if (!ids.length) return;
+    eventPrefillAppliedRef.current = true;
+    setPackEventIds(prev => (prev && prev.length ? prev : ids));
+    setPackEventId(prev => (prev ? prev : ids[0]));
+    setEventInfoById(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { if (!next[id]) next[id] = { eventTitle: id, eventTime: null }; });
+      return next;
+    });
+  }, [router.isReady]);
 
   useEffect(() => {
     const loadEventTime = async () => {
@@ -75,7 +104,12 @@ export default function AdminCreatePackPage() {
 
   useEffect(() => {
     const ids = Array.from(new Set([...(packEventIds || []), packEventId].filter(Boolean)));
-    const missing = ids.filter((id) => !eventInfoById[id]);
+    const missing = ids.filter((id) => {
+      const info = eventInfoById[id];
+      if (!info) return true;
+      // If we only have placeholder info (no time/league), fetch full details
+      return !info.eventTime || !info.eventLeague;
+    });
     if (missing.length === 0) return;
     let cancelled = false;
     (async () => {
@@ -748,11 +782,14 @@ export default function AdminCreatePackPage() {
             onChange={(e) => setPackStatus(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           >
-            {statusOptions.map(status => (
-              <option key={status} value={status}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-              </option>
-            ))}
+            {statusOptions.map(status => {
+              const label = status === 'coming-soon'
+                ? 'Coming soon'
+                : (status.charAt(0).toUpperCase() + status.slice(1));
+              return (
+                <option key={status} value={status}>{label}</option>
+              );
+            })}
           </select>
         </div>
         <div className="flex space-x-2">

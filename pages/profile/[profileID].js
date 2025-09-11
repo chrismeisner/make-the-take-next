@@ -14,16 +14,11 @@ export default function ProfilePage() {
   const [userTakes, setUserTakes] = useState([]);
   const [userStats, setUserStats] = useState({ points: 0, wins: 0, losses: 0, pending: 0, pushes: 0 });
   const [userPacks, setUserPacks] = useState([]);
-  const [userExchanges, setUserExchanges] = useState([]);
-  const [achievementsValueTotal, setAchievementsValueTotal] = useState(0);
-  const [awardsCount, setAwardsCount] = useState(0);
-  const [prizes, setPrizes] = useState([]);
-  const [tokensEarned, setTokensEarned] = useState(0);
-  const [tokensSpent, setTokensSpent] = useState(0);
-  const [tokensBalance, setTokensBalance] = useState(0);
   const [creatorPacks, setCreatorPacks] = useState([]);
   const [creatorLeaderboard, setCreatorLeaderboard] = useState([]);
   const [creatorLeaderboardUpdatedAt, setCreatorLeaderboardUpdatedAt] = useState(null);
+  const [allTimeRank, setAllTimeRank] = useState(null);
+  const [tokensEarned, setTokensEarned] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -32,10 +27,15 @@ export default function ProfilePage() {
 	if (!profileID) return;
 	async function fetchProfile() {
 	  try {
-		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}?includeExchanges=1`);
+		const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}`);
 		const data = await res.json();
 		if (data.success) {
 		  setProfile(data.profile);
+          if (typeof data.tokensEarned === 'number') {
+            setTokensEarned(Math.round(data.tokensEarned));
+          } else {
+            setTokensEarned(0);
+          }
 		  if (data.userTakes) {
 			// Takes are already filtered server-side; sort and set
 			const sortedTakes = data.userTakes.sort(
@@ -53,25 +53,6 @@ export default function ProfilePage() {
 			setUserStats({ points: Math.round(data.totalPoints || 0), wins, losses, pending, pushes });
 		  }
           setUserPacks(data.userPacks || []);
-          setUserExchanges(data.userExchanges || []);
-          setAwardsCount(data.awardsCount || 0);
-          setAchievementsValueTotal(data.achievementsValueTotal || 0);
-          // Tokens summary from API
-          setTokensEarned(Number.isFinite(data.tokensEarned) ? data.tokensEarned : 0);
-          setTokensSpent(Number.isFinite(data.tokensSpent) ? data.tokensSpent : 0);
-          setTokensBalance(Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0);
-          // Cache tokensBalance for header consumers
-          try {
-            const key = `mt_tokensBalance:${data?.profile?.profileID || profileID}`;
-            if (typeof window !== 'undefined' && key) {
-              localStorage.setItem(key, String(Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0));
-              if (typeof window.CustomEvent === 'function') {
-                window.dispatchEvent(new CustomEvent('mt_tokensBalanceUpdated', {
-                  detail: { profileID: data?.profile?.profileID || profileID, tokensBalance: Number.isFinite(data.tokensBalance) ? data.tokensBalance : 0 }
-                }));
-              }
-            }
-          } catch {}
           setCreatorPacks(Array.isArray(data.creatorPacks) ? data.creatorPacks : []);
           setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
           setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
@@ -88,36 +69,35 @@ export default function ProfilePage() {
 	fetchProfile();
   }, [profileID]);
 
-  // Fetch available prizes
+  // Fetch all-time rank from global leaderboard
   useEffect(() => {
-	async function fetchPrizes() {
-	  try {
-		const res = await fetch("/api/prizes");
-		const data = await res.json();
-		if (data.success) {
-		  setPrizes(data.prizes);
-		} else {
-		  console.error("Failed to fetch prizes:", data.error);
-		}
-	  } catch (err) {
-		console.error("Error fetching prizes:", err);
-	  }
-	}
-	// Fetch prizes regardless of session (or conditionally, if needed)
-	fetchPrizes();
-  }, []);
+    if (!profile?.profileID) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/leaderboard');
+        const data = await res.json();
+        if (!aborted && data?.success && Array.isArray(data.leaderboard)) {
+          const idx = data.leaderboard.findIndex((row) => (
+            row?.profileID === profile.profileID || (profile.profileMobile && row?.phone === profile.profileMobile)
+          ));
+          setAllTimeRank(idx >= 0 ? idx + 1 : null);
+        }
+      } catch (_) {
+        if (!aborted) setAllTimeRank(null);
+      }
+    })();
+    return () => { aborted = true; };
+  }, [profile?.profileID, profile?.profileMobile]);
 
   // calculateUserStats is no longer needed; stats computed inline after fetch
-
-  // Diamonds now map to achievementsValueTotal
-  useEffect(() => {
-    console.log('[ProfilePage] Achievements Value Total (Diamonds):', achievementsValueTotal);
-  }, [achievementsValueTotal]);
   if (loading) return <div className="p-4">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
   if (!profile) return <div className="p-4">Profile not found.</div>;
   const isOwnProfile = session?.user && session.user.profileID === profile.profileID;
   const packMap = userPacks.reduce((map, pack) => { map[pack.packID] = pack; return map; }, {});
+  const totalDecisions = (userStats?.wins || 0) + (userStats?.losses || 0);
+  const winningPer = totalDecisions > 0 ? ((userStats.wins / totalDecisions) * 100) : 0;
 
   return (
     <PageContainer>
@@ -185,31 +165,28 @@ export default function ProfilePage() {
 
 	  {/* Quick Stats */}
 	  <h3 className="text-xl font-bold mt-6 mb-2">Quick Stats</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
 		<div className="border rounded p-4 text-center">
 		  <span className="text-2xl font-bold">{userStats.points}</span>
-		  <div className="text-sm text-gray-600 mt-1">🦴 Bones</div>
-          <div className="mt-1 text-xs text-gray-600">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</div>
+		  <div className="text-sm text-gray-600 mt-1">Points</div>
+		</div>
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">{`${userStats.wins}-${userStats.losses}-${userStats.pushes}`}</span>
+		  <div className="text-sm text-gray-600 mt-1">Record (W-L-P)</div>
+		</div>
+		<div className="border rounded p-4 text-center">
+		  <span className="text-2xl font-bold">{allTimeRank ? `#${allTimeRank}` : '—'}</span>
+		  <div className="text-sm text-gray-600 mt-1">All-time Rank</div>
 		</div>
         <div className="border rounded p-4 text-center">
-          <span className="text-2xl font-bold">{tokensBalance}</span>
-          <div className="text-sm text-gray-600 mt-1">💎 Diamonds</div>
-          <div className="mt-2 flex items-center justify-center gap-3">
-            <Link href={`/profile/${encodeURIComponent(profileID)}/tokens`} className="text-xs text-blue-600 underline">
-              View History
-            </Link>
-          </div>
+          <span className="text-2xl font-bold">{winningPer.toFixed(1)}%</span>
+          <div className="text-sm text-gray-600 mt-1">Winning PER</div>
         </div>
         <div className="border rounded p-4 text-center">
-          <span className="text-2xl font-bold">{awardsCount}</span>
-          <div className="text-sm text-gray-600 mt-1">🏆 Awards</div>
-          <div className="mt-2">
-            <Link href={`/profile/${encodeURIComponent(profileID)}/awards`} className="text-xs text-blue-600 underline">
-              View Awards
-            </Link>
-          </div>
+          <span className="text-2xl font-bold">{tokensEarned}</span>
+          <div className="text-sm text-gray-600 mt-1">Tokens</div>
         </div>
-	  </div>
+      </div>
 
 	  {/* Creator Packs */}
 	  {Array.isArray(creatorPacks) && creatorPacks.length > 0 && (
@@ -304,7 +281,6 @@ export default function ProfilePage() {
               <tr>
                 <th className="px-4 py-2 text-left">Title</th>
                 <th className="px-4 py-2 text-left">Event</th>
-                <th className="px-4 py-2 text-left">Prop Result</th>
                 <th className="px-4 py-2 text-left">Pack</th>
                 <th className="px-4 py-2 text-left">Points</th>
                 <th className="px-4 py-2 text-left">Result</th>
@@ -329,11 +305,28 @@ export default function ProfilePage() {
                       take.propEventMatchup || 'N/A'
                     )}
                   </td>
-                  <td className="border px-4 py-2">{take.propResult || 'N/A'}</td>
                   <td className="border px-4 py-2">
-                    {take.packIDs && take.packIDs.length > 0
-                      ? take.packIDs.map(pid => packMap[pid]?.packTitle || pid).join(', ')
-                      : 'N/A'}
+                    {take.packIDs && take.packIDs.length > 0 ? (
+                      <span>
+                        {take.packIDs.map((pid, idx) => {
+                          const pk = packMap[pid];
+                          const label = pk ? (pk.packTitle || pk.packURL || pid) : pid;
+                          const href = pk && (pk.packURL || pk.packID)
+                            ? `/packs/${encodeURIComponent(pk.packURL || pk.packID)}`
+                            : null;
+                          return (
+                            <span key={`${pid}-${idx}`}>
+                              {idx > 0 ? ', ' : null}
+                              {href ? (
+                                <Link href={href} className="text-blue-600 underline">{label}</Link>
+                              ) : (
+                                label
+                              )}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : 'N/A'}
                   </td>
                   <td className="border px-4 py-2">{Math.round(take.takePTS)}</td>
                   <td className="border px-4 py-2">

@@ -218,6 +218,8 @@ CREATE INDEX IF NOT EXISTS idx_takes_profile ON takes (profile_id);
 ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_result TEXT;
 -- Store points earned per take (mirrors Airtable takePTS)
 ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_pts NUMERIC;
+-- Store tokens earned per take (derived as 20% of take_pts)
+ALTER TABLE takes ADD COLUMN IF NOT EXISTS tokens NUMERIC;
 
 -- Contests
 CREATE TABLE IF NOT EXISTS contests (
@@ -240,18 +242,7 @@ CREATE TABLE IF NOT EXISTS contests_packs (
   PRIMARY KEY (contest_id, pack_id)
 );
 
--- Achievements
-CREATE TABLE IF NOT EXISTS achievements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  achievement_key TEXT,
-  title TEXT,
-  description TEXT,
-  value INT,
-  profile_id UUID REFERENCES profiles(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_achievements_profile ON achievements (profile_id);
-CREATE INDEX IF NOT EXISTS idx_achievements_key ON achievements (achievement_key);
+
 
 -- Items
 CREATE TABLE IF NOT EXISTS items (
@@ -261,6 +252,15 @@ CREATE TABLE IF NOT EXISTS items (
   image_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Marketplace fields for items
+ALTER TABLE items ADD COLUMN IF NOT EXISTS tokens INT NOT NULL DEFAULT 0;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS brand TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_items_status ON items (status);
+CREATE INDEX IF NOT EXISTS idx_items_featured ON items (featured);
 
 -- Exchanges
 CREATE TABLE IF NOT EXISTS exchanges (
@@ -272,6 +272,9 @@ CREATE TABLE IF NOT EXISTS exchanges (
 );
 CREATE INDEX IF NOT EXISTS idx_exchanges_profile ON exchanges (profile_id);
 CREATE INDEX IF NOT EXISTS idx_exchanges_status ON exchanges (status);
+
+-- Tokens spent per exchange (for marketplace balance)
+ALTER TABLE exchanges ADD COLUMN IF NOT EXISTS exchange_tokens INT;
 
 -- Outbox
 CREATE TABLE IF NOT EXISTS outbox (

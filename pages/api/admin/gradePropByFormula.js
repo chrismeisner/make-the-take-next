@@ -224,15 +224,40 @@ export default async function handler(req, res) {
                 , take_pts = CASE
                   WHEN $1 = 'gradedA' THEN CASE WHEN t.prop_side = 'A' THEN COALESCE(p.prop_side_a_value, 1) ELSE 0 END
                   WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
-                  WHEN $1 = 'push' THEN 0
+                  WHEN $1 = 'push' THEN 100
                   ELSE 0
                 END
+                , tokens = (CASE
+                  WHEN $1 = 'gradedA' THEN CASE WHEN t.prop_side = 'A' THEN COALESCE(p.prop_side_a_value, 1) ELSE 0 END
+                  WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
+                  WHEN $1 = 'push' THEN 100
+                  ELSE 0
+                END) * 0.2
              FROM props p
             WHERE t.prop_id = p.id
               AND (p.id::text = $2 OR p.prop_id = $2)
               AND t.take_status = 'latest'`,
             [newStatus, airtableId]
           );
+          // 3) If this prop belongs to a pack, check if all props in the pack are graded; if so, mark pack as graded
+          try {
+            if (r && r.pack_id) {
+              const { rows: counts } = await query(
+                `SELECT
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (WHERE LOWER(COALESCE(prop_status,'')) NOT IN ('gradeda','gradedb','push'))::int AS ungraded
+                 FROM props
+                WHERE pack_id = $1`,
+                [r.pack_id]
+              );
+              const ungraded = counts && counts[0] ? Number(counts[0].ungraded) : 0;
+              if (Number.isFinite(ungraded) && ungraded === 0) {
+                await query('UPDATE packs SET pack_status = $1 WHERE id = $2', ['graded', r.pack_id]);
+              }
+            }
+          } catch (e) {
+            try { console.error('[gradePropByFormula PG] pack graded check failed', e?.message || e); } catch {}
+          }
         }
         const elapsedMs = Date.now() - startedAt;
         return res.status(200).json({ success: true, propStatus: newStatus, propResult, meta: { elapsedMs, dryRun } });

@@ -349,6 +349,11 @@ export default function AdminPage({ superAdminSecret }) {
                 API Tester
               </button>
             </Link>
+            <Link href="/admin/marketplace">
+              <button className="px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">
+                Marketplace
+              </button>
+            </Link>
             <Link href="/admin/location-test">
               <button className="px-3 py-2 bg-gray-900 text-white rounded hover:bg-black">
                 Location Approximator

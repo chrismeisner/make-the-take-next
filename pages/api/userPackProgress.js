@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     if (isPG) {
       // Resolve pack by external text pack_id or by id fallback
       const { rows: packsRows } = await query(
-        `SELECT id FROM packs WHERE pack_id = $1 OR id = $1 LIMIT 1`,
+        `SELECT id FROM packs WHERE pack_id = $1 OR id::text = $1 LIMIT 1`,
         [packID]
       );
       if (packsRows.length === 0) {

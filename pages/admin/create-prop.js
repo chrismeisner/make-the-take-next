@@ -409,6 +409,10 @@ export default function CreatePropUnifiedPage() {
         if (!gid) return;
         setPreviewLoading(true);
         const ds = dataSource || 'major-mlb';
+        // Track the exact endpoints used so developers can verify sources
+        let boxscoreUrl = null;
+        let statusUrl = null;
+        let espnScoreboardUrl = null;
         // For MLB, try to fetch scoreboard readout for the event date
         let scoreboard = null;
         if (ds === 'major-mlb') {
@@ -426,7 +430,8 @@ export default function CreatePropUnifiedPage() {
               sp.set('source', 'major-mlb');
               sp.set('gameDate', yyyymmdd);
               sp.set('gameID', gid);
-              const resp = await fetch(`/api/admin/api-tester/status?${sp.toString()}`);
+              statusUrl = `/api/admin/api-tester/status?${sp.toString()}`;
+              const resp = await fetch(statusUrl);
               const json = await resp.json();
               if (resp.ok && json?.games && json.games.length > 0) {
                 scoreboard = json.games[0];
@@ -445,7 +450,8 @@ export default function CreatePropUnifiedPage() {
             const u = new URL('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
             u.searchParams.set('year', String(yr));
             if (wk) u.searchParams.set('week', String(wk));
-            const r = await fetch(u.toString());
+            espnScoreboardUrl = u.toString();
+            const r = await fetch(espnScoreboardUrl);
             const j = await r.json();
             espnWeekly = j || null;
           }
@@ -455,7 +461,8 @@ export default function CreatePropUnifiedPage() {
         let normalized = { playersById: {}, statKeys: [] };
         let rawTeams = [];
         try {
-          const bs = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(gid)}`);
+          boxscoreUrl = `/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(gid)}`;
+          const bs = await fetch(boxscoreUrl);
           const bj = await bs.json();
           if (bs.ok && bj?.normalized) {
             normalized = bj.normalized;
@@ -466,7 +473,7 @@ export default function CreatePropUnifiedPage() {
             }
           } catch {}
         } catch {}
-        setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly });
+        setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly, endpoints: { boxscoreUrl, statusUrl, espnScoreboardUrl } });
       } catch (e) {
         setPreviewError(e?.message || 'Failed to load preview');
       } finally {
@@ -1757,6 +1764,21 @@ export default function CreatePropUnifiedPage() {
               {event?.espnGameID && !previewLoading && !previewError && previewData && (
                 <div className="text-xs text-gray-800 space-y-2">
                   <div>Source: <span className="font-mono">{previewData.source}</span></div>
+                  {/* API Endpoints used for this preview */}
+                  {(previewData?.endpoints?.boxscoreUrl || previewData?.endpoints?.statusUrl || previewData?.endpoints?.espnScoreboardUrl) && (
+                    <div className="space-y-1">
+                      <div className="font-medium">Endpoints used (copy to verify)</div>
+                      {previewData?.endpoints?.boxscoreUrl && (
+                        <div className="break-all"><span className="text-gray-600">Boxscore:</span> <span className="font-mono">{previewData.endpoints.boxscoreUrl}</span></div>
+                      )}
+                      {previewData?.endpoints?.statusUrl && (
+                        <div className="break-all"><span className="text-gray-600">Status:</span> <span className="font-mono">{previewData.endpoints.statusUrl}</span></div>
+                      )}
+                      {previewData?.endpoints?.espnScoreboardUrl && (
+                        <div className="break-all"><span className="text-gray-600">ESPN Scoreboard:</span> <span className="font-mono">{previewData.endpoints.espnScoreboardUrl}</span></div>
+                      )}
+                    </div>
+                  )}
                   {previewData.scoreboard && (
                     <div>
                       <div className="font-medium">Scoreboard</div>

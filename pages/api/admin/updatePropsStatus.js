@@ -2,7 +2,6 @@ import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
 import { sendSMS } from "../../../lib/twilioService";
 import { aggregateTakeStats } from "../../../lib/leaderboard";
-import { awardThresholdsForUpdatedProps } from "../../../lib/achievements";
 import { getDataBackend } from "../../../lib/runtimeConfig";
 import { query } from "../../../lib/db/postgres";
 
@@ -59,35 +58,119 @@ export default async function handler(req, res) {
         vals.push(b.id);
         // eslint-disable-next-line no-await-in-loop
         await query(`UPDATE props SET ${sets}, updated_at = NOW() WHERE id = $${keys.length + 1}`, vals);
+
+        // If this update graded the prop, cascade update takes: take_result, take_pts, tokens
+        const newStatusLc = String(b.fields.prop_status || '').toLowerCase();
+        if (['gradeda','gradedb','push'].includes(newStatusLc)) {
+          // eslint-disable-next-line no-await-in-loop
+          await query(
+            `UPDATE takes t
+               SET take_result = CASE
+                 WHEN $1 IN ('gradedA','gradedB') THEN CASE
+                   WHEN $1 = 'gradedA' AND t.prop_side = 'A' THEN 'won'
+                   WHEN $1 = 'gradedB' AND t.prop_side = 'B' THEN 'won'
+                   ELSE 'lost'
+                 END
+                 WHEN $1 = 'push' THEN 'push'
+                 ELSE 'pending'
+               END
+                , take_pts = CASE
+                  WHEN $1 = 'gradedA' THEN CASE WHEN t.prop_side = 'A' THEN COALESCE(p.prop_side_a_value, 1) ELSE 0 END
+                  WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
+                  WHEN $1 = 'push' THEN 100
+                  ELSE 0
+                END
+                , tokens = (CASE
+                  WHEN $1 = 'gradedA' THEN CASE WHEN t.prop_side = 'A' THEN COALESCE(p.prop_side_a_value, 1) ELSE 0 END
+                  WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
+                  WHEN $1 = 'push' THEN 100
+                  ELSE 0
+                END) * 0.2
+             FROM props p
+            WHERE t.prop_id = p.id
+              AND p.id = $2
+              AND t.take_status = 'latest'`,
+            [newStatusLc === 'gradeda' ? 'gradedA' : newStatusLc === 'gradedb' ? 'gradedB' : 'push', b.id]
+          );
+        }
       }
 
-      // If packURL provided, locate pack and check if all props graded/pushed to set pack graded
+      // Identify packs touched by these prop updates and compute remaining/ungraded counts.
       const detailsPacks = [];
-      if (packURL) {
-        const { rows: packRows } = await query('SELECT id, pack_url, title, pack_status FROM packs WHERE pack_url = $1 LIMIT 1', [packURL]);
-        if (packRows.length) {
-          const pk = packRows[0];
-          const { rows: propRows } = await query('SELECT prop_status FROM props WHERE pack_id = $1', [pk.id]);
-          const allGraded = propRows.length > 0 && propRows.every(r => ['gradedA','gradedB','push'].includes(String(r.prop_status || '').toLowerCase()));
-          if (allGraded && String(pk.pack_status || '').toLowerCase() !== 'graded') {
-            await query('UPDATE packs SET pack_status = $1 WHERE id = $2', ['graded', pk.id]);
+      try {
+        // Find pack memberships for updated props
+        const { rows: packLinks } = await query(
+          'SELECT id AS prop_id, pack_id FROM props WHERE id = ANY($1::uuid[])',
+          [updatedPropRecordIds]
+        );
+        const packIdSet = new Set((packLinks || []).map(r => r.pack_id).filter(Boolean));
+        for (const packId of packIdSet) {
+          // Load pack basic info
+          const { rows: pr } = await query('SELECT id, pack_url, title, pack_status FROM packs WHERE id = $1 LIMIT 1', [packId]);
+          if (!pr || pr.length === 0) continue;
+          const pk = pr[0];
+          // Count total and ungraded props in pack
+          const { rows: counts } = await query(
+            `SELECT
+               COUNT(*)::int AS total,
+               COUNT(*) FILTER (WHERE LOWER(COALESCE(prop_status,'')) NOT IN ('gradeda','gradedb','push'))::int AS ungraded
+             FROM props WHERE pack_id = $1`,
+            [packId]
+          );
+          const total = counts && counts[0] ? Number(counts[0].total) : 0;
+          const ungraded = counts && counts[0] ? Number(counts[0].ungraded) : 0;
+          const prevStatus = String(pk.pack_status || '').toLowerCase();
+          let wasGradedNow = false;
+          if (total > 0 && ungraded === 0 && prevStatus !== 'graded') {
+            await query('UPDATE packs SET pack_status = $1 WHERE id = $2', ['graded', packId]);
+            wasGradedNow = true;
           }
-          detailsPacks.push({ airtableId: pk.id, packURL: pk.pack_url, packTitle: pk.title, wasGraded: allGraded, alreadyGraded: String(pk.pack_status || '').toLowerCase() === 'graded', smsSentCount: 0, smsRecipients: [], containsUpdatedPropRecordIds: updatedPropRecordIds });
+          detailsPacks.push({
+            airtableId: pk.id,
+            packURL: pk.pack_url,
+            packTitle: pk.title,
+            wasGraded: wasGradedNow,
+            alreadyGraded: !wasGradedNow && prevStatus === 'graded',
+            smsSentCount: 0,
+            smsRecipients: [],
+            containsUpdatedPropRecordIds: updatedPropRecordIds,
+            ungradedRemaining: ungraded,
+            totalProps: total,
+          });
         }
+      } catch (e) {
+        console.error('[admin/updatePropsStatus PG] pack rollup failed', e?.message || e);
       }
 
       // Response details mirroring Airtable path shape
       details.updatedProps = updates.map(u => ({ airtableId: u.airtableId, propID: u.propID, propStatus: u.propStatus, propResult: u.propResult }));
       details.packsProcessed = detailsPacks;
-      details.propToPacks = [];
-
-      // Achievements placeholder (still Airtable-centric)
+      // Build prop -> pack mapping for response
       try {
-        const achievementResults = await awardThresholdsForUpdatedProps(null, updatedPropFieldIds);
-        details.achievementsCreated = (achievementResults || []).filter((r) => Array.isArray(r.achievementKeys) && r.achievementKeys.length > 0);
-      } catch (achErr) {
-        details.achievementsError = achErr.message;
+        const { rows: mapRows } = await query(
+          `SELECT p.id AS prop_id, p.prop_id AS prop_text_id, pk.id AS pack_id, pk.pack_url, pk.title
+             FROM props p
+             JOIN packs pk ON pk.id = p.pack_id
+            WHERE p.id = ANY($1::uuid[])`,
+          [updatedPropRecordIds]
+        );
+        const byProp = new Map();
+        for (const r of mapRows || []) {
+          const key = r.prop_id;
+          if (!byProp.has(key)) byProp.set(key, []);
+          byProp.get(key).push({ airtableId: r.pack_id, packURL: r.pack_url || '', packTitle: r.title || '' });
+        }
+        const propMeta = new Map(details.updatedProps.map(p => [p.airtableId, p]));
+        details.propToPacks = Array.from(byProp.entries()).map(([propUUID, packs]) => {
+          const meta = propMeta.get(propUUID) || {};
+          return { airtableId: propUUID, propID: meta.propID || propUUID, packs };
+        });
+      } catch (e) {
+        console.error('[admin/updatePropsStatus PG] prop->pack mapping failed', e?.message || e);
+        details.propToPacks = [];
       }
+
+      // Achievements removed
 
       return res.status(200).json({ success: true, smsCount: 0, details });
     }
@@ -296,16 +379,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Achievement checks should always run for the updated business propIDs
-    try {
-      const achievementResults = await awardThresholdsForUpdatedProps(base, updatedPropFieldIds);
-      details.achievementsCreated = (achievementResults || []).filter(
-        (r) => Array.isArray(r.achievementKeys) && r.achievementKeys.length > 0
-      );
-    } catch (achErr) {
-      console.error("[admin/updatePropsStatus] Achievement processing error:", achErr);
-      details.achievementsError = achErr.message;
-    }
+    // Achievements removed
 
     return res.status(200).json({ success: true, smsCount: smsRecipients.length, details });
   } catch (error) {

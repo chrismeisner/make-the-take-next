@@ -1,6 +1,8 @@
 import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
 import { sumTakePoints, isVisibleTake } from "../../../lib/points";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { query } from "../../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID
@@ -28,6 +30,63 @@ export default async function handler(req, res) {
         .json({ success: false, error: "Missing itemID" });
     }
 
+    if (getDataBackend() === 'postgres') {
+      // Load item from Postgres
+      const { rows: itemRows } = await query(
+        'SELECT id, item_id, title, tokens, status FROM items WHERE item_id = $1 LIMIT 1',
+        [itemID]
+      );
+      if (itemRows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Item not found' });
+      }
+      const row = itemRows[0];
+      const itemTokens = Number(row.tokens) || 0;
+      const itemStatus = row.status || '';
+      if (itemStatus && itemStatus.toLowerCase() !== 'available') {
+        return res.status(400).json({ success: false, error: `Item is not available (status: ${itemStatus})` });
+      }
+      if (!Number.isFinite(itemTokens) || itemTokens <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid itemTokens on item' });
+      }
+
+      // Compute token balance from Postgres
+      // Earned tokens from takes.tokens for latest takes
+      const { rows: earnRows } = await query(
+        `SELECT COALESCE(SUM(t.tokens),0) AS earned
+           FROM takes t
+           JOIN profiles p ON p.mobile_e164 = t.take_mobile
+          WHERE p.profile_id = $1 AND t.take_status = 'latest'`,
+        [token.profileID]
+      );
+      const tokensEarned = Number(earnRows[0]?.earned) || 0;
+      // Spent tokens from exchanges
+      const { rows: spentRows } = await query(
+        `SELECT COALESCE(SUM(e.exchange_tokens),0) AS spent
+           FROM exchanges e
+           JOIN profiles p ON e.profile_id = p.id
+          WHERE p.profile_id = $1`,
+        [token.profileID]
+      );
+      const tokensSpent = Number(spentRows[0]?.spent) || 0;
+      const availableBalance = tokensEarned - tokensSpent;
+      if (availableBalance < itemTokens) {
+        return res.status(400).json({ success: false, error: 'Insufficient tokens for this exchange', availableBalance, required: itemTokens });
+      }
+
+      // Create exchange record
+      const { rows: profRows } = await query('SELECT id FROM profiles WHERE profile_id = $1 LIMIT 1', [token.profileID]);
+      if (profRows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Profile not found' });
+      }
+      const profileRowId = profRows[0].id;
+      const { rows: created } = await query(
+        'INSERT INTO exchanges (profile_id, item_id, status, exchange_tokens) VALUES ($1,$2,$3,$4) RETURNING id',
+        [profileRowId, row.id, 'requested', itemTokens]
+      );
+      return res.status(200).json({ success: true, exchangeID: created[0].id, exchangeTokens: itemTokens, itemID, balanceAfter: availableBalance - itemTokens });
+    }
+
+    // Airtable path (default)
     // 1) Load the item by itemID
     const items = await base("Items")
       .select({
@@ -60,9 +119,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Compute user's available token balance (Achievements-based)
-    //    tokensEarned = sum(achievementValue) including signup bonus
-    //    tokensSpent = sum(exchangeTokens), balance = earned - spent
+    // 2) Compute user's available token balance based on takes (20% of takePTS) minus exchanges
     const profs = await base("Profiles")
       .select({
         filterByFormula: `{profileID} = "${token.profileID}"`,
@@ -76,28 +133,18 @@ export default async function handler(req, res) {
     }
     const profRec = profs[0];
     const pf = profRec.fields || {};
-
-    // Fetch achievements linked to this profile (prefer profileID string match, then link fallback)
-    let achievementsValueTotal = 0;
+    // Compute earned tokens from Takes by phone (latest only)
+    let tokensEarned = 0;
     try {
-      const achByProfileID = await base("Achievements")
-        .select({ filterByFormula: `{profileID} = "${token.profileID}"`, maxRecords: 5000 })
-        .all();
-      let achRecs = achByProfileID;
-      if (achRecs.length === 0) {
-        achRecs = await base("Achievements")
-          .select({
-            filterByFormula: `FIND('${profRec.id}', ARRAYJOIN({achievementProfile}))>0`,
-            maxRecords: 5000,
-          })
-          .all();
+      const phone = pf.profileMobile;
+      if (phone) {
+        const formula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
+        const takes = await base('Takes').select({ filterByFormula: formula, maxRecords: 5000 }).all();
+        const totalPoints = sumTakePoints(takes);
+        tokensEarned = Math.floor(totalPoints * 0.2);
       }
-      achievementsValueTotal = achRecs.reduce(
-        (sum, r) => sum + Number(r.fields.achievementValue || 0),
-        0
-      );
     } catch (_) {
-      achievementsValueTotal = 0;
+      tokensEarned = 0;
     }
 
     const exchFilter = `{profileID} = "${token.profileID}"`;
@@ -108,7 +155,6 @@ export default async function handler(req, res) {
       (sum, r) => sum + Number(r.fields.exchangeTokens || 0),
       0
     );
-    const tokensEarned = achievementsValueTotal;
     const availableBalance = tokensEarned - tokensSpent;
 
     if (availableBalance < itemTokens) {

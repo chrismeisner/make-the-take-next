@@ -6,6 +6,7 @@ export default function AdminPacksPage() {
   const { data: session, status } = useSession();
   const [packs, setPacks] = useState([]);
   const [sortOrder, setSortOrder] = useState('desc');
+  const [headerSort, setHeaderSort] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [hideGraded, setHideGraded] = useState(true);
@@ -55,12 +56,37 @@ export default function AdminPacksPage() {
         );
       })
     : visibilityFilteredPacks;
-  // Sort filtered packs by createdAt
+  // Determine active sort from header (if any) or fallback to createdAt
+  const activeSortField = headerSort?.field || 'createdAt';
+  const activeSortOrder = headerSort?.order || sortOrder;
+
   const sortedPacks = [...searchedPacks].sort((a, b) => {
-    const dateA = new Date(a.createdAt);
-    const dateB = new Date(b.createdAt);
-    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    const aRaw = a?.[activeSortField];
+    const bRaw = b?.[activeSortField];
+    const aTime = aRaw ? new Date(aRaw).getTime() : NaN;
+    const bTime = bRaw ? new Date(bRaw).getTime() : NaN;
+
+    const norm = (t) => (Number.isFinite(t) ? t : (activeSortOrder === 'asc' ? Infinity : -Infinity));
+    const aVal = norm(aTime);
+    const bVal = norm(bTime);
+
+    if (aVal === bVal) return 0;
+    return activeSortOrder === 'asc' ? aVal - bVal : bVal - aVal;
   });
+
+  const toggleHeaderSort = (field) => {
+    setHeaderSort((prev) => {
+      if (prev && prev.field === field) {
+        return { field, order: prev.order === 'asc' ? 'desc' : 'asc' };
+      }
+      return { field, order: 'desc' };
+    });
+  };
+
+  const renderSortIndicator = (field) => {
+    if (!headerSort || headerSort.field !== field) return null;
+    return <span className="ml-1">{headerSort.order === 'asc' ? '▲' : '▼'}</span>;
+  };
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -121,8 +147,22 @@ export default function AdminPacksPage() {
               <th className="px-4 py-2 border">Title</th>
               <th className="px-4 py-2 border">URL</th>
               <th className="px-4 py-2 border">Event</th>
-              <th className="px-4 py-2 border">Open Time</th>
-              <th className="px-4 py-2 border">Close Time</th>
+              <th
+                className="px-4 py-2 border cursor-pointer select-none"
+                onClick={() => toggleHeaderSort('packOpenTime')}
+                aria-sort={headerSort?.field === 'packOpenTime' ? (headerSort.order === 'asc' ? 'ascending' : 'descending') : 'none'}
+                title="Sort by Open Time"
+              >
+                Open Time {renderSortIndicator('packOpenTime')}
+              </th>
+              <th
+                className="px-4 py-2 border cursor-pointer select-none"
+                onClick={() => toggleHeaderSort('packCloseTime')}
+                aria-sort={headerSort?.field === 'packCloseTime' ? (headerSort.order === 'asc' ? 'ascending' : 'descending') : 'none'}
+                title="Sort by Close Time"
+              >
+                Close Time {renderSortIndicator('packCloseTime')}
+              </th>
               <th className="px-4 py-2 border">Status</th>
               <th className="px-4 py-2 border"># Props</th>
               <th className="px-4 py-2 border">Actions</th>

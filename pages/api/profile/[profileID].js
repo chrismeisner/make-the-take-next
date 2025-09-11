@@ -119,40 +119,60 @@ export default async function handler(req, res) {
 		  };
 		});
 	} else if (isPG) {
-	  // Postgres: derive by phone number
+	  // Postgres: derive by phone number with joins for enrichment
 	  try {
 		const phone = pf.profileMobile;
 		if (phone && typeof phone === 'string') {
 		  const { rows } = await query(
-			`SELECT id, prop_id_text, prop_side, take_mobile, take_status, created_at, take_result, take_pts, pack_id
-			 FROM takes
-			 WHERE take_mobile = $1 AND take_status != 'overwritten'
-			 ORDER BY created_at DESC LIMIT 5000`,
+			`SELECT 
+			   t.id AS take_id,
+			   t.prop_id_text,
+			   t.prop_side,
+			   t.take_mobile,
+			   t.take_status,
+			   t.created_at,
+			   t.take_result,
+			   t.take_pts,
+			   t.pack_id AS take_pack_uuid,
+			   p.prop_summary,
+			   p.prop_status,
+			   e.title AS event_title,
+			   e.league AS event_league,
+			   e.espn_game_id,
+			   pk.pack_id AS pack_id_text,
+			   pk.id AS pack_uuid
+			 FROM takes t
+			 LEFT JOIN props p ON t.prop_id = p.id
+			 LEFT JOIN events e ON p.event_id = e.id
+			 LEFT JOIN packs pk ON t.pack_id = pk.id
+			 WHERE t.take_mobile = $1 AND t.take_status != 'overwritten'
+			 ORDER BY t.created_at DESC LIMIT 5000`,
 			[phone]
 		  );
 		  totalPoints = rows.reduce((sum, r) => sum + (Number(r.take_pts) || 0), 0);
 		  for (const r of rows) {
-			if (r.pack_id) userPackIDs.push(r.pack_id);
+			const packIdForDisplay = r.pack_id_text || r.pack_uuid || null;
+			if (r.pack_uuid) userPackIDs.push(r.pack_uuid);
 			userTakes.push({
-			  takeID: r.id,
+			  takeID: r.take_id,
 			  propID: r.prop_id_text || '',
 			  propSide: r.prop_side || null,
-			  propTitle: '',
+			  propTitle: r.prop_summary || '',
 			  subjectTitle: '',
 			  takePopularity: 0,
 			  createdTime: r.created_at ? new Date(r.created_at).toISOString() : null,
 			  takeStatus: r.take_status || '',
 			  propResult: r.take_result || '',
-			  propEventMatchup: '',
-			  propLeague: '',
-			  propESPN: '',
-			  propStatus: '',
+			  propEventMatchup: r.event_title || '',
+			  propLeague: r.event_league ? String(r.event_league).toLowerCase() : '',
+			  propESPN: r.espn_game_id || '',
+			  propStatus: r.prop_status || '',
 			  takeResult: r.take_result || '',
 			  takePTS: Number(r.take_pts) || 0,
 			  takeHide: false,
-			  takeTitle: '',
+			  takeTitle: r.prop_summary || '',
 			  takeContentImageUrls: [],
-			  packIDs: [],
+			  packIDs: packIdForDisplay ? [packIdForDisplay] : [],
 			});
 		  }
 		}
@@ -259,54 +279,96 @@ export default async function handler(req, res) {
 	  createdTime: profRec._rawJson.createdTime,
 	};
 
-	// 5) Achievements (remove for Postgres; keep Airtable path only)
+	// 5) Compute tokensEarned from Takes instead of achievements
 	let achievementsValueTotal = 0;
 	let achievements = [];
-	if (!isPG) {
+	let tokensEarned = 0;
+	if (isPG) {
 	  try {
-		let achRecs = await base('Achievements')
-		  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 5000 })
-		  .all();
-		if (achRecs.length === 0) {
-		  const fallbackFormula = `FIND('${profRec.id}', ARRAYJOIN({achievementProfile}))>0`;
-		  achRecs = await base('Achievements')
-			.select({ filterByFormula: fallbackFormula, maxRecords: 5000 })
-			.all();
+		const { rows } = await query(
+		  `SELECT COALESCE(SUM(t.tokens),0) AS earned
+		     FROM takes t
+		     JOIN profiles p ON p.mobile_e164 = t.take_mobile
+		    WHERE p.profile_id = $1 AND t.take_status = 'latest'`,
+		  [profileID]
+		);
+		tokensEarned = Number(rows[0]?.earned) || 0;
+	  } catch (err) {
+		tokensEarned = 0;
+	  }
+	} else {
+	  try {
+		const phone = pf.profileMobile;
+		if (phone) {
+		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
+		  const takes = await base('Takes').select({ filterByFormula, maxRecords: 5000 }).all();
+		  const totalPoints = sumTakePoints(takes);
+		  tokensEarned = Math.floor(totalPoints * 0.2);
 		}
-		achievements = achRecs.map((r) => ({
-		  id: r.id,
-		  achievementKey: r.fields.achievementKey || '',
-		  achievementTitle: r.fields.achievementTitle || '',
-		  achievementDescription: r.fields.achievementDescription || '',
-		  achievementValue: typeof r.fields.achievementValue === 'number' ? r.fields.achievementValue : 0,
-		  createdTime: r._rawJson.createdTime,
-		}));
-		achievementsValueTotal = achievements.reduce((sum, a) => sum + (a.achievementValue || 0), 0);
-	  } catch (achErr) {
-		console.error('[profile] Error fetching achievements =>', achErr);
+	  } catch (err) {
+		tokensEarned = 0;
 	  }
 	}
 
-	// 6) Reuse existing exchanges logic only when requested (Airtable)
+	// 6) Exchanges list (Airtable/PG)
 	let userExchanges = [];
 	if (includeExchanges) {
-	  const exchangeFilter = `{profileID}="${profileID}"`;
-	  console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
-	  const exchRecs = await base('Exchanges')
-		.select({ filterByFormula: exchangeFilter, maxRecords: 5000 })
-		.all();
-	  console.log(`[profile] Retrieved ${exchRecs.length} Exchanges rows for profileID ${profileID}`);
-	  userExchanges = exchRecs.map((r) => ({
-		exchangeID: r.id,
-		exchangeTokens: r.fields.exchangeTokens || 0,
-		exchangeItem: r.fields.exchangeItem || [],
-		createdTime: r._rawJson.createdTime,
-	  }));
+	  if (isPG) {
+		try {
+		  const { rows } = await query(
+			`SELECT e.id, e.exchange_tokens, e.created_at, i.item_id AS item_id_text
+			   FROM exchanges e
+			   JOIN profiles p ON e.profile_id = p.id
+			   LEFT JOIN items i ON e.item_id = i.id
+			  WHERE p.profile_id = $1
+			  ORDER BY e.created_at DESC
+			  LIMIT 5000`,
+			[profileID]
+		  );
+		  userExchanges = rows.map(r => ({
+			exchangeID: r.id,
+			exchangeTokens: Number(r.exchange_tokens) || 0,
+			exchangeItem: r.item_id_text ? [r.item_id_text] : [],
+			createdTime: r.created_at ? new Date(r.created_at).toISOString() : null,
+		  }));
+		} catch (pgExErr) {
+		  console.error('[profile][pg] Error fetching exchanges =>', pgExErr);
+		}
+	  } else {
+		const exchangeFilter = `{profileID}="${profileID}"`;
+		console.log('[profile] Filtering Exchanges with formula:', exchangeFilter);
+		const exchRecs = await base('Exchanges')
+		  .select({ filterByFormula: exchangeFilter, maxRecords: 5000 })
+		  .all();
+		console.log(`[profile] Retrieved ${exchRecs.length} Exchanges rows for profileID ${profileID}`);
+		userExchanges = exchRecs.map((r) => ({
+		  exchangeID: r.id,
+		  exchangeTokens: r.fields.exchangeTokens || 0,
+		  exchangeItem: r.fields.exchangeItem || [],
+		  createdTime: r._rawJson.createdTime,
+		}));
+	  }
 	}
 
 	// 7) Tokens summary consistent with Marketplace
-	const tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
-	const tokensEarned = !isPG ? achievementsValueTotal : 0; // disable achievements in PG mode
+	let tokensSpent = 0;
+	if (isPG) {
+	  try {
+		const { rows } = await query(
+		  `SELECT COALESCE(SUM(e.exchange_tokens),0) AS spent
+		     FROM exchanges e
+		     JOIN profiles p ON e.profile_id = p.id
+		    WHERE p.profile_id = $1`,
+		  [profileID]
+		);
+		tokensSpent = Number(rows[0]?.spent) || 0;
+	  } catch (pgSpentErr) {
+		console.error('[profile][pg] Error computing tokensSpent =>', pgSpentErr);
+		tokensSpent = 0;
+	  }
+	} else {
+	  tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
+	}
 	const tokensBalance = tokensEarned - tokensSpent;
 
 	// Creator packs/leaderboard (Airtable-only)

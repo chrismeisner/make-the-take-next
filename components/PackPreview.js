@@ -185,7 +185,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 				<img
 					src={coverUrl}
 					alt={`${pack.packTitle || "Pack"} cover`}
-					className={`absolute inset-0 w-full h-full object-cover ${disabled ? 'grayscale opacity-60' : ''}`}
+					className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${isComingSoon ? 'opacity-90 group-hover:opacity-100' : ''}`}
 					loading="lazy"
 				/>
 			) : (
@@ -228,7 +228,12 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 						const dropMs = Number.isFinite(earliestEventMs)
 							? earliestEventMs
 							: (pack.packOpenTime ? new Date(pack.packOpenTime).getTime() : NaN);
-						return `🗓️ ${formatDropDate(dropMs)}`;
+						return (
+							<>
+								<div><span>⏳ </span><Countdown targetTime={dropMs} prefix="Starts in" /></div>
+								<div>{`🗓️ ${formatDropDate(dropMs)}`}</div>
+							</>
+						);
 					})()}
 				</div>
 			)}
@@ -255,17 +260,6 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					</button>
 				</div>
 			)}
-			{!isOpenLike && (
-				<div className="mt-3">
-					<button
-						type="button"
-						onClick={(e) => { e.preventDefault(); openModal('notifyMe', { packTitle: pack.packTitle }); }}
-						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-blue-600 text-white text-xs md:text-sm font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
-					>
-						Notify me
-					</button>
-				</div>
-			)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">
 				{pack.packStatus === "graded" && winnerID && (<p>Winner: @{winnerID}</p>)}
 			</div>
@@ -275,12 +269,15 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 
   if (isComingSoon) {
 	  return (
-		  <div
-			  aria-label={(pack.packTitle || 'Pack') + ' preview'}
-			  className={`w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
+		  <Link
+			  href={targetHref}
+			  aria-label={(pack.packTitle || "Pack") + " preview"}
+			  aria-disabled={disabled}
+			  onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal('notifyMe', { packTitle: pack.packTitle }); }}
+			  className={`group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
 		  >
 			  {content}
-		  </div>
+		  </Link>
 	  );
   }
 
@@ -289,7 +286,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 		  href={targetHref}
 		  aria-label={(pack.packTitle || "Pack") + " preview"}
 		  aria-disabled={disabled}
-		  className={`w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
+		  className={`group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
 	  >
 		  {content}
 	  </Link>
