@@ -30,11 +30,24 @@ export default async function handler(req, res) {
   try {
     const isPG = getDataBackend() === 'postgres';
     if (isPG) {
-      // Resolve pack by external text pack_id or by id fallback
-      const { rows: packsRows } = await query(
-        `SELECT id FROM packs WHERE pack_id = $1 OR id::text = $1 LIMIT 1`,
+      // Resolve pack by external text pack_id first (unique),
+      // then fallback to primary key lookup when input is a UUID.
+      const uuidRegex = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+
+      let packsRows = [];
+      // Prefer pack_id path which uses the unique index packs_pack_id_key
+      ({ rows: packsRows } = await query(
+        `SELECT id FROM packs WHERE pack_id = $1 LIMIT 1`,
         [packID]
-      );
+      ));
+
+      if (packsRows.length === 0 && uuidRegex.test(String(packID))) {
+        // Fallback to primary key lookup using the btree PK index
+        ({ rows: packsRows } = await query(
+          `SELECT id FROM packs WHERE id = $1::uuid LIMIT 1`,
+          [packID]
+        ));
+      }
       if (packsRows.length === 0) {
         return res.status(404).json({ success: false, error: "Pack not found" });
       }

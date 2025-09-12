@@ -160,7 +160,8 @@ export default async function handler(req, res) {
 
 	res.status(200).json({ success: true, leaderboard });
   } catch (err) {
-	console.error('[API /leaderboard] Error:', err);
-	res.status(500).json({ success: false, error: 'Failed to fetch leaderboard' });
+	const meta = { name: err?.name, message: err?.message, code: err?.code, stack: err?.stack };
+	try { console.error('[API /leaderboard] Error:', meta); } catch {}
+	res.status(500).json({ success: false, error: 'Failed to fetch leaderboard', meta });
   }
 }

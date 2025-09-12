@@ -15,16 +15,17 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
     let isMounted = true;
     async function fetchItems() {
       try {
+        const start = Date.now();
         const res = await fetch('/api/items');
         const text = await res.text();
         let data;
         try {
           data = JSON.parse(text);
         } catch (e) {
-          console.error('[MarketplacePreview] Non-JSON response from /api/items', { status: res.status, text });
+          console.error('[MarketplacePreview] Non-JSON response from /api/items', { status: res.status, elapsedMs: Date.now() - start, text });
           throw new Error('Invalid JSON from /api/items');
         }
-        console.log('[MarketplacePreview] /api/items result', { status: res.status, ok: res.ok, success: data?.success, count: Array.isArray(data?.items) ? data.items.length : 0 });
+        console.log('[MarketplacePreview] /api/items result', { status: res.status, ok: res.ok, elapsedMs: Date.now() - start, success: data?.success, count: Array.isArray(data?.items) ? data.items.length : 0 });
         if (!isMounted) return;
         if (data.success) {
           const all = (data.items || []).filter((it) => it.itemStatus === 'Available');

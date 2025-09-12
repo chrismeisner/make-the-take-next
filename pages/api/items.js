@@ -57,8 +57,14 @@ async function handler(req, res) {
     try { console.log('[/api/items] AT mapped items:', items.length); } catch {}
     return res.status(200).json({ success: true, items });
   } catch (err) {
-    console.error('[/api/items] Error =>', err);
-    return res.status(500).json({ success: false, error: 'Server error fetching items' });
+    const meta = {
+      name: err?.name,
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+    };
+    try { console.error('[/api/items] Error =>', meta); } catch {}
+    return res.status(500).json({ success: false, error: 'Server error fetching items', meta });
   }
 }
 
