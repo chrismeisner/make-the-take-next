@@ -16,6 +16,7 @@ async function handler(req, res) {
     try {
       const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
       const userPhone = token?.phone || null;
+      const includeAll = String(req.query.includeAll || '').trim() === '1';
 
       // Ensure all timestamps returned to the client are ISO 8601 UTC strings
       const toIso = (t) => (t ? new Date(t).toISOString() : null);
@@ -40,10 +41,9 @@ async function handler(req, res) {
                   e.title AS event_title
              FROM packs p
              LEFT JOIN events e ON e.id = p.event_id
-            WHERE p.pack_status IN ('active','graded','coming-soon','draft')
-               OR p.pack_status IS NULL
+            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','graded','coming-soon','draft') OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
-            LIMIT 80
+            LIMIT CASE WHEN $2::boolean = TRUE THEN 500 ELSE 80 END
          ),
          takes_agg AS (
            SELECT t.pack_id,
@@ -83,7 +83,7 @@ async function handler(req, res) {
            FROM selected_packs sp
            LEFT JOIN props_agg pa ON pa.pack_id = sp.id
            LEFT JOIN takes_agg ta ON ta.pack_id = sp.id`,
-        [userPhone]
+        [userPhone, includeAll]
       );
 
       const packsData = packRows.map((r) => ({

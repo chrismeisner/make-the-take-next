@@ -9,13 +9,15 @@ export default function AdminPacksPage() {
   const [headerSort, setHeaderSort] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [hideGraded, setHideGraded] = useState(true);
+  const [hideGraded, setHideGraded] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState(null);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
     const fetchPacks = async () => {
       try {
-        const res = await fetch('/api/packs');
+        const res = await fetch('/api/packs?includeAll=1');
         const data = await res.json();
         if (data.success) setPacks(data.packs);
         else console.error(data.error);
@@ -25,6 +27,33 @@ export default function AdminPacksPage() {
     };
     fetchPacks();
   }, [status]);
+
+  const refetchPacks = async () => {
+    try {
+      const res = await fetch('/api/packs?includeAll=1');
+      const data = await res.json();
+      if (data.success) setPacks(data.packs);
+    } catch (e) {}
+  };
+
+  const handleRunPackStatus = async () => {
+    setRunning(true);
+    setRunResult(null);
+    try {
+      const res = await fetch('/api/admin/runPackStatus', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setRunResult({ ok: false, message: data.error || 'Failed to run' });
+      } else {
+        setRunResult({ ok: true, message: `Opened ${data.openedCount}, closed ${data.closedCount}` });
+        await refetchPacks();
+      }
+    } catch (e) {
+      setRunResult({ ok: false, message: e?.message || 'Error' });
+    } finally {
+      setRunning(false);
+    }
+  };
 
   if (status === 'loading') {
     return <div className="container mx-auto px-4 py-6">Loading...</div>;
@@ -104,12 +133,26 @@ export default function AdminPacksPage() {
           ))}
         </select>
       </div>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-3">
         <Link href="/admin/packs/new">
           <button className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
             Create New Pack
           </button>
         </Link>
+        <button
+          type="button"
+          onClick={handleRunPackStatus}
+          disabled={running}
+          className={`px-3 py-2 rounded text-white ${running ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+          title="Run auto open/close status now"
+        >
+          {running ? 'Running…' : 'Run pack status'}
+        </button>
+        {runResult && (
+          <span className={`${runResult.ok ? 'text-green-700' : 'text-red-700'}`}>
+            {runResult.message}
+          </span>
+        )}
       </div>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700">Sort by Created</label>
