@@ -11,6 +11,8 @@ import LeaderboardTable from "../components/LeaderboardTable";
 import useLeaderboard from "../hooks/useLeaderboard";
 import MarketplacePreview from "../components/MarketplacePreview";
 import { getDataBackend } from "../lib/runtimeConfig";
+import { getToken } from "next-auth/jwt";
+import { query } from "../lib/db/postgres";
 
 export default function LandingPage({ packsData = [] }) {
   const router = useRouter();
@@ -84,17 +86,115 @@ export async function getServerSideProps(context) {
   console.log('[HomePage GSSP] start load =>', { backend, origin });
 
   try {
-    const res = await fetch(`${origin}/api/packs`, {
-      headers: {
-        cookie: context.req.headers.cookie || "",
-      },
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "Failed to load packs");
+    let allPacks = [];
+    if (backend === 'postgres') {
+      const token = await getToken({ req: context.req, secret: process.env.NEXTAUTH_SECRET });
+      const userPhone = token?.phone || null;
+      const { rows } = await query(
+        `WITH selected_packs AS (
+           SELECT p.id,
+                  p.pack_id,
+                  p.pack_url,
+                  p.title,
+                  p.summary,
+                  p.prize,
+                  p.cover_url,
+                  p.league,
+                  p.created_at,
+                  p.pack_status,
+                  p.pack_open_time,
+                  p.pack_close_time,
+                  p.event_id,
+                  e.event_time,
+                  e.title AS event_title
+             FROM packs p
+             LEFT JOIN events e ON e.id = p.event_id
+            WHERE LOWER(COALESCE(p.pack_status, '')) IN ('active','graded','coming-soon','draft')
+               OR p.pack_status IS NULL
+            ORDER BY p.created_at DESC NULLS LAST
+            LIMIT 80
+         ),
+         takes_agg AS (
+           SELECT t.pack_id,
+                  COUNT(*) FILTER (WHERE t.take_status = 'latest')::int AS total_count,
+                  COUNT(*) FILTER (WHERE t.take_status = 'latest' AND t.take_mobile = $1)::int AS user_count
+             FROM takes t
+             JOIN selected_packs sp ON sp.id = t.pack_id
+            GROUP BY t.pack_id
+         ),
+         props_agg AS (
+           SELECT p.pack_id,
+                  COUNT(*)::int AS props_count,
+                  MIN(p.open_time) AS open_time,
+                  MAX(p.close_time) AS close_time
+             FROM props p
+             JOIN selected_packs sp ON sp.id = p.pack_id
+            GROUP BY p.pack_id
+         )
+         SELECT sp.id,
+                sp.pack_id,
+                sp.pack_url,
+                sp.title,
+                sp.summary,
+                sp.prize,
+                sp.cover_url,
+                sp.league,
+                sp.created_at,
+                sp.pack_status,
+                COALESCE(sp.pack_open_time::text, pa.open_time::text) AS pack_open_time,
+                COALESCE(sp.pack_close_time::text, pa.close_time::text) AS pack_close_time,
+                sp.event_id,
+                sp.event_time::text AS event_time,
+                sp.event_title,
+                COALESCE(pa.props_count, 0) AS props_count,
+                COALESCE(ta.total_count, 0) AS total_take_count,
+                COALESCE(ta.user_count, 0) AS user_take_count
+           FROM selected_packs sp
+           LEFT JOIN props_agg pa ON pa.pack_id = sp.id
+           LEFT JOIN takes_agg ta ON ta.pack_id = sp.id`,
+        [userPhone]
+      );
+      const toIso = (t) => (t ? new Date(t).toISOString() : null);
+      allPacks = rows.map((r) => ({
+        airtableId: r.id,
+        eventId: r.event_id || null,
+        eventTitle: r.event_title || null,
+        propEventRollup: [],
+        packID: r.pack_id || r.id,
+        packTitle: r.title || "Untitled Pack",
+        packURL: r.pack_url || "",
+        packCover: r.cover_url || null,
+        packPrize: r.prize || "",
+        prizeSummary: "",
+        packSummary: r.summary || "",
+        packType: "",
+        packLeague: r.league || null,
+        packStatus: r.pack_status || "",
+        packOpenTime: toIso(r.pack_open_time) || null,
+        packCloseTime: toIso(r.pack_close_time) || null,
+        eventTime: toIso(r.event_time),
+        firstPlace: "",
+        createdAt: toIso(r.created_at) || null,
+        propsCount: Number(r.props_count || 0),
+        winnerProfileID: null,
+        packWinnerRecordIds: [],
+        takeCount: Number(r.total_take_count || 0),
+        userTakesCount: Number(r.user_count || 0),
+      }));
+    } else {
+      // Fallback to API fetch (Airtable mode)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), Number.parseInt(process.env.SSR_FETCH_TIMEOUT_MS || '9000', 10));
+      const res = await fetch(`${origin}/api/packs`, {
+        headers: { cookie: context.req.headers.cookie || "" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to load packs");
+      allPacks = Array.isArray(data.packs) ? data.packs : [];
     }
     // Align filter with Airtable: include active, graded, coming-soon
-    const allPacks = Array.isArray(data.packs) ? data.packs : [];
     try {
       const statusEmoji = (s) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '-');

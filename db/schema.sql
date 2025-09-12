@@ -300,3 +300,17 @@ CREATE TABLE IF NOT EXISTS content (
 -- Prizes table is deprecated; intentionally not created in Postgres schema
 
 
+
+
+-- Performance indexes for packs listing and aggregates
+-- Speed up homepage packs query filtering by status and ordering by created_at
+CREATE INDEX IF NOT EXISTS idx_packs_status_created ON packs (pack_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_packs_created ON packs (created_at DESC);
+
+-- Speed up total take counts grouped by pack when filtering latest only
+CREATE INDEX IF NOT EXISTS idx_takes_latest_by_pack ON takes (pack_id) WHERE take_status = 'latest';
+-- Speed up per-user take counts for latest by pack
+CREATE INDEX IF NOT EXISTS idx_takes_latest_by_mobile_pack ON takes (take_mobile, pack_id) WHERE take_status = 'latest';
+
+-- Help MIN/MAX window scans per pack
+CREATE INDEX IF NOT EXISTS idx_props_pack_open_close ON props (pack_id, open_time, close_time);
