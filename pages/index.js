@@ -109,7 +109,7 @@ export async function getServerSideProps(context) {
                   e.title AS event_title
              FROM packs p
              LEFT JOIN events e ON e.id = p.event_id
-            WHERE LOWER(COALESCE(p.pack_status, '')) IN ('active','graded','coming-soon','draft')
+            WHERE p.pack_status IN ('active','graded','coming-soon','draft')
                OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT 80

@@ -1,63 +1,67 @@
 // File: pages/api/leaderboard.js
-import { aggregateTakeStats } from '../../lib/leaderboard';
 import { query } from '../../lib/db/postgres';
 
 export default async function handler(req, res) {
-  const { subjectID, packURL } = req.query;
+  const { subjectID, packURL, limit: limitParam } = req.query;
 
   try {
-    // Enrich phones with profileIDs
-    const { rows: profRows } = await query('SELECT mobile_e164, profile_id FROM profiles');
-    const phoneToProfileID = new Map(profRows.map(r => [r.mobile_e164, r.profile_id]));
-
-    let propIdFilter = null;
-    if (packURL) {
-      const { rows: propRows } = await query(
-        `SELECT p.prop_id FROM props p
-           JOIN packs k ON p.pack_id = k.id
-          WHERE k.pack_url = $1`,
-        [packURL]
-      );
-      propIdFilter = new Set(propRows.map(r => r.prop_id));
-      if (propRows.length === 0) {
-        return res.status(200).json({ success: true, leaderboard: [] });
-      }
-    }
-
-    const { rows: takeRows } = await query(
-      `SELECT take_mobile, prop_id_text, take_result, COALESCE(take_pts, 0) AS take_pts
-         FROM takes
-        WHERE take_status = 'latest'`
+    const limit = Math.min(Number.parseInt(limitParam || '100', 10), 500);
+    const { rows } = await query(
+      `WITH filtered_takes AS (
+         SELECT t.take_mobile,
+                t.take_result,
+                COALESCE(t.take_pts, 0) AS take_pts
+           FROM takes t
+          WHERE t.take_status = 'latest'
+            AND (
+              ($1::text IS NULL AND $2::text IS NULL)
+              OR EXISTS (
+                    SELECT 1
+                      FROM props p
+                      JOIN packs k ON p.pack_id = k.id
+                     WHERE p.prop_id = t.prop_id_text
+                       AND ($1::text IS NULL OR k.pack_url = $1)
+                       AND ($2::text IS NULL OR p.prop_summary ILIKE '%' || $2 || '%')
+              )
+            )
+       ),
+       agg AS (
+         SELECT take_mobile,
+                COUNT(*)::int AS takes,
+                SUM(CASE WHEN take_result = 'won'  THEN 1 ELSE 0 END)::int AS won,
+                SUM(CASE WHEN take_result = 'lost' THEN 1 ELSE 0 END)::int AS lost,
+                SUM(CASE WHEN take_result = 'push' THEN 1 ELSE 0 END)::int AS pushed,
+                SUM(take_pts)::int AS points
+           FROM filtered_takes
+          GROUP BY take_mobile
+       )
+       SELECT a.take_mobile,
+              a.takes,
+              a.won,
+              a.lost,
+              a.pushed,
+              a.points,
+              pr.profile_id
+         FROM agg a
+         LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
+        ORDER BY a.points DESC, a.takes DESC
+        LIMIT $3`,
+      [packURL || null, subjectID || null, limit]
     );
 
-    let filtered = takeRows;
-    if (propIdFilter) {
-      filtered = filtered.filter(t => propIdFilter.has(t.prop_id_text));
-    }
-    if (subjectID) {
-      const { rows: subjProps } = await query(
-        `SELECT prop_id FROM props WHERE prop_summary ILIKE $1`,
-        [ `%${subjectID}%` ]
-      );
-      const subjSet = new Set(subjProps.map(r => r.prop_id));
-      filtered = filtered.filter(t => subjSet.has(t.prop_id_text));
-    }
-
-    const pseudoTakes = filtered.map((r) => ({ fields: { takeMobile: r.take_mobile, takeResult: r.take_result || null, takePTS: Number(r.take_pts) || 0, takeStatus: 'latest' } }));
-    const statsList = aggregateTakeStats(pseudoTakes);
-    const leaderboard = statsList.map((s) => ({
-      phone: s.phone,
-      takes: s.takes,
-      points: s.points,
-      profileID: phoneToProfileID.get(s.phone) || null,
-      won: s.won,
-      lost: s.lost,
-      pushed: s.pushed,
+    const leaderboard = rows.map((r) => ({
+      phone: r.take_mobile,
+      takes: Number(r.takes) || 0,
+      points: Number(r.points) || 0,
+      profileID: r.profile_id || null,
+      won: Number(r.won) || 0,
+      lost: Number(r.lost) || 0,
+      pushed: Number(r.pushed) || 0,
     }));
     return res.status(200).json({ success: true, leaderboard });
   } catch (err) {
-	const meta = { name: err?.name, message: err?.message, code: err?.code, stack: err?.stack };
-	try { console.error('[API /leaderboard] Error:', meta); } catch {}
-	res.status(500).json({ success: false, error: 'Failed to fetch leaderboard', meta });
+    const meta = { name: err?.name, message: err?.message, code: err?.code, stack: err?.stack };
+    try { console.error('[API /leaderboard] Error:', meta); } catch {}
+    res.status(500).json({ success: false, error: 'Failed to fetch leaderboard', meta });
   }
 }

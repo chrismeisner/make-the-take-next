@@ -15,9 +15,10 @@ async function handler(req, res) {
     // Log backend choice and minimal request context
     try { console.log('[/api/items] start', { backend }); } catch {}
     if (backend === 'postgres') {
-      const sql = 'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items ORDER BY title';
-      try { console.log('[/api/items] PG query:', sql); } catch {}
-      const { rows } = await query(sql);
+      const limit = Math.min(Number.parseInt(req.query.limit || '24', 10), 100);
+      const sql = 'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items WHERE status = $1 ORDER BY tokens ASC, title ASC LIMIT $2';
+      try { console.log('[/api/items] PG query:', sql, { limit }); } catch {}
+      const { rows } = await query(sql, ['Available', limit]);
       try { console.log('[/api/items] PG rows:', rows.length); } catch {}
       const items = rows.map(r => ({
         itemID: r.item_id,
