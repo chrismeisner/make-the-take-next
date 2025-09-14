@@ -247,6 +247,22 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
     const pageUrl = `${debugLogs.origin}/packs/${packData.packURL}`;
     return (
       <>
+        <Head>
+          <title>{packData.packTitle} | Make The Take</title>
+          <meta property="og:type" content="website" />
+          <meta property="og:title" content={packData.packTitle} />
+          <meta property="og:description" content={packData.packSummary} />
+          {coverUrl && (
+            <meta property="og:image" content={coverUrl} />
+          )}
+          <meta property="og:url" content={pageUrl} />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content={packData.packTitle} />
+          <meta name="twitter:description" content={packData.packSummary} />
+          {coverUrl && (
+            <meta name="twitter:image" content={coverUrl} />
+          )}
+        </Head>
         <PageHeader
           title={packData.packTitle || packData.packURL}
           breadcrumbs={[
@@ -289,15 +305,15 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           <meta property="og:type" content="website" />
           <meta property="og:title" content={packData.packTitle} />
           <meta property="og:description" content={packData.packSummary} />
-          {packData.packCover?.[0]?.url && (
-            <meta property="og:image" content={packData.packCover[0].url} />
+          {(Array.isArray(packData.packCover) ? packData.packCover[0]?.url : (typeof packData.packCover === 'string' ? packData.packCover : null)) && (
+            <meta property="og:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
           )}
           <meta property="og:url" content={`${debugLogs.origin}/packs/${packData.packURL}`} />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={packData.packTitle} />
           <meta name="twitter:description" content={packData.packSummary} />
-          {packData.packCover?.[0]?.url && (
-            <meta name="twitter:image" content={packData.packCover[0].url} />
+          {(Array.isArray(packData.packCover) ? packData.packCover[0]?.url : (typeof packData.packCover === 'string' ? packData.packCover : null)) && (
+            <meta name="twitter:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
           )}
         </Head>
         <PageHeader
@@ -331,16 +347,16 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
         <meta property="og:type" content="website" />
         <meta property="og:title" content={packData.packTitle} />
         <meta property="og:description" content={packData.packSummary} />
-        {packData.packCover?.[0]?.url && (
-          <meta property="og:image" content={packData.packCover[0].url} />
+        {(Array.isArray(packData.packCover) ? packData.packCover[0]?.url : (typeof packData.packCover === 'string' ? packData.packCover : null)) && (
+          <meta property="og:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
         )}
         <meta property="og:url" content={`${debugLogs.origin}/packs/${packData.packURL}`} />
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={packData.packTitle} />
         <meta name="twitter:description" content={packData.packSummary} />
-        {packData.packCover?.[0]?.url && (
-          <meta name="twitter:image" content={packData.packCover[0].url} />
+        {(Array.isArray(packData.packCover) ? packData.packCover[0]?.url : (typeof packData.packCover === 'string' ? packData.packCover : null)) && (
+          <meta name="twitter:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
         )}
       </Head>
       <PageHeader
