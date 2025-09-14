@@ -32,11 +32,10 @@ export default async function handler(req, res) {
       );
       return res.status(200).json({ success: true, events: rows });
     } else {
-      const events = await getAllEvents();
-      return res.status(200).json({ success: true, events });
+      return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
     }
   } catch (err) {
-    console.error('[api/admin/events] Airtable fetch error =>', err);
+    console.error('[api/admin/events] fetch error =>', err);
     return res.status(500).json({ success: false, error: 'Failed to fetch events' });
   }
 }

@@ -55,6 +55,11 @@ export default function CreatePropUnifiedPage() {
   const [coverPreview, setCoverPreview] = useState(null);
   const [eventCoverUrl, setEventCoverUrl] = useState(null);
   const [teamCoverUrl, setTeamCoverUrl] = useState(null);
+  // Pack multi-event cover selection support
+  const [packEventIds, setPackEventIds] = useState([]);
+  const [eventCoverMap, setEventCoverMap] = useState({}); // id -> { coverUrl, title }
+  const [selectedEventCoverId, setSelectedEventCoverId] = useState('current');
+  const [selectedAutoGradeEventId, setSelectedAutoGradeEventId] = useState(null);
 
   // Teams (league-scoped) and selection
   const [teamOptions, setTeamOptions] = useState([]);
@@ -81,6 +86,9 @@ export default function CreatePropUnifiedPage() {
   const [metricError, setMetricError] = useState('');
   const [selectedMetric, setSelectedMetric] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState([]);
+  // Team Winner mapping (A/B -> home/away)
+  const [sideAMap, setSideAMap] = useState('');
+  const [sideBMap, setSideBMap] = useState('');
   // Fallback NFL team metric catalog for future events (when live boxscore lacks statistics)
   const nflTeamMetricFallback = useMemo(() => ([
     'completionAttempts',
@@ -200,16 +208,92 @@ export default function CreatePropUnifiedPage() {
         if (!url) return;
         const r = await fetch(url);
         const j = await r.json();
-        if (!r.ok || !j?.success || !j?.pack?.packEventId) return;
+        if (!r.ok || !j?.success || !j?.pack) return;
+        try {
+          const ids = Array.isArray(j.pack.packEventIds) ? j.pack.packEventIds : (j.pack.packEventId ? [j.pack.packEventId] : []);
+          setPackEventIds(Array.from(new Set(ids.filter(Boolean))));
+        } catch {}
         const evId = j.pack.packEventId;
-        const evRes = await fetch(`/api/admin/events/${encodeURIComponent(evId)}`);
-        const evJson = await evRes.json();
-        if (evRes.ok && evJson?.success && evJson?.event) {
-          setEvent(evJson.event);
+        if (evId) {
+          const evRes = await fetch(`/api/admin/events/${encodeURIComponent(evId)}`);
+          const evJson = await evRes.json();
+          if (evRes.ok && evJson?.success && evJson?.event) {
+            setEvent(evJson.event);
+          }
         }
       } catch {}
     })();
   }, [pack, event]);
+
+  // Fallback: if admin pack endpoint surfaced event IDs directly, use them without requiring packURL
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!pack || event) return;
+        const ids = Array.isArray(pack.packEventIds) ? pack.packEventIds : (pack.packEventId ? [pack.packEventId] : []);
+        if (ids.length > 0) {
+          setPackEventIds((prev) => (prev && prev.length ? prev : Array.from(new Set(ids.filter(Boolean)))));
+          if (pack.packEventId) {
+            const evRes = await fetch(`/api/admin/events/${encodeURIComponent(pack.packEventId)}`);
+            const evJson = await evRes.json();
+            if (evRes.ok && evJson?.success && evJson?.event) {
+              setEvent(evJson.event);
+            }
+          }
+        }
+      } catch {}
+    })();
+  }, [pack, event]);
+
+  // Load titles and cover URLs for all pack-linked events
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!Array.isArray(packEventIds) || packEventIds.length === 0) { setEventCoverMap({}); return; }
+        const results = await Promise.all(packEventIds.map(async (id) => {
+          try {
+            const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
+            const json = await res.json();
+            if (!res.ok || !json?.success || !json?.event) return { id, coverUrl: null, title: id };
+            const ev = json.event;
+            let url = null;
+            try {
+              const fieldVal = ev.eventCover;
+              if (Array.isArray(fieldVal) && fieldVal.length > 0) {
+                for (const entry of fieldVal) {
+                  if (entry && typeof entry === 'object') {
+                    if (typeof entry.url === 'string' && entry.url.startsWith('http')) { url = entry.url; break; }
+                    const thumb = entry?.thumbnails?.large?.url || entry?.thumbnails?.full?.url;
+                    if (typeof thumb === 'string' && thumb.startsWith('http')) { url = thumb; break; }
+                  } else if (typeof entry === 'string' && entry.startsWith('http')) {
+                    url = entry; break;
+                  }
+                }
+              }
+              if (!url && typeof ev.eventCoverURL === 'string' && ev.eventCoverURL.startsWith('http')) url = ev.eventCoverURL;
+              if (!url && typeof ev.cover_url === 'string' && ev.cover_url.startsWith('http')) url = ev.cover_url;
+            } catch {}
+            const title = ev.eventTitle || ev.title || id;
+            return { id, coverUrl: url || null, title };
+          } catch { return { id, coverUrl: null, title: id }; }
+        }));
+        const map = {};
+        results.forEach((r) => { if (r && r.id) map[r.id] = { coverUrl: r.coverUrl, title: r.title }; });
+        setEventCoverMap(map);
+        // Default auto-grade event to the linked event if available; otherwise first pack event
+        try {
+          if (!selectedAutoGradeEventId) {
+            const currentId = event?.id || eventId || null;
+            if (currentId && map[currentId]) {
+              setSelectedAutoGradeEventId(currentId);
+            } else if (packEventIds.length > 0) {
+              setSelectedAutoGradeEventId(packEventIds[0]);
+            }
+          }
+        } catch {}
+      } catch {}
+    })();
+  }, [packEventIds]);
 
   // Load pack details if packId is provided (Postgres admin flow passes pack UUID)
   useEffect(() => {
@@ -218,13 +302,10 @@ export default function CreatePropUnifiedPage() {
     setPackError(null);
     (async () => {
       try {
-        const res = await fetch('/api/packs');
+        const res = await fetch(`/api/admin/packs/${encodeURIComponent(packId)}`);
         const data = await res.json();
-        if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load packs');
-        const found = Array.isArray(data.packs)
-          ? data.packs.find(p => String(p.airtableId) === String(packId) || String(p.packID) === String(packId) || String(p.packURL) === String(packId))
-          : null;
-        setPack(found || null);
+        if (!res.ok || !data?.success || !data.pack) throw new Error(data?.error || 'Failed to load pack');
+        setPack(data.pack);
       } catch (e) {
         setPackError(e.message || 'Failed to load pack');
         setPack(null);
@@ -439,12 +520,13 @@ export default function CreatePropUnifiedPage() {
             }
           } catch {}
         }
-        // For NFL + metric 'points' in team stats views, fetch ESPN weekly scoreboard as source of truth
+        // For NFL who_wins preview, or when team views need points, fetch ESPN weekly scoreboard
         let espnWeekly = null;
         try {
           const isTeamView = ['team_stat_over_under','team_stat_h2h','team_multi_stat_ou','team_multi_stat_h2h'].includes(autoGradeKey);
           const needsPoints = String(selectedMetric || '').toLowerCase() === 'points' || (Array.isArray(selectedMetrics) && selectedMetrics.map(s=>String(s||'').toLowerCase()).includes('points'));
-          if (isTeamView && needsPoints && ds === 'nfl') {
+          const needsWeekly = (ds === 'nfl') && (autoGradeKey === 'who_wins' || (isTeamView && needsPoints));
+          if (needsWeekly) {
             const yr = (() => { try { return new Date(event.eventTime).getFullYear(); } catch { return new Date().getFullYear(); } })();
             const wk = event?.eventWeek || '';
             const u = new URL('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
@@ -490,6 +572,39 @@ export default function CreatePropUnifiedPage() {
   };
   const homeTeamName = Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || '') : (event?.homeTeam || '');
   const awayTeamName = Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || '') : (event?.awayTeam || '');
+
+  // Prefill labels/takes for NFL Team Winner based on A/B mapping (only when empty)
+  useEffect(() => {
+    if (autoGradeKey !== 'who_wins') return;
+    if (String(dataSource) !== 'nfl') return;
+    try {
+      const isValidMap = (m) => m === 'home' || m === 'away';
+      if (!isValidMap(sideAMap) || !isValidMap(sideBMap) || sideAMap === sideBMap) return;
+      const teamNameFor = (map) => (map === 'home' ? homeTeamName : awayTeamName);
+      const teamA = teamNameFor(sideAMap)?.toString().trim();
+      const teamB = teamNameFor(sideBMap)?.toString().trim();
+      if (!teamA || !teamB || teamA === teamB) return;
+      if (!propShort) setPropShort('Who Wins?');
+      // Labels: fill blanks; if both equal to same team, correct both
+      if (!propSideAShort) setPropSideAShort(teamA);
+      if (!propSideBShort) setPropSideBShort(teamB);
+      if (propSideAShort && propSideBShort && propSideAShort === propSideBShort) {
+        if (propSideAShort === homeTeamName || propSideAShort === awayTeamName) {
+          setPropSideAShort(teamA);
+          setPropSideBShort(teamB);
+        }
+      }
+      // Takes: fill blanks; if both equal, correct to expected
+      const takeAExpected = `${teamA} beat the ${teamB}`;
+      const takeBExpected = `${teamB} beat the ${teamA}`;
+      if (!propSideATake) setPropSideATake(takeAExpected);
+      if (!propSideBTake) setPropSideBTake(takeBExpected);
+      if (propSideATake && propSideBTake && propSideATake === propSideBTake) {
+        setPropSideATake(takeAExpected);
+        setPropSideBTake(takeBExpected);
+      }
+    } catch {}
+  }, [autoGradeKey, dataSource, sideAMap, sideBMap, homeTeamName, awayTeamName]);
 
   // Keep selectedMetric in sync with formulaParamsText when it changes externally
   useEffect(() => {
@@ -568,6 +683,38 @@ export default function CreatePropUnifiedPage() {
       setFormulaParamsText(JSON.stringify(obj, null, 2));
     } catch {}
   }, [autoGradeKey, dataSource, event?.espnGameID, event?.eventTime]);
+
+  // Seed and maintain params for Team Winner (NFL-only)
+  useEffect(() => {
+    if (autoGradeKey !== 'who_wins') return;
+    try {
+      if (!sideAMap) setSideAMap('away');
+      if (!sideBMap) setSideBMap('home');
+    } catch {}
+  }, [autoGradeKey]);
+  useEffect(() => {
+    if (autoGradeKey !== 'who_wins') return;
+    try {
+      const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+      obj.entity = 'team';
+      obj.statScope = 'single';
+      obj.compare = 'h2h';
+      const source = dataSource || 'major-mlb';
+      if (!obj.metric) obj.metric = (source === 'nfl' ? 'points' : 'R');
+      if (!obj.winnerRule) obj.winnerRule = 'higher';
+      obj.whoWins = { sideAMap: sideAMap || '', sideBMap: sideBMap || '' };
+      if (event) {
+        const gid = String(event?.espnGameID || '').trim();
+        if (gid) obj.espnGameID = gid;
+        if (event?.eventTime && !obj.gameDate) {
+          const d = new Date(event.eventTime);
+          obj.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+      }
+      obj.dataSource = source;
+      setFormulaParamsText(JSON.stringify(obj, null, 2));
+    } catch {}
+  }, [autoGradeKey, sideAMap, sideBMap, dataSource, event?.espnGameID, event?.eventTime]);
 
   // Derived helpers for Player H2H selectors
   const teamOptionsH2H = useMemo(() => {
@@ -798,6 +945,36 @@ export default function CreatePropUnifiedPage() {
         setFormulaParamsText(finalFormulaParamsText);
       } catch {}
     }
+    // Validate Team Winner (NFL) before submit
+    if (autoGradeKey === 'who_wins') {
+      try {
+        const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+        const eff = { ...(obj || {}) };
+        if (String(dataSource) !== 'nfl') { setError('Team Winner is NFL-only. Set Auto Grade Source to NFL.'); return; }
+        const aMap = (eff?.whoWins?.sideAMap) || sideAMap || '';
+        const bMap = (eff?.whoWins?.sideBMap) || sideBMap || '';
+        if (!aMap || !bMap) { setError('Please map Take A and Take B to home/away.'); return; }
+        eff.whoWins = { sideAMap: aMap, sideBMap: bMap };
+        if (!eff.espnGameID) {
+          const gid = String(event?.espnGameID || '').trim();
+          if (gid) eff.espnGameID = gid;
+        }
+        if (!eff.gameDate && event?.eventTime) {
+          const d = new Date(event.eventTime);
+          eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+        }
+        eff.entity = 'team';
+        eff.statScope = 'single';
+        eff.compare = 'h2h';
+        eff.metric = 'points';
+        eff.winnerRule = 'higher';
+        eff.dataSource = 'nfl';
+        if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
+        if (!eff.gameDate) { setError('Missing game date on event'); return; }
+        finalFormulaParamsText = JSON.stringify(eff, null, 2);
+        setFormulaParamsText(finalFormulaParamsText);
+      } catch {}
+    }
     setLoading(true);
     setError(null);
 
@@ -825,6 +1002,12 @@ export default function CreatePropUnifiedPage() {
         setLoading(false);
         return;
       }
+    } else if (propCoverSource === 'event' && selectedEventCoverId && selectedEventCoverId !== 'current') {
+      const override = eventCoverMap[selectedEventCoverId]?.coverUrl || null;
+      if (override) {
+        // For alternate event cover selection, send the URL directly
+        propCoverUrl = override;
+      }
     }
 
     try {
@@ -844,7 +1027,8 @@ export default function CreatePropUnifiedPage() {
         propCoverSource,
         ...(propCoverUrl ? { propCover: propCoverUrl } : {}),
         ...(packId ? { packId } : {}),
-        ...(linkedEventId ? { eventId: linkedEventId } : {}),
+        // If pack has multiple events and an auto-grade event is chosen, honor it; else fallback to linkedEventId
+        ...(selectedAutoGradeEventId ? { eventId: selectedAutoGradeEventId } : (linkedEventId ? { eventId: linkedEventId } : {})),
         ...(selectedTeams && selectedTeams.length ? { teams: selectedTeams } : {}),
       };
       if (linkedEventId) {
@@ -975,6 +1159,54 @@ export default function CreatePropUnifiedPage() {
                   Edit Pack
                 </button>
               </div>
+              {Array.isArray(packEventIds) && packEventIds.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-sm font-semibold">Linked Events</div>
+                  <ul className="mt-1 space-y-2">
+                    {packEventIds.map((id) => (
+                      <li key={`pack-ev-${id}`} className="flex items-center gap-3">
+                        {eventCoverMap[id]?.coverUrl ? (
+                          <img src={eventCoverMap[id].coverUrl} alt={eventCoverMap[id]?.title || id} className="h-10 w-10 object-cover rounded" />
+                        ) : (
+                          <div className="h-10 w-10 rounded bg-gray-200 flex items-center justify-center text-xs text-gray-500">—</div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate">{eventCoverMap[id]?.title || id}</div>
+                          <div className="text-xs text-gray-600 truncate">{id}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
+                          onClick={() => router.push(`/admin/events/${encodeURIComponent(id)}`)}
+                        >
+                          View
+                        </button>
+                        {(!event || id !== event.id) && (
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
+                                const json = await res.json();
+                                if (res.ok && json?.success && json?.event) {
+                                  setEvent(json.event);
+                                  setSelectedAutoGradeEventId(id);
+                                  // Auto populate Event Cover selection
+                                  setPropCoverSource('event');
+                                  setSelectedEventCoverId(id);
+                                }
+                              } catch {}
+                            }}
+                          >
+                            Use for this prop
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
           {!event && (
@@ -1009,11 +1241,28 @@ export default function CreatePropUnifiedPage() {
           <option value="awayTeam" disabled={!event}>Use away team logo</option>
           <option value="custom">Custom upload</option>
         </select>
-        {propCoverSource === 'event' && eventCoverUrl && (
+        {propCoverSource === 'event' && Array.isArray(packEventIds) && packEventIds.length > 1 && (
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-gray-700">Event cover from</label>
+            <select
+              className="mt-1 block w-full border rounded px-2 py-1"
+              value={selectedEventCoverId}
+              onChange={(e) => setSelectedEventCoverId(e.target.value)}
+            >
+              <option value="current">{event?.eventTitle ? `${event.eventTitle} (linked)` : 'Linked event'}</option>
+              {packEventIds
+                .filter((id) => id !== (event?.id || eventId))
+                .map((id) => (
+                  <option key={id} value={id}>{eventCoverMap[id]?.title || id}</option>
+                ))}
+            </select>
+          </div>
+        )}
+        {propCoverSource === 'event' && ((selectedEventCoverId && selectedEventCoverId !== 'current' && eventCoverMap[selectedEventCoverId]?.coverUrl) || eventCoverUrl) && (
           <div className="mt-2 text-xs text-gray-700">
             <div className="mb-1">URL:</div>
-            <a href={eventCoverUrl} target="_blank" rel="noopener noreferrer" className="block px-2 py-1 border rounded bg-gray-50 break-all">
-              {eventCoverUrl}
+            <a href={((selectedEventCoverId && selectedEventCoverId !== 'current' && eventCoverMap[selectedEventCoverId]?.coverUrl) || eventCoverUrl)} target="_blank" rel="noopener noreferrer" className="block px-2 py-1 border rounded bg-gray-50 break-all">
+              {((selectedEventCoverId && selectedEventCoverId !== 'current' && eventCoverMap[selectedEventCoverId]?.coverUrl) || eventCoverUrl)}
             </a>
           </div>
         )}
@@ -1028,8 +1277,8 @@ export default function CreatePropUnifiedPage() {
         {propCoverSource === 'event' && (
           <div className="mt-2">
             <div className="text-sm text-gray-700">Preview</div>
-            {eventCoverUrl ? (
-              <img src={eventCoverUrl} alt="Event Cover" className="mt-2 h-32 object-contain" />
+            {(((selectedEventCoverId && selectedEventCoverId !== 'current' && eventCoverMap[selectedEventCoverId]?.coverUrl) || eventCoverUrl)) ? (
+              <img src={((selectedEventCoverId && selectedEventCoverId !== 'current' && eventCoverMap[selectedEventCoverId]?.coverUrl) || eventCoverUrl)} alt="Event Cover" className="mt-2 h-32 object-contain" />
             ) : (
               <div className="mt-2 text-xs text-gray-500">No event cover available</div>
             )}
@@ -1070,6 +1319,32 @@ export default function CreatePropUnifiedPage() {
         <>
           <div className="mb-4 p-4 border rounded bg-white">
             <div className="text-lg font-semibold">Auto Grade</div>
+            {Array.isArray(packEventIds) && packEventIds.length > 1 && (
+              <div className="mt-2">
+                <label className="block text-sm font-medium text-gray-700">Auto Grade Event</label>
+                <select
+                  className="mt-1 block w-full border rounded px-2 py-1"
+                  value={selectedAutoGradeEventId || (event?.id || eventId) || ''}
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    setSelectedAutoGradeEventId(id);
+                    try {
+                      if (id && id !== (event?.id || '')) {
+                        const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`);
+                        const json = await res.json();
+                        if (res.ok && json?.success && json?.event) {
+                          setEvent(json.event);
+                        }
+                      }
+                    } catch {}
+                  }}
+                >
+                  {packEventIds.map((id) => (
+                    <option key={id} value={id}>{eventCoverMap[id]?.title || id}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <label className="block text-sm font-medium text-gray-700 mt-2">Auto Grade Source</label>
             <select
               className="mt-1 block w-full border rounded px-2 py-1"
@@ -1105,9 +1380,44 @@ export default function CreatePropUnifiedPage() {
               <option value="player_multi_stat_h2h">Player Multi Stat H2H</option>
               <option value="team_multi_stat_ou">Team Multi Stat O/U</option>
               <option value="team_multi_stat_h2h">Team Multi Stat H2H</option>
+              {/* NFL-only Team Winner */}
+              <option value="who_wins" disabled={String(dataSource) !== 'nfl'}>Team Winner (NFL)</option>
             </select>
             {/* Minimal params UI for common cases */}
             {false && <div />}
+            {autoGradeKey === 'who_wins' && (
+              <div className="mt-3 space-y-2">
+                <div className="text-sm font-medium text-gray-700">Map takes to teams</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm">Take A Team</label>
+                    <select
+                      className="mt-1 block w-full border rounded px-2 py-1"
+                      value={sideAMap}
+                      onChange={(e) => setSideAMap(e.target.value)}
+                    >
+                      <option value="away">{Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || 'Away') : (event?.awayTeam || event?.awayTeamAbbreviation || 'Away')}</option>
+                      <option value="home">{Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || 'Home') : (event?.homeTeam || event?.homeTeamAbbreviation || 'Home')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm">Take B Team</label>
+                    <select
+                      className="mt-1 block w-full border rounded px-2 py-1"
+                      value={sideBMap}
+                      onChange={(e) => setSideBMap(e.target.value)}
+                    >
+                      <option value="home">{Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || 'Home') : (event?.homeTeam || event?.homeTeamAbbreviation || 'Home')}</option>
+                      <option value="away">{Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || 'Away') : (event?.awayTeam || event?.awayTeamAbbreviation || 'Away')}</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600">Winner is determined by final points from the linked NFL event.</div>
+                {String(dataSource) !== 'nfl' && (
+                  <div className="text-xs text-red-600">Set source to NFL to use Team Winner.</div>
+                )}
+              </div>
+            )}
             {(autoGradeKey === 'stat_over_under' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && (
               <div className="mt-3 space-y-3">
                 {(autoGradeKey === 'team_stat_over_under') && (
@@ -1793,6 +2103,32 @@ export default function CreatePropUnifiedPage() {
                             const status = g.currentInning || g.gameStatus || '';
                             return `${away} @ ${home} — ${awayR} - ${homeR} ${status ? '('+status+')' : ''}`;
                           } catch { return null; }
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                  {String(previewData?.source || '').toLowerCase() === 'nfl' && autoGradeKey === 'who_wins' && (
+                    <div>
+                      <div className="font-medium">NFL Score</div>
+                      <div>
+                        {(function(){
+                          try {
+                            const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
+                            const g = (() => {
+                              try { return wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim()); } catch { return null; }
+                            })();
+                            if (!g) return 'values not available yet';
+                            const comp = (Array.isArray(g.competitions) ? g.competitions : [])[0] || {};
+                            const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
+                            const cAway = compsArr.find(ci => String(ci?.homeAway) === 'away') || compsArr[0] || {};
+                            const cHome = compsArr.find(ci => String(ci?.homeAway) === 'home') || compsArr[1] || {};
+                            const awayAbv = String(cAway?.team?.abbreviation || (Array.isArray(event?.awayTeam)?event.awayTeam[0]:event?.awayTeam) || 'Away');
+                            const homeAbv = String(cHome?.team?.abbreviation || (Array.isArray(event?.homeTeam)?event.homeTeam[0]:event?.homeTeam) || 'Home');
+                            const awayScore = Number(cAway?.score);
+                            const homeScore = Number(cHome?.score);
+                            const haveScores = Number.isFinite(awayScore) && Number.isFinite(homeScore);
+                            return haveScores ? `${awayAbv} ${awayScore} - ${homeScore} ${homeAbv}` : 'values not available yet';
+                          } catch { return 'values not available yet'; }
                         })()}
                       </div>
                     </div>

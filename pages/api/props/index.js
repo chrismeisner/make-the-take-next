@@ -253,122 +253,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ success: false, error: "Failed to fetch props" });
     }
   }
-  if (req.method === "POST") {
-    // Create a new Prop linked to a Pack
-    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    // Destructure core prop fields, including value model and moneylines
-    const { propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, propStatus, packId, propOrder, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCover, propCoverSource,
-            propOpenTime, propCloseTime,
-            gradingMode, formulaKey, formulaParams,
-            // Event linkage fields
-            eventId, eventTitle, eventTime, eventLeague } = req.body;
-    // Parse moneyline inputs to numbers for Airtable numeric fields
-    const moneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
-      ? parseFloat(PropSideAMoneyline)
-      : null;
-    const moneylineB = (PropSideBMoneyline !== undefined && PropSideBMoneyline !== "")
-      ? parseFloat(PropSideBMoneyline)
-      : null;
-    if (!propShort || (!packId && !eventId)) {
-      return res.status(400).json({ success: false, error: "Missing propShort or packId/eventId" });
-    }
-    try {
-      // Log incoming payload for debugging
-      console.log('[api/props POST] req.body:', req.body);
-      // Build fields object for Airtable
-      const fieldsToCreate = {
-        propShort,
-        propSummary,
-        PropSideAShort,
-        PropSideBShort,
-        PropSideATake,
-        PropSideBTake,
-        propType,
-        propStatus: propStatus ?? "open",
-        ...(packId ? { Packs: [packId] } : {}),
-        ...(teams && teams.length ? { Teams: teams } : {}),
-        // Keep numeric propOrder as a transitional fallback if provided
-        ...(propOrder !== undefined ? { propOrder } : {}),
-        ...(propValueModel ? { propValueModel } : {}),
-        ...(moneylineA !== null && !isNaN(moneylineA) ? { PropSideAMoneyline: moneylineA } : {}),
-        ...(moneylineB !== null && !isNaN(moneylineB) ? { PropSideBMoneyline: moneylineB } : {}),
-        ...(propCover ? { propCover: [{ url: propCover }] } : {}),
-        ...(propCoverSource ? { propCoverSource: String(propCoverSource).toLowerCase() } : {}),
-        ...(formulaKey ? { formulaKey: String(formulaKey) } : {}),
-        ...(formulaParams ? { formulaParams: typeof formulaParams === 'string' ? formulaParams : JSON.stringify(formulaParams) } : {}),
-        ...(gradingMode ? { gradingMode: String(gradingMode) } : {}),
-      };
-      // Initialize per-pack ordering JSON if we have an order
-      if (propOrder !== undefined) {
-        try {
-          const orderMap = {};
-          if (typeof propOrder === 'number') {
-            orderMap.default = propOrder;
-          }
-          if (packId && typeof propOrder === 'number') {
-            orderMap[packId] = propOrder;
-          }
-          fieldsToCreate.propOrderByPack = JSON.stringify(orderMap);
-        } catch {}
-      }
-      console.log('[api/props POST] fieldsToCreate:', fieldsToCreate);
-      // Determine eventRecordId: explicit, new, or pack's existing event
-      let eventRecordId;
-      if (eventId && typeof eventId === 'string' && eventId.startsWith('rec')) {
-        eventRecordId = eventId;
-      } else if (eventTitle && eventTime && eventLeague) {
-        const [createdEvent] = await base("Events").create([{ fields: { eventTitle, eventTime, eventLeague } }]);
-        eventRecordId = createdEvent.id;
-      } else {
-        const packRec = await base("Packs").find(packId);
-        const packEventLink = packRec.fields.Event || [];
-        if (Array.isArray(packEventLink) && packEventLink.length) {
-          eventRecordId = packEventLink[0];
-        }
-      }
-      // Parse and convert propOpenTime/propCloseTime to ISO date string
-      let openTimeIso = null;
-      let closeTimeIso = null;
-      if (propOpenTime) {
-        openTimeIso = new Date(propOpenTime).toISOString();
-      }
-      if (propCloseTime) {
-        closeTimeIso = new Date(propCloseTime).toISOString();
-      }
-      // Now that eventRecordId and closeTimeIso are defined, add them
-      if (eventRecordId) {
-        fieldsToCreate.Event = [eventRecordId];
-        console.log('[api/props POST] fieldsToCreate.Event set to', eventRecordId);
-        // Also copy ESPN/league identifiers from the Event for grading and linking
-        try {
-          const evRec = await base('Events').find(eventRecordId);
-          const evf = evRec.fields || {};
-          // Do not write computed fields like propLeagueLookup
-        } catch (e) {
-          console.warn('[api/props POST] Unable to enrich prop with ESPN/league from Event', e?.message || e);
-        }
-      }
-      if (openTimeIso) {
-        fieldsToCreate.propOpenTime = openTimeIso;
-        console.log('[api/props POST] fieldsToCreate.propOpenTime set to', openTimeIso);
-      }
-      if (closeTimeIso) {
-        fieldsToCreate.propCloseTime = closeTimeIso;
-        console.log('[api/props POST] fieldsToCreate.propCloseTime set to', closeTimeIso);
-      }
-      // Create the Prop record
-      const created = await base("Props").create([
-        {
-          fields: fieldsToCreate,
-        },
-      ], { typecast: true });
-      return res.status(200).json({ success: true, record: created[0] });
-    } catch (err) {
-      console.error("[api/props POST] Error =>", err);
-      return res.status(500).json({ success: false, error: "Failed to create prop" });
-    }
-  }
-  // PATCH: update propStatus of a specific prop
   if (req.method === "PATCH") {
     // Postgres path
     if (getDataBackend() === 'postgres') {
@@ -409,7 +293,6 @@ export default async function handler(req, res) {
         if (propCloseTime  !== undefined) fields.close_time        = propCloseTime ? new Date(propCloseTime).toISOString() : null;
         if (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "") fields.moneyline_a = Number(PropSideAMoneyline);
         if (PropSideBMoneyline !== undefined && PropSideBMoneyline !== "") fields.moneyline_b = Number(PropSideBMoneyline);
-        // Keep computed value fields in sync with moneylines when provided
         const makeValue = (n) => {
           if (!Number.isFinite(n) || n === 0) return null;
           const raw = n > 0 ? (n / 100) * 250 : (100 / Math.abs(n)) * 250;
@@ -434,7 +317,6 @@ export default async function handler(req, res) {
             fields.formula_params = { raw: String(formulaParams) };
           }
         }
-        // Compute cover_url updates when provided
         const normalizeSource = (s) => {
           const v = String(s || '').toLowerCase();
           if (v === 'hometeam') return 'homeTeam';
@@ -487,113 +369,11 @@ export default async function handler(req, res) {
         return res.status(500).json({ success: false, error: "Failed to update prop" });
       }
     }
-    // Destructure updatable fields, including new ones
-    const { propId, packId, propStatus, propOrder, propShort, propSummary, PropSideAShort, PropSideBShort, PropSideATake, PropSideBTake, propType, teams, propValueModel, PropSideAMoneyline, PropSideBMoneyline, propCloseTime, propCoverSource,
-      // event link
-      eventId, gradingMode, formulaKey, formulaParams, gradedAt } = req.body;
-    // Parse moneyline inputs for updates
-    const updMoneylineA = (PropSideAMoneyline !== undefined && PropSideAMoneyline !== "")
-      ? parseFloat(PropSideAMoneyline)
-      : null;
-    const updMoneylineB = (PropSideBMoneyline !== undefined && PropSideBMoneyline !== "")
-      ? parseFloat(PropSideBMoneyline)
-      : null;
-    // Parse and convert propCloseTime to ISO for updates
-    const updCloseTimeIso = propCloseTime ? new Date(propCloseTime).toISOString() : null;
-    const updGradedAtIso = gradedAt ? new Date(gradedAt).toISOString() : null;
-    if (!propId) {
-      return res.status(400).json({ success: false, error: "Missing propId" });
-    }
-    if (
-      propStatus === undefined &&
-      propOrder  === undefined &&
-      propShort  === undefined &&
-      propSummary=== undefined &&
-      PropSideAShort=== undefined &&
-      PropSideBShort=== undefined &&
-      propType=== undefined
-      && PropSideATake === undefined
-      && PropSideBTake === undefined
-      && gradingMode === undefined
-      && formulaKey === undefined
-      && formulaParams === undefined
-      && eventId === undefined
-    ) {
-      return res.status(400).json({ success: false, error: "No fields provided to update" });
-    }
-    try {
-      console.log('[api/props PATCH] Incoming payload:', {
-        propId,
-        hasPropShort: propShort !== undefined,
-        hasPropSummary: propSummary !== undefined,
-        // grading removed
-      });
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-      const fieldsToUpdate = {};
-      // If order is being updated, merge into propOrderByPack JSON
-      if (propOrder !== undefined) {
-        try {
-          const existing = await base('Props').find(propId);
-          const existingFields = existing.fields || {};
-          let map = {};
-          if (typeof existingFields.propOrderByPack === 'string' && existingFields.propOrderByPack.trim()) {
-            try { map = JSON.parse(existingFields.propOrderByPack); } catch { map = {}; }
-          }
-          if (typeof propOrder === 'number') {
-            if (packId) {
-              map[packId] = propOrder;
-            } else {
-              map.default = propOrder;
-            }
-            fieldsToUpdate.propOrderByPack = JSON.stringify(map);
-          }
-        } catch (e) {
-          console.error('[api/props PATCH] Failed to merge propOrderByPack:', e);
-        }
-      }
-      if (propStatus     !== undefined) fieldsToUpdate.propStatus     = propStatus;
-      // Keep numeric propOrder updated for backward compatibility
-      if (propOrder      !== undefined) fieldsToUpdate.propOrder      = propOrder;
-      if (propShort      !== undefined) fieldsToUpdate.propShort      = propShort;
-      if (propSummary    !== undefined) fieldsToUpdate.propSummary    = propSummary;
-      if (PropSideAShort !== undefined) fieldsToUpdate.PropSideAShort = PropSideAShort;
-      if (PropSideBShort !== undefined) fieldsToUpdate.PropSideBShort = PropSideBShort;
-      if (PropSideATake  !== undefined) fieldsToUpdate.PropSideATake  = PropSideATake;
-      if (PropSideBTake  !== undefined) fieldsToUpdate.PropSideBTake  = PropSideBTake;
-      if (propType       !== undefined) fieldsToUpdate.propType       = propType;
-      if (teams          !== undefined) fieldsToUpdate.Teams          = teams;
-      if (propValueModel !== undefined) fieldsToUpdate.propValueModel        = propValueModel;
-      if (propCoverSource !== undefined) fieldsToUpdate.propCoverSource = String(propCoverSource).toLowerCase();
-      if (gradingMode      !== undefined) fieldsToUpdate.gradingMode      = gradingMode;
-      if (formulaKey       !== undefined) fieldsToUpdate.formulaKey       = formulaKey;
-      if (formulaParams    !== undefined) fieldsToUpdate.formulaParams    = typeof formulaParams === 'string' ? formulaParams : JSON.stringify(formulaParams);
-      if (updGradedAtIso   !== null)      fieldsToUpdate.gradedAt         = updGradedAtIso;
-      console.log('[api/props PATCH] fieldsToUpdate:', fieldsToUpdate);
-      if (eventId !== undefined) {
-        // Accept Airtable record id (rec...) to link Event
-        if (typeof eventId === 'string' && eventId.startsWith('rec')) {
-          fieldsToUpdate.Event = [eventId];
-        } else if (eventId === null) {
-          fieldsToUpdate.Event = [];
-        }
-      }
-      if (updMoneylineA !== null && !isNaN(updMoneylineA)) fieldsToUpdate.PropSideAMoneyline = updMoneylineA;
-      if (updMoneylineB !== null && !isNaN(updMoneylineB)) fieldsToUpdate.PropSideBMoneyline = updMoneylineB;
-      if (propCloseTime !== undefined) fieldsToUpdate.propCloseTime = updCloseTimeIso;
-      const updated = await base("Props").update([
-        { id: propId, fields: fieldsToUpdate }
-      ], { typecast: true });
-      console.log('[api/props PATCH] Updated record id:', updated?.[0]?.id);
-      return res.status(200).json({ success: true, record: updated[0] });
-    } catch (err) {
-      console.error("[api/props PATCH] Error =>", err);
-      return res.status(500).json({ success: false, error: "Failed to update propStatus" });
-    }
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   // DELETE: remove a prop completely
   if (req.method === "DELETE") {
-    // Postgres path
     if (getDataBackend() === 'postgres') {
       try {
         const { propId } = req.body || {};
@@ -601,13 +381,12 @@ export default async function handler(req, res) {
           return res.status(400).json({ success: false, error: "Missing propId" });
         }
         // Try to delete by primary UUID id first
-        // Clean up dependent rows where necessary
         await query('DELETE FROM takes WHERE prop_id = $1', [propId]);
         const delById = await query('DELETE FROM props WHERE id = $1', [propId]);
         if (delById.rowCount && delById.rowCount > 0) {
           return res.status(200).json({ success: true, deleted: delById.rowCount });
         }
-        // Fallback: attempt lookup by external text prop_id and delete
+        // Fallback: by external text prop_id
         const { rows } = await query('SELECT id FROM props WHERE prop_id = $1 LIMIT 1', [propId]);
         if (!rows || rows.length === 0) {
           return res.status(404).json({ success: false, error: 'Prop not found' });
@@ -621,113 +400,9 @@ export default async function handler(req, res) {
         return res.status(500).json({ success: false, error: "Failed to delete prop" });
       }
     }
-    // Airtable path
-    try {
-      const { propId } = req.body || {};
-      if (!propId) {
-        return res.status(400).json({ success: false, error: "Missing propId" });
-      }
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-      await base('Props').destroy([propId]);
-      return res.status(200).json({ success: true, deleted: 1 });
-    } catch (err) {
-      console.error("[api/props DELETE] Error =>", err);
-      return res.status(500).json({ success: false, error: "Failed to delete prop" });
-    }
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
-  // Only GET and POST allowed beyond this point
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
-  }
-  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-  
-  try {
-	// 1) Parse limit + offset from query
-	const limit = parseInt(req.query.limit || "10", 10); // default to 10
-	const offset = req.query.offset || ""; // if provided, use it; otherwise blank
 
-	// 2) Build Airtable REST API URL, optionally using a specific view
-	const baseID = process.env.AIRTABLE_BASE_ID;
-	const apiKey = process.env.AIRTABLE_API_KEY;
-	const tableName = "Props";
-	// Determine view: use query param or default "Grid view"
-	const viewParam = req.query.view || "Grid view";
-	let url = `https://api.airtable.com/v0/${baseID}/${encodeURIComponent(tableName)}?pageSize=${limit}&view=${encodeURIComponent(viewParam)}`;
-	if (offset) {
-	  url += `&offset=${offset}`;
-	}
-
-	// 3) Fetch from Airtable
-	const airtableRes = await fetch(url, {
-	  headers: {
-		Authorization: `Bearer ${apiKey}`,
-	  },
-	});
-	if (!airtableRes.ok) {
-	  const text = await airtableRes.text();
-	  return res.status(airtableRes.status).json({ success: false, error: text });
-	}
- 
-	const data = await airtableRes.json();
-	// data => { records: [...], offset?: string }
-
-	// 4) Convert each record to the shape we want
-	// Fetch and map props, including linked Event title
-	const propsData = await Promise.all(data.records.map(async (rec) => {
-      const f = rec.fields;
-      // Resolve linked Event title if available
-      let eventTitle = null;
-      let eventTime = null;
-      let eventLeague = null;
-      const eventLinks = Array.isArray(f.Event) ? f.Event : [];
-      if (eventLinks.length) {
-        try {
-          const evRec = await base('Events').find(eventLinks[0]);
-          eventTitle = evRec.fields.eventTitle || null;
-          eventTime = evRec.fields.eventTime || null;
-          eventLeague = evRec.fields.eventLeague || null;
-        } catch {}
-      }
-      return {
-        airtableId: rec.id,
-        propID: f.propID || null,
-        propTitle: f.propTitle || "Untitled",
-        propSummary: f.propSummary || "",
-        propStatus: f.propStatus || "open",
-        // Important for custom short labels:
-        PropSideAShort: f.PropSideAShort || "",
-        PropSideBShort: f.PropSideBShort || "",
-        propShort: f.propShort || "",
-        // Provide linked Event title and time
-        eventTitle,
-        eventTime,
-        eventLeague,
-        propCloseTime: f.propCloseTime || null,
-        // Example: subjectLogo, contentImage, etc.
-        subjectLogoUrls: Array.isArray(f.subjectLogo)
-          ? f.subjectLogo.map((img) => img.url)
-          : [],
-        contentImageUrls: Array.isArray(f.contentImage)
-          ? f.contentImage.map((img) => img.url)
-          : [],
-        linkedPacks: Array.isArray(f.Packs) ? f.Packs : [],
-        teams: Array.isArray(f.Teams) ? f.Teams : [],
-        propOrder: f.propOrder || 0,
-        createdAt: rec.createdTime,
-      };
-    }));
-
-	// 5) If there's an offset in the response, that's for the next page
-	const nextOffset = data.offset || null;
-
-	// 6) Return partial success + nextOffset
-	res.status(200).json({
-	  success: true,
-	  props: propsData,
-	  nextOffset, // null if no more pages
-	});
-  } catch (err) {
-	console.error("[/api/props] error =>", err);
-	res.status(500).json({ success: false, error: err.message });
-  }
+  // Fallback for unsupported methods
+  return res.status(405).json({ success: false, error: "Method not allowed" });
 }

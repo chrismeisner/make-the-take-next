@@ -1,4 +1,4 @@
-import { getEventById } from '../../../lib/airtableService';
+import { query } from '../../../lib/db/postgres';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,8 +12,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch event details
-    const event = await getEventById(eventId);
+    // Fetch event details (Postgres)
+    const { rows } = await query(
+      `SELECT title AS "eventTitle", event_time AS "eventTime", league AS "eventLeague",
+              home_team AS "homeTeam", away_team AS "awayTeam"
+         FROM events
+        WHERE id::text = $1 OR event_id = $1 OR espn_game_id = $1
+        LIMIT 1`,
+      [String(eventId)]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Event not found' });
+    }
+    const event = rows[0];
     const away = Array.isArray(event.awayTeam) ? event.awayTeam[0] : event.awayTeam || '';
     const home = Array.isArray(event.homeTeam) ? event.homeTeam[0] : event.homeTeam || '';
     const eventDate = event.eventTime ? new Date(event.eventTime).toLocaleString() : '';

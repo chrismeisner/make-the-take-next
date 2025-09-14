@@ -1,12 +1,10 @@
 import { getToken } from 'next-auth/jwt';
-import Airtable from 'airtable';
 import { resolveSourceConfig } from '../../../lib/apiSources';
 import { normalizeMajorMlbScoreboard, normalizeNflScoreboardFromWeekly } from '../../../lib/normalize';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { query } from '../../../lib/db/postgres';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+// Airtable removed; Postgres-only implementation
 
 // --- Major MLB helpers (scoreboard + boxscore normalization) ---
 async function fetchMajorMlbScoreboardYYYYMMDD(yyyymmdd) {
@@ -1026,13 +1024,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const baseId = process.env.AIRTABLE_BASE_ID;
-  const apiKey = process.env.AIRTABLE_API_KEY;
-  if (!baseId || !apiKey) {
-    return res.status(500).json({ success: false, error: 'Airtable not configured' });
-  }
-  const base = new Airtable({ apiKey }).base(baseId);
-
+  // Airtable path removed; backend is Postgres-only
   try {
     if (!airtableId) {
       return res.status(400).json({ success: false, error: 'Missing airtableId' });

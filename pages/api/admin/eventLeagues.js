@@ -12,8 +12,7 @@ export default async function handler(req, res) {
       const leagues = rows.map(r => r.league);
       return res.status(200).json({ success: true, leagues });
     }
-    const leagues = await getEventLeagues();
-    return res.status(200).json({ success: true, leagues });
+    return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
   } catch (error) {
     console.error('[api/admin/eventLeagues] fetch error =>', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch leagues' });

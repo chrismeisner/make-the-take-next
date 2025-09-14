@@ -165,7 +165,17 @@ async function handler(req, res) {
       // Prefer DAL when packURL is provided
       if (packURL) {
         const { packs } = createRepositories();
-        const updated = await packs.updateByPackURL(packURL, req.body || {});
+        // If multiple events are provided, set primary event_id from first UUID
+        let primaryEventId = null;
+        if (Array.isArray(req.body?.events) && req.body.events.length > 0) {
+          const firstUuid = req.body.events.find((e) => typeof e === 'string' && !e.startsWith('rec')) || null;
+          if (firstUuid) primaryEventId = firstUuid;
+        }
+
+        const updateFields = { ...(req.body || {}) };
+        if (primaryEventId) updateFields.event_id = primaryEventId;
+
+        const updated = await packs.updateByPackURL(packURL, updateFields);
         // If client provided a props[] list, sync membership to this pack
         if (Array.isArray(req.body?.props)) {
           try {
@@ -186,6 +196,36 @@ async function handler(req, res) {
             }
           } catch (mErr) {
             console.error('[api/packs PATCH PG] props membership sync failed =>', mErr?.message || mErr);
+          }
+        }
+
+        // Sync packs_events many-to-many links if events[] provided
+        if (Array.isArray(req.body?.events)) {
+          try {
+            const packUUID = updated?.id;
+            if (packUUID) {
+              const desired = req.body.events
+                .filter((e) => typeof e === 'string' && !e.startsWith('rec'));
+              // Fetch existing event links
+              const { rows: existingRows } = await query('SELECT event_id FROM packs_events WHERE pack_id = $1', [packUUID]);
+              const existing = new Set(existingRows.map(r => r.event_id));
+              const desiredSet = new Set(desired);
+              const toLink = desired.filter((id) => !existing.has(id));
+              const toUnlink = [...existing].filter((id) => !desiredSet.has(id));
+              if (toLink.length > 0) {
+                const values = toLink.map((_, i) => `($1, $${i + 2})`).join(',');
+                await query(
+                  `INSERT INTO packs_events (pack_id, event_id) VALUES ${values}
+                   ON CONFLICT (pack_id, event_id) DO NOTHING`,
+                  [packUUID, ...toLink]
+                );
+              }
+              if (toUnlink.length > 0) {
+                await query('DELETE FROM packs_events WHERE pack_id = $1 AND event_id = ANY($2::uuid[])', [packUUID, toUnlink]);
+              }
+            }
+          } catch (m2mErr) {
+            console.error('[api/packs PATCH PG] packs_events sync failed =>', m2mErr?.message || m2mErr);
           }
         }
         return res.status(200).json({ success: true, record: updated });

@@ -1,9 +1,6 @@
-import { getCustomEventsByDate } from '../../../lib/airtableService';
 import { getToken } from 'next-auth/jwt';
-import Airtable from 'airtable';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { query } from '../../../lib/db/postgres';
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -21,7 +18,7 @@ export default async function handler(req, res) {
   try {
     const backend = getDataBackend();
     if (backend === 'postgres') {
-      const dayStr = date; // assume YYYY-MM-DD
+      const dayStr = date;
       const params = [];
       let i = 1;
       let sql = `SELECT id,
@@ -41,45 +38,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, events: rows });
     }
 
-    // Airtable (timezone-aware)
-    let events = await getCustomEventsByDate({ date, timeZone: tz });
-    const leagueLower = league?.toLowerCase();
-    if (leagueLower) {
-      events = events.filter(evt => String(evt.eventLeague).toLowerCase() === leagueLower);
-    }
-    const eventsWithLogos = await Promise.all(events.map(async (evt) => {
-      let homeTeamLogo = null;
-      if (Array.isArray(evt.homeTeamLink) && evt.homeTeamLink.length) {
-        try {
-          const rec = await base('Teams').find(evt.homeTeamLink[0]);
-          homeTeamLogo = rec.fields.teamLogoURL || null;
-        } catch {}
-      }
-      let awayTeamLogo = null;
-      if (Array.isArray(evt.awayTeamLink) && evt.awayTeamLink.length) {
-        try {
-          const rec = await base('Teams').find(evt.awayTeamLink[0]);
-          awayTeamLogo = rec.fields.teamLogoURL || null;
-        } catch {}
-      }
-      return { ...evt, homeTeamLogo, awayTeamLogo };
-    }));
-    const formatted = eventsWithLogos.map(evt => ({
-      id: evt.id,
-      eventTitle: evt.eventTitle,
-      eventTime: evt.eventTime,
-      eventLeague: evt.eventLeague,
-      homeTeam: evt.homeTeam,
-      awayTeam: evt.awayTeam,
-      homeTeamLink: evt.homeTeamLink,
-      awayTeamLink: evt.awayTeamLink,
-      homeTeamLogo: evt.homeTeamLogo,
-      awayTeamLogo: evt.awayTeamLogo,
-      espnLink: evt.espnLink,
-    }));
-    return res.status(200).json({ success: true, events: formatted });
+    return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
   } catch (err) {
-    console.error('[api/admin/eventsByDate] Airtable fetch error =>', err);
+    console.error('[api/admin/eventsByDate] fetch error =>', err);
     return res.status(500).json({ success: false, error: 'Failed to fetch events' });
   }
 } 

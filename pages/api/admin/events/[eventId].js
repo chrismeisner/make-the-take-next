@@ -1,6 +1,4 @@
-import { getEventById } from '../../../../lib/airtableService';
 import { getToken } from 'next-auth/jwt';
-import Airtable from 'airtable';
 import { getDataBackend } from '../../../../lib/runtimeConfig';
 import { query } from '../../../../lib/db/postgres';
 
@@ -92,9 +90,8 @@ export default async function handler(req, res) {
         };
         return res.status(200).json({ success: true, event });
       }
-      // Airtable (default)
-      const event = await getEventById(eventId);
-      return res.status(200).json({ success: true, event });
+      // Airtable removed; Postgres-only
+      return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
     } catch (err) {
       console.error('[api/admin/events/[eventId]] fetch error =>', err);
       return res.status(500).json({ success: false, error: 'Failed to fetch event' });
@@ -149,14 +146,8 @@ export default async function handler(req, res) {
         };
         return res.status(200).json({ success: true, event });
       }
-      // Airtable default
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-      const { tankGameID } = req.body || {};
-      const fields = {};
-      if (tankGameID !== undefined) fields.tankGameID = tankGameID || '';
-      const updated = await base('Events').update([{ id: eventId, fields }], { typecast: true });
-      const event = await getEventById(eventId);
-      return res.status(200).json({ success: true, event, record: updated[0] });
+      // Airtable removed; Postgres-only
+      return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
     } catch (err) {
       console.error('[api/admin/events/[eventId] PATCH] Error =>', err);
       return res.status(500).json({ success: false, error: 'Failed to update event' });

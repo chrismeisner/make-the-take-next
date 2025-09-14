@@ -36,7 +36,30 @@ export default async function handler(req, res) {
 	const packRecordId = pack.id;
   // Postgres-only
   // Fetch linked Event record early so we can attach espnGameID and eventLeague to props
-  const eventIDs = packFields.Event || [];
+  // Load all linked events from join table; fallback to single event_id from pack
+  let eventIDs = packFields.Event || [];
+  try {
+    const { rows: evRows } = await query(
+      `SELECT pe.event_id
+         FROM packs p
+         LEFT JOIN packs_events pe ON pe.pack_id = p.id
+        WHERE p.pack_url = $1`,
+      [packURL]
+    );
+    const fromJoin = evRows.map(r => r.event_id).filter(Boolean);
+    if (fromJoin.length > 0) {
+      eventIDs = Array.from(new Set(fromJoin));
+    } else if (!eventIDs.length && packRecordId) {
+      // Fallback to pack.event_id
+      try {
+        const { rows } = await query('SELECT event_id FROM packs WHERE id = $1', [packRecordId]);
+        const eid = rows?.[0]?.event_id || null;
+        if (eid) eventIDs = [eid];
+      } catch {}
+    }
+  } catch (e) {
+    // keep default eventIDs
+  }
   let espnGameID = null;
   let eventLeague = null;
   // New: home/away team logos available early for prop cover resolution

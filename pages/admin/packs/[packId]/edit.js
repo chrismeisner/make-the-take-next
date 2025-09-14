@@ -45,31 +45,28 @@ export default function AdminEditPackPage() {
     if (status !== 'authenticated' || !packId) return;
     (async () => {
       try {
-        const res = await fetch('/api/packs');
+        const res = await fetch(`/api/admin/packs/${encodeURIComponent(packId)}`);
         const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to load packs');
-        const statuses = Array.from(new Set(data.packs.map(p => p.packStatus)));
-        if (!statuses.includes('active')) statuses.unshift('active');
-        if (!statuses.includes('draft')) statuses.unshift('draft');
-        setStatusOptions(statuses.sort());
-        const found = data.packs.find(p => p.airtableId === packId);
-        if (!found) {
+        if (!res.ok || !data.success || !data.pack) {
           setError('Pack not found');
           return;
         }
-        setPackTitle(found.packTitle || '');
-        setPackURL(found.packURL || '');
-        setPackSummary(found.packSummary || '');
+        const found = data.pack;
+        const statuses = Array.from(new Set(['active', 'draft', found.packStatus].filter(Boolean)));
+        setStatusOptions(statuses);
+        setPackTitle(found.packTitle || found.title || '');
+        setPackURL(found.packURL || found.url || '');
+        setPackSummary(found.packSummary || found.summary || '');
         setPackLeague((found.packLeague || '').toString());
-        // Prize is surfaced from packs list when available (Postgres path provides prize)
-        if (found.packPrize) setPackPrize(found.packPrize);
-        setPackCoverUrl(found.packCover || '');
-        if (found.packCover) setCoverPreviewUrl(found.packCover);
+        if (found.packPrize || found.prize) setPackPrize(found.packPrize || found.prize);
+        const cover = found.packCover || found.packCoverUrl || '';
+        setPackCoverUrl(cover);
+        if (cover) setCoverPreviewUrl(cover);
         setPackStatus(found.packStatus || 'active');
         // Initialize open time if present on detail payload
-        if (found.packURL) {
+        if (found.packURL || found.url) {
           try {
-            const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL)}`);
+            const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL || found.url)}`);
             const detailJson = await detailRes.json();
             if (detailRes.ok && detailJson.success && detailJson.pack) {
               const ot = detailJson.pack.packOpenTime;
@@ -99,8 +96,8 @@ export default function AdminEditPackPage() {
           } catch {}
         }
         // Use packURL to fetch full details including props
-        if (found.packURL) {
-          const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL)}`);
+        if (found.packURL || found.url) {
+          const detailRes = await fetch(`/api/packs/${encodeURIComponent(found.packURL || found.url)}`);
           const detailJson = await detailRes.json();
           if (detailRes.ok && detailJson.success && detailJson.pack) {
             const props = Array.isArray(detailJson.pack.props) ? detailJson.pack.props : [];

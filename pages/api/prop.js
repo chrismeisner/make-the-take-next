@@ -1,8 +1,6 @@
 // File: /pages/api/prop.js
 import { createRepositories } from "../../lib/dal/factory";
 import { getDataBackend } from "../../lib/runtimeConfig";
-import { AirtablePropsRepository } from "../../lib/dal/airtable/props";
-import { AirtableTakesRepository } from "../../lib/dal/airtable/takes";
 import { PostgresPropsRepository } from "../../lib/dal/postgres/props";
 import { PostgresTakesRepository } from "../../lib/dal/postgres/takes";
 
@@ -69,36 +67,13 @@ export default async function handler(req, res) {
 
 	// 4) Return the fields + newly read sideACount/sideBCount
 
-	// Optional shadow read: compare against alternate backend and log any mismatches
+	// Optional shadow read placeholder (Airtable repositories were removed)
 	try {
 	  if (process.env.SHADOW_READS === '1') {
-		const backend = getDataBackend();
-		const altProps = backend === 'postgres' ? new AirtablePropsRepository() : new PostgresPropsRepository();
-		const altTakes = backend === 'postgres' ? new AirtableTakesRepository() : new PostgresTakesRepository();
-		const altProp = await altProps.getByPropID(propID);
-		if (altProp) {
-		  const altCounts = await altTakes.countBySides(propID);
-		  const diffs = [];
-		  const cmp = (kA, kB = kA) => {
-			const a = data[kA];
-			const b = altProp[kB];
-			if (JSON.stringify(a) !== JSON.stringify(b)) diffs.push(`${kA}!=${kB}`);
-		  };
-		  cmp('prop_short', 'prop_short');
-		  cmp('propStatus', 'prop_status');
-		  cmp('sideCount', 'side_count');
-		  cmp('moneyline_a', 'moneyline_a');
-		  cmp('moneyline_b', 'moneyline_b');
-		  if ((countsMap.A || 0) !== (altCounts.A || 0) || (countsMap.B || 0) !== (altCounts.B || 0)) {
-			diffs.push('takeCounts');
-		  }
-		  if (diffs.length) {
-			console.warn(`[shadow /api/prop] backend=${backend} propID=${propID} diffs=`, diffs);
-		  }
-		}
+		// No alternate backend available for shadow reads.
 	  }
 	} catch (shadowErr) {
-	  console.warn('[shadow /api/prop] shadow read failed =>', shadowErr?.message || shadowErr);
+	  console.warn('[shadow /api/prop] shadow read skipped =>', shadowErr?.message || shadowErr);
 	}
 
 	return res.status(200).json({

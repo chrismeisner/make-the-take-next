@@ -7,11 +7,20 @@ export default function AdminPacksPage() {
   const [packs, setPacks] = useState([]);
   const [sortOrder, setSortOrder] = useState('desc');
   const [headerSort, setHeaderSort] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [visibleStatuses, setVisibleStatuses] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hideGraded, setHideGraded] = useState(false);
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
+
+  // Build status filter options from fetched packs
+  const statusOptions = Array.from(new Set(packs.map(p => p.packStatus).filter(Boolean))).sort();
+  // Default to only showing coming-soon on first load (if present)
+  useEffect(() => {
+    if (visibleStatuses == null && statusOptions.includes('coming-soon')) {
+      setVisibleStatuses(['coming-soon']);
+    }
+  }, [statusOptions, visibleStatuses]);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -62,11 +71,10 @@ export default function AdminPacksPage() {
   if (!session) {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
-  // Build status filter options from fetched packs
-  const statusOptions = Array.from(new Set(packs.map(p => p.packStatus))).sort();
-  const selectOptions = ['all', ...statusOptions];
-  // Filter out packs by selected status (or show all)
-  const filteredPacks = statusFilter === 'all' ? packs : packs.filter(p => p.packStatus === statusFilter);
+  // When none explicitly selected, default to showing all statuses
+  const effectiveVisibleStatuses = visibleStatuses == null ? statusOptions : visibleStatuses;
+  // Filter out packs by selected statuses (or show all)
+  const filteredPacks = packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
   // Optionally hide graded packs
   const visibilityFilteredPacks = hideGraded
     ? filteredPacks.filter(p => String(p.packStatus || '').toLowerCase() !== 'graded')
@@ -74,7 +82,7 @@ export default function AdminPacksPage() {
   // Apply search filtering (title, url, or event title)
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchedPacks = normalizedQuery
-    ? filteredPacks.filter(p => {
+    ? visibilityFilteredPacks.filter(p => {
         const title = String(p.packTitle || '').toLowerCase();
         const url = String(p.packURL || '').toLowerCase();
         const eventTitle = String(p.eventTitle || '').toLowerCase();
@@ -121,17 +129,45 @@ export default function AdminPacksPage() {
     <div className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-4">Packs Management</h1>
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700">Filter by Status</label>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-        >
-          {selectOptions.map(status => (
-            <option key={status} value={status}>
-              {status === 'all' ? 'All Packs' : (status.charAt(0).toUpperCase() + status.slice(1))}
-            </option>
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium text-gray-700">Show statuses</label>
+          <div className="text-xs text-gray-500 space-x-2">
+            <button
+              type="button"
+              className="underline hover:text-gray-700"
+              onClick={() => setVisibleStatuses(statusOptions)}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className="underline hover:text-gray-700"
+              onClick={() => setVisibleStatuses([])}
+            >
+              None
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-4">
+          {statusOptions.map((status) => (
+            <label key={status} className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                checked={effectiveVisibleStatuses.includes(status)}
+                onChange={() => {
+                  setVisibleStatuses((prev) => {
+                    const current = prev == null ? statusOptions : prev;
+                    return current.includes(status)
+                      ? current.filter((s) => s !== status)
+                      : [...current, status];
+                  });
+                }}
+              />
+              <span className="capitalize">{status}</span>
+            </label>
           ))}
-        </select>
+        </div>
       </div>
       <div className="mb-4 flex items-center gap-3">
         <Link href="/admin/packs/new">

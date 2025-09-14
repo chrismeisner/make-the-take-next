@@ -12,14 +12,9 @@ export default function AdminPackDetail() {
     if (status !== 'authenticated' || !packId) return;
     const fetchPack = async () => {
       try {
-        const res = await fetch('/api/packs');
+        const res = await fetch(`/api/admin/packs/${encodeURIComponent(packId)}`);
         const data = await res.json();
-        if (data.success) {
-          const found = data.packs.find(p => p.airtableId === packId);
-          setPack(found || null);
-        } else {
-          console.error(data.error);
-        }
+        if (data.success) setPack(data.pack || null); else console.error(data.error);
       } catch (err) {
         console.error('Error fetching packs:', err);
       }
@@ -35,12 +30,20 @@ export default function AdminPackDetail() {
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">{pack.packTitle}</h1>
-        <button
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          onClick={() => router.push(`/admin/packs/${pack.airtableId}/edit`)}
-        >
-          Edit
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            onClick={() => router.push(`/admin/packs/${pack.airtableId}/create-prop`)}
+          >
+            Add Prop
+          </button>
+          <button
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => router.push(`/admin/packs/${pack.airtableId}/edit`)}
+          >
+            Edit
+          </button>
+        </div>
       </div>
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
         <div>
