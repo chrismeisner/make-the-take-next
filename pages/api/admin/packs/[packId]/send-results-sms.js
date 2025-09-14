@@ -52,6 +52,12 @@ export default async function handler(req, res) {
   let sent = 0;
   let failed = 0;
   const errors = [];
+  try {
+    console.log('[admin/send-results-sms] Using sender', {
+      hasFrom: Boolean((process.env.TWILIO_FROM_NUMBER || '').trim()),
+      hasServiceSid: Boolean((process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim()),
+    });
+  } catch {}
   for (const m of valid) {
     try {
       await sendSMS({ to: m.to, message: m.body });
