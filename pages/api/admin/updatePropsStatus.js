@@ -125,14 +125,40 @@ export default async function handler(req, res) {
             await query('UPDATE packs SET pack_status = $1 WHERE id = $2', ['graded', packId]);
             wasGradedNow = true;
           }
+          // If the pack just transitioned to graded, notify all participants (distinct latest take mobiles)
+          let smsRecipientsForPack = [];
+          if (wasGradedNow) {
+            try {
+              const { rows: tr } = await query(
+                `SELECT DISTINCT take_mobile
+                   FROM takes
+                  WHERE pack_id = $1
+                    AND take_status = 'latest'
+                    AND take_mobile IS NOT NULL`,
+                [packId]
+              );
+              const phones = (tr || []).map(r => r.take_mobile).filter(Boolean);
+              const urlPart = pk.pack_url || '';
+              for (const to of phones) {
+                try {
+                  await sendSMS({ to, message: `🎉 Your pack "${urlPart}" has been graded! View results: ${process.env.SITE_URL}/packs/${urlPart}` });
+                } catch (smsErr) {
+                  console.error(`[admin/updatePropsStatus PG] SMS send error for ${to}:`, smsErr);
+                }
+              }
+              smsRecipientsForPack = phones;
+            } catch (e) {
+              console.error('[admin/updatePropsStatus PG] failed to fetch/send SMS to participants', e?.message || e);
+            }
+          }
           detailsPacks.push({
             airtableId: pk.id,
             packURL: pk.pack_url,
             packTitle: pk.title,
             wasGraded: wasGradedNow,
             alreadyGraded: !wasGradedNow && prevStatus === 'graded',
-            smsSentCount: 0,
-            smsRecipients: [],
+            smsSentCount: smsRecipientsForPack.length,
+            smsRecipients: smsRecipientsForPack,
             containsUpdatedPropRecordIds: updatedPropRecordIds,
             ungradedRemaining: ungraded,
             totalProps: total,

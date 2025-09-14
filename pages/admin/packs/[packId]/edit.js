@@ -52,7 +52,7 @@ export default function AdminEditPackPage() {
           return;
         }
         const found = data.pack;
-        const statuses = Array.from(new Set(['active', 'draft', found.packStatus].filter(Boolean)));
+        const statuses = Array.from(new Set(['active', 'draft', 'closed', found.packStatus].filter(Boolean)));
         setStatusOptions(statuses);
         setPackTitle(found.packTitle || found.title || '');
         setPackURL(found.packURL || found.url || '');

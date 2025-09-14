@@ -313,29 +313,43 @@ export default async function handler(req, res) {
           winnerSide = homeR > awayR ? 'home' : (awayR > homeR ? 'away' : 'push');
           propResult = `${game.home} ${homeR} - ${awayR} ${game.away}`;
         } else {
-          // NFL: use nflboxscore for winner (points from team statistics if present)
-          const src = resolveSourceConfig('nfl');
-          if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
-          const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
-          url.searchParams.set('id', String(espnGameID));
-          const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
-          const data = await upstream.json().catch(() => ({}));
-          const raw = data?.body || data || {};
-          const teams = Array.isArray(raw?.teams) ? raw.teams : [];
-          let homePts = NaN, awayPts = NaN;
+          // NFL: prefer weekly scoreboard for points; fallback to boxscore team statistics
+          const yyyy = String(params?.nflYear || (r.event_time ? new Date(r.event_time).getFullYear() : new Date().getFullYear()));
+          const wk = String(params?.nflWeek || r.week || 1);
+          let homePts = NaN, awayPts = NaN, homeAbv = 'HOME', awayAbv = 'AWAY';
           try {
-            for (const t of teams) {
-              const stat = (Array.isArray(t?.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === 'points');
-              const v = stat ? Number(stat.value) : NaN;
-              if (t.homeAway === 'home' && Number.isFinite(v)) homePts = v;
-              if (t.homeAway === 'away' && Number.isFinite(v)) awayPts = v;
+            const games = await fetchEspnNflScoreboardWeekly(yyyy, wk);
+            const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+            if (game) {
+              homePts = Number(game?.lineScore?.home?.R);
+              awayPts = Number(game?.lineScore?.away?.R);
+              homeAbv = game.home || homeAbv;
+              awayAbv = game.away || awayAbv;
             }
           } catch {}
+          if (!Number.isFinite(homePts) || !Number.isFinite(awayPts)) {
+            try {
+              const src = resolveSourceConfig('nfl');
+              if (!src.ok) return res.status(500).json({ success: false, error: 'NFL source not configured' });
+              const url = new URL(`https://${src.host}${src.endpoints.boxScore}`);
+              url.searchParams.set('id', String(espnGameID));
+              const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+              const data = await upstream.json().catch(() => ({}));
+              const raw = data?.body || data || {};
+              const teams = Array.isArray(raw?.teams) ? raw.teams : [];
+              for (const t of teams) {
+                const stat = (Array.isArray(t?.statistics) ? t.statistics : []).find(s => String(s?.name || '').toLowerCase() === 'points');
+                const v = stat ? Number(stat.value) : NaN;
+                if (t.homeAway === 'home' && Number.isFinite(v)) homePts = v;
+                if (t.homeAway === 'away' && Number.isFinite(v)) awayPts = v;
+              }
+            } catch {}
+          }
           if (!Number.isFinite(homePts) || !Number.isFinite(awayPts)) {
             return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
           }
           winnerSide = homePts > awayPts ? 'home' : (awayPts > homePts ? 'away' : 'push');
-          propResult = `HOME ${homePts} - ${awayPts} AWAY`;
+          propResult = `${homeAbv} ${homePts} - ${awayPts} ${awayAbv}`;
         }
         let newStatus = 'push';
         if (winnerSide !== 'push') {

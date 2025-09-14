@@ -75,7 +75,29 @@ export default async function handler(req, res) {
       packEventId: packEventIds.length > 0 ? packEventIds[0] : null,
       packEventIds,
     };
-    return res.status(200).json({ success: true, pack });
+    // Load props for this pack (admin detail wants to show them)
+    let props = [];
+    try {
+      const { rows: propRows } = await query(
+        `SELECT id, prop_id, prop_short, prop_summary, prop_status, prop_order
+           FROM props
+          WHERE pack_id = $1
+          ORDER BY COALESCE(prop_order, 0) ASC`,
+        [r.id]
+      );
+      props = (propRows || []).map((pr) => ({
+        airtableId: pr.id,
+        propID: pr.prop_id,
+        propTitle: pr.prop_summary || pr.prop_short || 'Untitled',
+        propShort: pr.prop_short || '',
+        propStatus: pr.prop_status || 'open',
+        propOrder: pr.prop_order ?? 0,
+      }));
+    } catch (e) {
+      // Non-fatal for admin detail
+      console.warn('[api/admin/packs/[packId]] failed to load props =>', e?.message || e);
+    }
+    return res.status(200).json({ success: true, pack: { ...pack, props } });
   } catch (e) {
     console.error('[api/admin/packs/[packId]] error =>', e?.message || e);
     return res.status(500).json({ success: false, error: 'Failed to fetch pack' });
