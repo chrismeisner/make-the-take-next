@@ -214,10 +214,10 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
         <div className="block md:hidden px-2 mb-4">
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
           <p className="text-gray-600">{packData.packSummary}</p>
-          {packData.firstPlace && (
+          {(packData.packPrize || packData.firstPlace) && (
             <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
               <span aria-hidden>🏆</span>
-              <span>{packData.firstPlace}</span>
+              <span>{packData.packPrize || packData.firstPlace}</span>
             </div>
           )}
           <div className="mt-3">
@@ -241,10 +241,10 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             <div className="hidden md:block px-2">
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               <p className="text-gray-600">{packData.packSummary}</p>
-              {packData.firstPlace && (
+              {(packData.packPrize || packData.firstPlace) && (
                 <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
                   <span aria-hidden>🏆</span>
-                  <span>{packData.firstPlace}</span>
+                  <span>{packData.packPrize || packData.firstPlace}</span>
                 </div>
               )}
               <div className="mt-3">
