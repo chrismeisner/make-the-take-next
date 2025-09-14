@@ -8,7 +8,6 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const { data: session } = useSession();
   const router = useRouter();
   const profileID = session?.user?.profileID;
-  const [receiptUrl, setReceiptUrl] = useState("");
   const [challengeUrl, setChallengeUrl] = useState("");
 
   // Prepare picks text for sharing
@@ -22,7 +21,6 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
-      setReceiptUrl(`${window.location.origin}/packs/${router.query.packURL}/${receiptId}`);
       setChallengeUrl(`${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`);
     }
   }, [receiptId, router.query.packURL]);
@@ -67,40 +65,19 @@ const handleShare = async () => {
 		<p className="mb-4">
 		  Thank you for completing the pack <strong>{packTitle}</strong>.
 		</p>
-		{receiptUrl && (
-		  <p className="mb-4 break-all">
-			Your receipt is here:{" "}
-			<a href={receiptUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-			  {receiptUrl}
-			</a>
-		  </p>
-		)}
 		{challengeUrl && (
 		  <div className="mb-4">
 			<p className="mb-2 font-medium">Challenge a friend:</p>
-			<a href={challengeUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">
-			  {challengeUrl}
-			</a>
-			{/* Add share button below the link */}
 			<button
 				onClick={handleShare}
 				className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
 			>
-				Share this link
+				Share this pack
 			</button>
 		  </div>
 		)}
 		{/* Display created take record IDs for verification */}
-		{newTakeIDs.length > 0 && (
-		  <div className="mb-4">
-			<p className="mb-2 font-medium">Records created:</p>
-			<ul className="list-disc list-inside">
-			  {newTakeIDs.map((id) => (
-				<li key={id} className="text-sm break-all">{id}</li>
-			  ))}
-			</ul>
-		  </div>
-		)}
+		{/* Removed per request: hide created records list */}
 		<div className="flex justify-end gap-2">
 		  <button
 			onClick={() => {

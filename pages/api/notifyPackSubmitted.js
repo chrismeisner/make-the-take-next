@@ -14,15 +14,14 @@ export default async function handler(req, res) {
     }
 
     const { packURL, packTitle, receiptId } = req.body || {};
-    if (!packURL || !receiptId) {
-      return res.status(400).json({ success: false, error: "Missing packURL or receiptId" });
+    if (!packURL) {
+      return res.status(400).json({ success: false, error: "Missing packURL" });
     }
 
     const siteUrl = process.env.SITE_URL || `https://${req.headers.host}`;
-    const receiptUrl = `${siteUrl}/packs/${encodeURIComponent(packURL)}/${encodeURIComponent(receiptId)}`;
-    const challengeUrl = `${siteUrl}/packs/${encodeURIComponent(packURL)}?ref=${encodeURIComponent(receiptId)}`;
+    const packDetailUrl = `${siteUrl}/packs/${encodeURIComponent(packURL)}`;
 
-    const message = `✅ Takes received for "${packTitle || packURL}". Receipt: ${receiptUrl} • Challenge friends: ${challengeUrl}`;
+    const message = `✅ Takes received for "${packTitle || packURL}". ${packDetailUrl}`;
 
     await sendSMS({ to: session.user.phone, message });
     return res.status(200).json({ success: true });
