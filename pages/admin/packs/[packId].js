@@ -392,17 +392,26 @@ export default function AdminPackDetail() {
                   const confirmSend = window.confirm(`Send ${smsDraftRows.length} SMS now?`);
                   if (!confirmSend) return;
                   try {
+                    const endpoint = `/api/admin/packs/${encodeURIComponent(pack.airtableId)}/send-results-sms`;
                     const payload = { messages: smsDraftRows.map(r => ({ to: r.to, body: r.body })), dryRun: false };
-                    const res = await fetch(`/api/admin/packs/${encodeURIComponent(pack.airtableId)}/send-results-sms`, {
+                    try { console.log('[SendResultsSMS] POST', endpoint, { total: payload.messages.length, sample: payload.messages.slice(0, 2) }); } catch {}
+                    const res = await fetch(endpoint, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(payload),
                     });
                     const data = await res.json();
+                    try { console.log('[SendResultsSMS] Response', { ok: res.ok, status: res.status, data }); } catch {}
                     if (res.ok && data?.success) {
                       alert(`Sent: ${data.sent} / ${data.total}. Failed: ${data.failed}`);
+                      if (Number(data.failed || 0) > 0 && Array.isArray(data.errors)) {
+                        try {
+                          console.error('[SendResultsSMS] Failed deliveries:', data.errors);
+                        } catch {}
+                      }
                     } else {
                       alert(`Failed to send. ${data?.error || 'Unknown error'}`);
+                      try { console.error('[SendResultsSMS] Error response', data); } catch {}
                     }
                   } catch (e) {
                     console.error('Send SMS failed:', e);
