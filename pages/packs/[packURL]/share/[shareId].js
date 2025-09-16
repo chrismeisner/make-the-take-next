@@ -1,8 +1,8 @@
 import Head from 'next/head';
-import PageHeader from '../../components/PageHeader';
-import PageContainer from '../../components/PageContainer';
+import PageHeader from '../../../../components/PageHeader';
+import PageContainer from '../../../../components/PageContainer';
 import Link from 'next/link';
-import { query } from '../../lib/db/postgres';
+import { query } from '../../../../lib/db/postgres';
 
 export async function getServerSideProps(ctx) {
   const { packURL, shareId } = ctx.params;
@@ -12,7 +12,7 @@ export async function getServerSideProps(ctx) {
     if (mapRows.length === 0) return { notFound: true };
     const { pack_url: mappedPackUrl, profile_id: profileID } = mapRows[0];
     if (mappedPackUrl !== packURL) {
-      return { redirect: { destination: `/${encodeURIComponent(mappedPackUrl)}/${encodeURIComponent(shareId)}`, permanent: false } };
+      return { redirect: { destination: `/packs/${encodeURIComponent(mappedPackUrl)}/share/${encodeURIComponent(shareId)}`, permanent: false } };
     }
     // Load pack title
     const { rows: packRows } = await query('SELECT title FROM packs WHERE pack_url = $1 LIMIT 1', [packURL]);

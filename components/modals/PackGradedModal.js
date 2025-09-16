@@ -45,7 +45,7 @@ export default function PackGradedModal({ isOpen, onClose, packTitle, packProps 
           });
           const data = await resp.json();
           if (resp.ok && data.success && data.shareId) {
-            if (origin) setShareUrl(`${origin}/${packURL}/${data.shareId}`);
+            if (origin) setShareUrl(`${origin}/packs/${packURL}/share/${data.shareId}`);
           } else {
             if (origin) setShareUrl(`${origin}/packs/${packURL}/user/${profileID}`);
           }
