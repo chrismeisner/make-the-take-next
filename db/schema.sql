@@ -317,3 +317,46 @@ CREATE INDEX IF NOT EXISTS idx_takes_latest_by_mobile_pack ON takes (take_mobile
 
 -- Help MIN/MAX window scans per pack
 CREATE INDEX IF NOT EXISTS idx_props_pack_open_close ON props (pack_id, open_time, close_time);
+
+-- Promo Links: admin-controlled short keys that route promo traffic
+CREATE TABLE IF NOT EXISTS promo_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key TEXT UNIQUE,
+  destination_url TEXT NOT NULL,
+  notes TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INT NOT NULL DEFAULT 0,
+  clicks INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_promo_links_active ON promo_links (active);
+CREATE INDEX IF NOT EXISTS idx_promo_links_key ON promo_links (key);
+CREATE INDEX IF NOT EXISTS idx_promo_links_priority ON promo_links (priority DESC);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc WHERE proname = 'set_promo_links_updated_at'
+  ) THEN
+    CREATE OR REPLACE FUNCTION set_promo_links_updated_at() RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'set_promo_links_updated_at'
+  ) THEN
+    CREATE TRIGGER set_promo_links_updated_at
+    BEFORE UPDATE ON promo_links
+    FOR EACH ROW
+    EXECUTE FUNCTION set_promo_links_updated_at();
+  END IF;
+END $$;

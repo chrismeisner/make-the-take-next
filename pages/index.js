@@ -86,6 +86,26 @@ export async function getServerSideProps(context) {
   console.log('[HomePage GSSP] start load =>', { backend, origin });
 
   try {
+    // Promo redirect: honor ?packs=<key> or ?promo=<key>
+    try {
+      const promoKey = (context.query?.packs || context.query?.promo || '').toString().trim();
+      if (promoKey) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), Number.parseInt(process.env.SSR_FETCH_TIMEOUT_MS || '6000', 10));
+        const res = await fetch(`${origin}/api/promo/resolve?key=${encodeURIComponent(promoKey)}`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success && data?.destination) {
+            return {
+              redirect: { destination: data.destination, permanent: false },
+            };
+          }
+        }
+      }
+    } catch (e) {
+      try { console.warn('[HomePage GSSP] promo resolve failed =>', e?.message || e); } catch {}
+    }
     let allPacks = [];
     if (backend === 'postgres') {
       const token = await getToken({ req: context.req, secret: process.env.NEXTAUTH_SECRET });

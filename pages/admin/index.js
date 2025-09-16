@@ -362,6 +362,11 @@ export default function AdminPage({ superAdminSecret }) {
                 API Tester
               </button>
             </Link>
+            <Link href="/admin/promo-links">
+              <button className="px-3 py-2 bg-fuchsia-700 text-white rounded hover:bg-fuchsia-800">
+                Promo Links
+              </button>
+            </Link>
             <Link href="/admin/marketplace">
               <button className="px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">
                 Marketplace
