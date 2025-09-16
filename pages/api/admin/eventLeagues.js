@@ -1,4 +1,3 @@
-import { getEventLeagues } from '../../../lib/airtableService';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { query } from '../../../lib/db/postgres';
 

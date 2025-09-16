@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from "react";
 import GlobalModal from "./GlobalModal";
 
-export default function AddEventModal({ isOpen, onClose, onEventSelected, allowMultiSelect = false }) {
+export default function AddEventModal({ isOpen, onClose, onEventSelected, allowMultiSelect = false, initialLeague = '', initialDate = '' }) {
   const [leagues, setLeagues] = useState([]);
-  const [selectedLeague, setSelectedLeague] = useState("");
+  const [selectedLeague, setSelectedLeague] = useState(initialLeague || "");
   const [events, setEvents] = useState([]);
   const [loadingLeagues, setLoadingLeagues] = useState(false);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  const [fetchingRemote, setFetchingRemote] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedDate, setSelectedDate] = useState(() => {
+    if (initialDate) return initialDate;
     // Initialize to local date string (YYYY-MM-DD) accounting for timezone offset
     const now = new Date();
     const tzOffsetMs = now.getTimezoneOffset() * 60000;
@@ -108,7 +111,7 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
       }
     }
     load();
-  }, [selectedLeague, selectedDate, weekRange?.start, weekRange?.end]);
+  }, [selectedLeague, selectedDate, weekRange?.start, weekRange?.end, reloadKey]);
 
   const toggleSelected = (id) => {
     setSelectedIds((prev) => {
@@ -119,7 +122,9 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
   };
 
   const handleAddSelected = () => {
-    const chosen = events.filter((e) => selectedIds.has(e.id)).map(e => ({ id: e.id, eventTitle: e.eventTitle }));
+    const chosen = events
+      .filter((e) => selectedIds.has(e.id))
+      .map(e => ({ id: e.id, eventTitle: e.eventTitle, eventTime: e.eventTime, eventLeague: e.eventLeague }));
     if (chosen.length === 0) return;
     if (typeof onEventSelected === 'function') {
       onEventSelected(chosen);
@@ -236,7 +241,7 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
                         if (allowMultiSelect) {
                           toggleSelected(ev.id);
                         } else {
-                          onEventSelected({ id: ev.id, eventTitle: ev.eventTitle });
+                          onEventSelected({ id: ev.id, eventTitle: ev.eventTitle, eventTime: ev.eventTime, eventLeague: ev.eventLeague });
                           onClose();
                         }
                       }}
@@ -255,7 +260,37 @@ export default function AddEventModal({ isOpen, onClose, onEventSelected, allowM
                 ))}
               </ul>
             ) : (
-              <p>No events found for this league and date.</p>
+              <div>
+                <p>No events found for this league and date.</p>
+                {String(selectedLeague || '').toLowerCase() === 'nfl' ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        setFetchingRemote(true);
+                        const res = await fetch('/api/admin/fetchNflEvents', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ year: Number(seasonYear), week: Number(selectedWeek || 1), generateCovers: true })
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data?.success) throw new Error(data?.error || 'Fetch failed');
+                        // Reload list
+                        setReloadKey((k) => k + 1);
+                      } catch (e) {
+                        console.error(e);
+                        alert(e.message || 'Failed to fetch events');
+                      } finally {
+                        setFetchingRemote(false);
+                      }
+                    }}
+                    disabled={fetchingRemote}
+                    className={`mt-2 px-3 py-2 rounded text-white ${fetchingRemote ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                  >
+                    {fetchingRemote ? 'Fetching…' : 'Fetch events'}
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         </>

@@ -22,6 +22,7 @@ export default function AdminEventsPage() {
   const { openModal, closeModal } = useModal();
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedQuickRange, setSelectedQuickRange] = useState('today');
   const [filterText, setFilterText] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedLeague, setSelectedLeague] = useState('');
@@ -55,11 +56,54 @@ export default function AdminEventsPage() {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
 
-  const filteredEvents = events.filter(ev =>
-    ev.eventTitle.toLowerCase().includes(filterText.toLowerCase()) &&
-    (selectedLeague === '' || ev.eventLeague === selectedLeague) &&
-    (selectedDate === '' || new Date(ev.eventTime).toLocaleDateString('en-CA') === selectedDate)
-  );
+  const getQuickRangeBounds = (key) => {
+    if (!key) return null;
+    const now = new Date();
+    const startOfDay = (d) => {
+      const s = new Date(d);
+      s.setHours(0, 0, 0, 0);
+      return s;
+    };
+    const endOfDay = (d) => {
+      const e = new Date(d);
+      e.setHours(23, 59, 59, 999);
+      return e;
+    };
+    if (key === 'today') {
+      return { start: startOfDay(now), end: endOfDay(now) };
+    }
+    if (key === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      return { start: startOfDay(y), end: endOfDay(y) };
+    }
+    if (key === 'tomorrow') {
+      const t = new Date(now);
+      t.setDate(now.getDate() + 1);
+      return { start: startOfDay(t), end: endOfDay(t) };
+    }
+    if (key === 'thisWeek') {
+      const d = new Date(now);
+      const day = d.getDay();
+      // Start Monday (1) through Sunday (0)
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      const start = new Date(d);
+      start.setDate(d.getDate() + diffToMonday);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return { start: startOfDay(start), end: endOfDay(end) };
+    }
+    return null;
+  };
+
+  const quickBounds = getQuickRangeBounds(selectedQuickRange);
+  const filteredEvents = events.filter(ev => {
+    const titleOk = ev.eventTitle.toLowerCase().includes(filterText.toLowerCase());
+    const leagueOk = (selectedLeague === '' || ev.eventLeague === selectedLeague);
+    const dateOk = (selectedDate === '' || new Date(ev.eventTime).toLocaleDateString('en-CA') === selectedDate);
+    const rangeOk = !quickBounds || (new Date(ev.eventTime) >= quickBounds.start && new Date(ev.eventTime) <= quickBounds.end);
+    return titleOk && leagueOk && dateOk && rangeOk;
+  });
   const sortedEvents = [...filteredEvents].sort((a, b) => {
     const dateA = new Date(a.eventTime);
     const dateB = new Date(b.eventTime);
@@ -216,6 +260,35 @@ export default function AdminEventsPage() {
             )}
           </div>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Quick Range</label>
+          <div className="mt-1 flex items-center space-x-2">
+            <select
+              value={selectedQuickRange}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedQuickRange(v);
+                if (v) setSelectedDate('');
+              }}
+              className="px-3 py-2 border rounded"
+            >
+              <option value="">All Dates</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="thisWeek">This Week</option>
+            </select>
+            {selectedQuickRange && (
+              <button
+                type="button"
+                onClick={() => setSelectedQuickRange('')}
+                className="px-2 py-1 text-sm border rounded text-gray-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <div className="flex-1">
           <label className="block text-sm font-medium text-gray-700">Search Title</label>
           <input
@@ -255,6 +328,7 @@ export default function AdminEventsPage() {
         <table className="min-w-full bg-white">
           <thead>
             <tr>
+              <th className="px-4 py-2 border">Cover</th>
               <th className="px-4 py-2 border">Title</th>
               <th className="px-4 py-2 border">Time</th>
               <th className="px-4 py-2 border">League</th>
@@ -265,6 +339,19 @@ export default function AdminEventsPage() {
           <tbody>
             {sortedEvents.map(ev => (
               <tr key={ev.id}>
+                <td className="px-4 py-2 border">
+                  {ev.eventCoverURL ? (
+                    <img
+                      src={ev.eventCoverURL}
+                      alt="Event Cover"
+                      className="h-10 w-10 object-cover rounded"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-xs text-gray-400">
+                      N/A
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-2 border">{ev.eventTitle}</td>
                 <td className="px-4 py-2 border">{new Date(ev.eventTime).toLocaleString()}</td>
                 <td className="px-4 py-2 border">{ev.eventLeague}</td>

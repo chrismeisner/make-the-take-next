@@ -485,9 +485,8 @@ export default function CreatePropUnifiedPage() {
       try {
         setPreviewError('');
         setPreviewData(null);
-        if (!event || !event.espnGameID) return;
-        const gid = String(event.espnGameID).trim();
-        if (!gid) return;
+        if (!event) return;
+        const gid = String(event.espnGameID || '').trim();
         setPreviewLoading(true);
         const ds = dataSource || 'major-mlb';
         // Track the exact endpoints used so developers can verify sources
@@ -510,12 +509,16 @@ export default function CreatePropUnifiedPage() {
               const sp = new URLSearchParams();
               sp.set('source', 'major-mlb');
               sp.set('gameDate', yyyymmdd);
-              sp.set('gameID', gid);
               statusUrl = `/api/admin/api-tester/status?${sp.toString()}`;
               const resp = await fetch(statusUrl);
               const json = await resp.json();
-              if (resp.ok && json?.games && json.games.length > 0) {
-                scoreboard = json.games[0];
+              if (resp.ok && json?.games) {
+                // Try to match to our game by ESPN ID, otherwise by home/away team abv
+                const homeAbv = String(event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam) || '').toUpperCase();
+                const awayAbv = String(event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam) || '').toUpperCase();
+                const byId = gid ? json.games.find(g => String(g?.id || g?.gameID || g?.gameId || '').trim() === gid) : null;
+                const byTeams = (!byId && (homeAbv || awayAbv)) ? json.games.find(g => String(g?.home || g?.homeTeam || '').toUpperCase() === homeAbv && String(g?.away || g?.awayTeam || '').toUpperCase() === awayAbv) : null;
+                scoreboard = byId || byTeams || json.games[0] || null;
               }
             }
           } catch {}
@@ -543,17 +546,24 @@ export default function CreatePropUnifiedPage() {
         let normalized = { playersById: {}, statKeys: [] };
         let rawTeams = [];
         try {
-          boxscoreUrl = `/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(gid)}`;
-          const bs = await fetch(boxscoreUrl);
-          const bj = await bs.json();
-          if (bs.ok && bj?.normalized) {
-            normalized = bj.normalized;
+          if (gid) {
+            boxscoreUrl = `/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(gid)}`;
+          } else if (ds === 'major-mlb' && scoreboard && (scoreboard.id || scoreboard.gameID || scoreboard.gameId)) {
+            const idFromBoard = String(scoreboard.id || scoreboard.gameID || scoreboard.gameId);
+            boxscoreUrl = `/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(idFromBoard)}`;
           }
-          try {
-            if (ds === 'nfl') {
-              rawTeams = Array.isArray(bj?.data?.teams) ? bj.data.teams : [];
+          if (boxscoreUrl) {
+            const bs = await fetch(boxscoreUrl);
+            const bj = await bs.json();
+            if (bs.ok && bj?.normalized) {
+              normalized = bj.normalized;
             }
-          } catch {}
+            try {
+              if (ds === 'nfl') {
+                rawTeams = Array.isArray(bj?.data?.teams) ? bj.data.teams : [];
+              }
+            } catch {}
+          }
         } catch {}
         setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly, endpoints: { boxscoreUrl, statusUrl, espnScoreboardUrl } });
       } catch (e) {
@@ -562,7 +572,7 @@ export default function CreatePropUnifiedPage() {
         setPreviewLoading(false);
       }
     })();
-  }, [event?.espnGameID, event?.eventTime, event?.eventWeek, dataSource, autoGradeKey, selectedMetric]);
+  }, [event?.espnGameID, event?.eventTime, event?.eventWeek, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, dataSource, autoGradeKey, selectedMetric]);
 
   // Team abv options derived from event
   const normalizeAbv = (val) => {
@@ -573,10 +583,9 @@ export default function CreatePropUnifiedPage() {
   const homeTeamName = Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || '') : (event?.homeTeam || '');
   const awayTeamName = Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || '') : (event?.awayTeam || '');
 
-  // Prefill labels/takes for NFL Team Winner based on A/B mapping (only when empty)
+  // Prefill labels/takes for Team Winner based on A/B mapping (only when empty)
   useEffect(() => {
     if (autoGradeKey !== 'who_wins') return;
-    if (String(dataSource) !== 'nfl') return;
     try {
       const isValidMap = (m) => m === 'home' || m === 'away';
       if (!isValidMap(sideAMap) || !isValidMap(sideBMap) || sideAMap === sideBMap) return;
@@ -945,12 +954,11 @@ export default function CreatePropUnifiedPage() {
         setFormulaParamsText(finalFormulaParamsText);
       } catch {}
     }
-    // Validate Team Winner (NFL) before submit
+    // Validate Team Winner before submit
     if (autoGradeKey === 'who_wins') {
       try {
         const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
         const eff = { ...(obj || {}) };
-        if (String(dataSource) !== 'nfl') { setError('Team Winner is NFL-only. Set Auto Grade Source to NFL.'); return; }
         const aMap = (eff?.whoWins?.sideAMap) || sideAMap || '';
         const bMap = (eff?.whoWins?.sideBMap) || sideBMap || '';
         if (!aMap || !bMap) { setError('Please map Take A and Take B to home/away.'); return; }
@@ -967,10 +975,6 @@ export default function CreatePropUnifiedPage() {
         eff.statScope = 'single';
         eff.compare = 'h2h';
         eff.metric = 'points';
-        eff.winnerRule = 'higher';
-        eff.dataSource = 'nfl';
-        if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
-        if (!eff.gameDate) { setError('Missing game date on event'); return; }
         finalFormulaParamsText = JSON.stringify(eff, null, 2);
         setFormulaParamsText(finalFormulaParamsText);
       } catch {}
@@ -1057,6 +1061,87 @@ export default function CreatePropUnifiedPage() {
       setError(err.message || 'Failed to create prop');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Odds fetch helpers
+  const [oddsLoadingSide, setOddsLoadingSide] = useState(null);
+  const [oddsError, setOddsError] = useState('');
+
+  const fetchMoneylineForSide = async (side /* 'A' | 'B' */) => {
+    try { setOddsError(''); } catch {}
+    try { console.log('[OddsFetch] Clicked', { side, autoGradeKey, dataSource, eventId: event?.id, espnGameID: event?.espnGameID }); } catch {}
+    try {
+      if (autoGradeKey !== 'who_wins') {
+        try { console.warn('[OddsFetch] Not Team Winner. Aborting.'); } catch {}
+        setOddsError('Team Winner auto grade must be selected to fetch moneylines.');
+        return;
+      }
+      const ds = dataSource || 'major-mlb';
+      let eventIdToUse = String(event?.espnGameID || '').trim();
+      // MLB fallback: derive ESPN event ID by matching scoreboard (date + home/away)
+      if (!eventIdToUse && ds === 'major-mlb' && event?.eventTime) {
+        try {
+          const normalizeTeamAbv = (val) => {
+            const v = String(val || '').toUpperCase();
+            const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+            return map[v] || v;
+          };
+          const d = new Date(event.eventTime);
+          const yyyymmdd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+          const u = new URLSearchParams(); u.set('source','major-mlb'); u.set('gameDate', yyyymmdd);
+          const statusUrl = `/api/admin/api-tester/status?${u.toString()}`;
+          console.log('[OddsFetch] MLB fallback: fetching status', { statusUrl });
+          const r = await fetch(statusUrl);
+          const j = await r.json();
+          const games = Array.isArray(j?.games) ? j.games : [];
+          const homeAbv = normalizeTeamAbv(event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam));
+          const awayAbv = normalizeTeamAbv(event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam));
+          const match = games.find(g => String(g?.home || g?.homeTeam || '').toUpperCase() === homeAbv && String(g?.away || g?.awayTeam || '').toUpperCase() === awayAbv);
+          if (match && (match.id || match.gameID || match.gameId)) {
+            eventIdToUse = String(match.id || match.gameID || match.gameId);
+            console.log('[OddsFetch] MLB fallback: derived ESPN game ID', { eventIdToUse, homeAbv, awayAbv });
+          } else {
+            console.warn('[OddsFetch] MLB fallback: no scoreboard match found', { homeAbv, awayAbv, gamesCount: games.length });
+          }
+        } catch (e) {
+          console.warn('[OddsFetch] MLB fallback error', e);
+        }
+      }
+      if (!eventIdToUse) {
+        try { console.warn('[OddsFetch] Missing espnGameID and unable to derive from MLB scoreboard', { event }); } catch {}
+        setOddsError('Missing ESPN game ID on the linked event.');
+        return;
+      }
+      const map = side === 'A' ? sideAMap : sideBMap;
+      if (map !== 'home' && map !== 'away') {
+        try { console.warn('[OddsFetch] Invalid side mapping', { side, map }); } catch {}
+        setOddsError('Please map this side to Home/Away first.');
+        return;
+      }
+      const league = String(ds) === 'nfl' ? 'football/nfl' : 'baseball/mlb';
+      const providerId = '58'; // ESPN BET default
+      setOddsLoadingSide(side);
+      const url = `/api/admin/vegas-odds?eventId=${encodeURIComponent(eventIdToUse)}&league=${encodeURIComponent(league)}&providerId=${providerId}`;
+      try { console.log('[OddsFetch] Request', { url, league, providerId, map, eventIdToUse }); } catch {}
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      try { console.log('[OddsFetch] Response status', { status: res.status }); } catch {}
+      const json = await res.json().catch(() => ({}));
+      try { console.log('[OddsFetch] Response body sample', { keys: Object.keys(json || {}), teams: json?.teams, home: json?.homeTeamOdds?.moneyLine, away: json?.awayTeamOdds?.moneyLine }); } catch {}
+      if (!res.ok) {
+        throw new Error(json?.error || `Failed to fetch odds (HTTP ${res.status})`);
+      }
+      const money = map === 'home' ? (json?.homeTeamOdds?.moneyLine) : (json?.awayTeamOdds?.moneyLine);
+      if (money == null) {
+        throw new Error('Moneyline not available for this provider.');
+      }
+      if (side === 'A') { setPropSideAMoneyline(String(money)); } else { setPropSideBMoneyline(String(money)); }
+      try { console.log('[OddsFetch] Set moneyline', { side, map, money }); } catch {}
+    } catch (e) {
+      try { console.error('[OddsFetch] Error', e); } catch {}
+      try { setOddsError(e?.message || 'Failed to fetch odds'); } catch {}
+    } finally {
+      try { setOddsLoadingSide(null); } catch {}
     }
   };
 
@@ -1380,8 +1465,8 @@ export default function CreatePropUnifiedPage() {
               <option value="player_multi_stat_h2h">Player Multi Stat H2H</option>
               <option value="team_multi_stat_ou">Team Multi Stat O/U</option>
               <option value="team_multi_stat_h2h">Team Multi Stat H2H</option>
-              {/* NFL-only Team Winner */}
-              <option value="who_wins" disabled={String(dataSource) !== 'nfl'}>Team Winner (NFL)</option>
+              {/* Team Winner supports NFL and MLB */}
+              <option value="who_wins">Team Winner</option>
             </select>
             {/* Minimal params UI for common cases */}
             {false && <div />}
@@ -1412,10 +1497,7 @@ export default function CreatePropUnifiedPage() {
                     </select>
                   </div>
                 </div>
-                <div className="text-xs text-gray-600">Winner is determined by final points from the linked NFL event.</div>
-                {String(dataSource) !== 'nfl' && (
-                  <div className="text-xs text-red-600">Set source to NFL to use Team Winner.</div>
-                )}
+                <div className="text-xs text-gray-600">Winner is determined by the final score from the linked event based on the selected source.</div>
               </div>
             )}
             {(autoGradeKey === 'stat_over_under' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && (
@@ -2062,16 +2144,16 @@ export default function CreatePropUnifiedPage() {
             {/* Sample Readout */}
             <div className="mt-4 border rounded p-3 bg-gray-50">
               <div className="text-sm font-semibold mb-2">Sample Readout</div>
-              {!event?.espnGameID && (
+              {!event?.espnGameID && String(dataSource) === 'nfl' && (
                 <div className="text-xs text-gray-600">Link an event with an ESPN game ID to see a preview.</div>
               )}
               {event?.espnGameID && previewLoading && (
                 <div className="text-xs text-gray-600">Loading preview…</div>
               )}
-              {event?.espnGameID && !!previewError && (
+              {!!previewError && (
                 <div className="text-xs text-red-600">{previewError}</div>
               )}
-              {event?.espnGameID && !previewLoading && !previewError && previewData && (
+              {!previewLoading && !previewError && previewData && (
                 <div className="text-xs text-gray-800 space-y-2">
                   <div>Source: <span className="font-mono">{previewData.source}</span></div>
                   {/* API Endpoints used for this preview */}
@@ -2107,30 +2189,14 @@ export default function CreatePropUnifiedPage() {
                       </div>
                     </div>
                   )}
-                  {String(previewData?.source || '').toLowerCase() === 'nfl' && autoGradeKey === 'who_wins' && (
+                  {autoGradeKey === 'who_wins' && (
                     <div>
-                      <div className="font-medium">NFL Score</div>
-                      <div>
-                        {(function(){
-                          try {
-                            const wkGames = previewData?.espnWeekly ? (previewData.espnWeekly.events || []) : [];
-                            const g = (() => {
-                              try { return wkGames.find(ev => String(ev?.id || '').trim() === String(event?.espnGameID || '').trim()); } catch { return null; }
-                            })();
-                            if (!g) return 'values not available yet';
-                            const comp = (Array.isArray(g.competitions) ? g.competitions : [])[0] || {};
-                            const compsArr = Array.isArray(comp?.competitors) ? comp.competitors : [];
-                            const cAway = compsArr.find(ci => String(ci?.homeAway) === 'away') || compsArr[0] || {};
-                            const cHome = compsArr.find(ci => String(ci?.homeAway) === 'home') || compsArr[1] || {};
-                            const awayAbv = String(cAway?.team?.abbreviation || (Array.isArray(event?.awayTeam)?event.awayTeam[0]:event?.awayTeam) || 'Away');
-                            const homeAbv = String(cHome?.team?.abbreviation || (Array.isArray(event?.homeTeam)?event.homeTeam[0]:event?.homeTeam) || 'Home');
-                            const awayScore = Number(cAway?.score);
-                            const homeScore = Number(cHome?.score);
-                            const haveScores = Number.isFinite(awayScore) && Number.isFinite(homeScore);
-                            return haveScores ? `${awayAbv} ${awayScore} - ${homeScore} ${homeAbv}` : 'values not available yet';
-                          } catch { return 'values not available yet'; }
-                        })()}
-                      </div>
+                      <div className="font-medium">Final Score</div>
+                      {String(previewData?.source || '').toLowerCase() === 'nfl' ? (
+                        <div>Home: {previewData?.weekly?.homePts ?? '–'} | Away: {previewData?.weekly?.awayPts ?? '–'}</div>
+                      ) : (
+                        <div>Home R: {previewData?.lineScore?.home?.R ?? '–'} | Away R: {previewData?.lineScore?.away?.R ?? '–'}</div>
+                      )}
                     </div>
                   )}
                   <div>
@@ -2538,6 +2604,14 @@ export default function CreatePropUnifiedPage() {
               <>
                 <label className="block text-sm mt-2">Moneyline</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={propSideAMoneyline} onChange={(e)=> setPropSideAMoneyline(e.target.value)} />
+                {autoGradeKey === 'who_wins' && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <button type="button" className="px-2 py-1 text-xs bg-gray-200 rounded disabled:opacity-50" onClick={() => fetchMoneylineForSide('A')} disabled={oddsLoadingSide === 'A'}>
+                      {oddsLoadingSide === 'A' ? 'Fetching…' : 'Fetch'}
+                    </button>
+                    {!!oddsError && <span className="text-xs text-red-600">{oddsError}</span>}
+                  </div>
+                )}
                 <label className="block text-sm mt-2">Value A</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueA} readOnly />
               </>
@@ -2553,6 +2627,14 @@ export default function CreatePropUnifiedPage() {
               <>
                 <label className="block text-sm mt-2">Moneyline</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={propSideBMoneyline} onChange={(e)=> setPropSideBMoneyline(e.target.value)} />
+                {autoGradeKey === 'who_wins' && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <button type="button" className="px-2 py-1 text-xs bg-gray-200 rounded disabled:opacity-50" onClick={() => fetchMoneylineForSide('B')} disabled={oddsLoadingSide === 'B'}>
+                      {oddsLoadingSide === 'B' ? 'Fetching…' : 'Fetch'}
+                    </button>
+                    {!!oddsError && <span className="text-xs text-red-600">{oddsError}</span>}
+                  </div>
+                )}
                 <label className="block text-sm mt-2">Value B</label>
                 <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueB} readOnly />
               </>

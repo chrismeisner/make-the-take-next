@@ -44,19 +44,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, error: 'No valid messages to send' });
   }
 
+  const hasFrom = Boolean((process.env.TWILIO_FROM_NUMBER || '').trim());
+  const hasServiceSid = Boolean((process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim());
   if (dryRun) {
     const segments = valid.reduce((s, v) => s + Math.max(1, Math.ceil((v.body || '').length / 160)), 0);
-    return res.status(200).json({ success: true, sent: 0, failed: 0, total: valid.length, segments, dryRun: true });
+    return res.status(200).json({ success: true, sent: 0, failed: 0, total: valid.length, segments, dryRun: true, sender: { hasFrom, hasServiceSid } });
   }
 
   let sent = 0;
   let failed = 0;
   const errors = [];
   try {
-    console.log('[admin/send-results-sms] Using sender', {
-      hasFrom: Boolean((process.env.TWILIO_FROM_NUMBER || '').trim()),
-      hasServiceSid: Boolean((process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim()),
-    });
+    console.log('[admin/send-results-sms] Using sender', { hasFrom, hasServiceSid });
   } catch {}
   for (const m of valid) {
     try {
@@ -67,7 +66,7 @@ export default async function handler(req, res) {
       try { errors.push({ to: m.to, error: e?.message || String(e) }); } catch {}
     }
   }
-  return res.status(200).json({ success: true, total: valid.length, sent, failed, errors });
+  return res.status(200).json({ success: true, total: valid.length, sent, failed, errors, sender: { hasFrom, hasServiceSid } });
 }
 
 

@@ -38,6 +38,7 @@ export default function AdminPage({ superAdminSecret }) {
   }, []);
 
   async function handleSwitchSuperAdmin() {
+    try { console.log('[Admin] Button pressed: Switch to Super Admin'); } catch {}
     await signOut({ redirect: false });
     signIn("super-admin", {
       secret: superAdminSecret,
@@ -45,6 +46,7 @@ export default function AdminPage({ superAdminSecret }) {
     });
   }
   const handleGradePacks = async () => {
+    try { console.log('[Admin] Button pressed: Grade Packs'); } catch {}
     try {
       const res = await fetch("/api/admin/gradePacks", { method: "POST" });
       const data = await res.json();
@@ -60,6 +62,7 @@ export default function AdminPage({ superAdminSecret }) {
  
   // Handler for fetching Props to grade
   const handleGradeProps = async () => {
+    try { console.log('[Admin] Button pressed: Prop Grader'); } catch {}
     try {
       const res = await fetch("/api/admin/gradeProps", { method: "POST" });
       const data = await res.json();
@@ -104,6 +107,7 @@ export default function AdminPage({ superAdminSecret }) {
   const [closePropsResult, setClosePropsResult] = useState(null);
 
   const handleCloseProps = async () => {
+    try { console.log('[Admin] Button pressed: Close Props'); } catch {}
     setClosingProps(true);
     setClosePropsResult(null);
     try {
@@ -123,6 +127,7 @@ export default function AdminPage({ superAdminSecret }) {
 
   // Handler to fetch graded packs without winners and open selection modal
   const handleGetPackWinners = async () => {
+    try { console.log('[Admin] Button pressed: Get Pack Winners'); } catch {}
     try {
       const res = await fetch("/api/admin/packsWithoutWinners", { method: "POST" });
       const data = await res.json();
@@ -138,6 +143,7 @@ export default function AdminPage({ superAdminSecret }) {
 
   // Run auto-grade job for moneyline props
   const handleAutoGradeMoneylineProps = async () => {
+    try { console.log('[Admin] Button pressed: Auto Grade Moneyline Props'); } catch {}
     setGradingLoading(true);
     setGradingResult(null);
     try {
@@ -160,12 +166,14 @@ export default function AdminPage({ superAdminSecret }) {
 
   // If we want to log out the current user:
   function handleForceLogout() {
+    try { console.log('[Admin] Button pressed: Force Log Out'); } catch {}
 	// signOut can optionally redirect the user to a callback URL
 	signOut({ callbackUrl: "/" }); 
   }
 
   // Handler for fetching MLB events
   const handleFetchEvents = async () => {
+    try { console.log('[Admin] Button pressed: Get MLB Events'); } catch {}
     setLoadingEvents(true);
     try {
       // Compute date string based on selected option
@@ -188,6 +196,7 @@ export default function AdminPage({ superAdminSecret }) {
   };
   // Handler for fetching NFL events
   const handleFetchNflEvents = async () => {
+    try { console.log('[Admin] Button pressed: Get NFL Events'); } catch {}
     setLoadingNflEvents(true);
     try {
       const res = await fetch("/api/admin/fetchNflEvents", {
@@ -206,6 +215,7 @@ export default function AdminPage({ superAdminSecret }) {
   
   // Handler for updating MLB teams
   const handleUpdateTeams = async () => {
+    try { console.log('[Admin] Button pressed: Update MLB Teams'); } catch {}
     setLoadingTeams(true);
     try {
       const res = await fetch("/api/admin/updateMlbTeams", { method: "POST" });
@@ -219,6 +229,7 @@ export default function AdminPage({ superAdminSecret }) {
   };
   // Handler for updating NBA teams
   const handleUpdateNbaTeams = async () => {
+    try { console.log('[Admin] Button pressed: Update NBA Teams'); } catch {}
     setLoadingNbaTeams(true);
     try {
       const res = await fetch("/api/admin/updateNbaTeams", { method: "POST" });
@@ -232,6 +243,7 @@ export default function AdminPage({ superAdminSecret }) {
   };
   // Handler for updating NFL teams
   const handleUpdateNflTeams = async () => {
+    try { console.log('[Admin] Button pressed: Update NFL Teams'); } catch {}
     setLoadingNflTeams(true);
     try {
       const res = await fetch("/api/admin/updateNflTeams", { method: "POST" });
@@ -245,6 +257,7 @@ export default function AdminPage({ superAdminSecret }) {
   };
 
   const sendHelloText = async () => {
+    try { console.log('[Admin] Button pressed: Send Hello Text'); } catch {}
     setSendingHello(true);
     setHelloResult("");
     try {
@@ -495,6 +508,7 @@ export default function AdminPage({ superAdminSecret }) {
                 </button>
                 <button
                   onClick={async () => {
+                    try { console.log('[Admin] Button pressed: Generate NFL Covers'); } catch {}
                     setNflCoverLoading(true);
                     setNflCoverResult(null);
                     try {

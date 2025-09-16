@@ -266,6 +266,8 @@ export default function GlobalModalRenderer() {
 		  onClose={closeModal}
 		  onEventSelected={modalConfig.modalProps.onEventSelected}
 		  allowMultiSelect={modalConfig.modalProps.allowMultiSelect}
+		  initialLeague={modalConfig.modalProps.initialLeague}
+		  initialDate={modalConfig.modalProps.initialDate}
 		/>
 	  );
 	case "addProp":

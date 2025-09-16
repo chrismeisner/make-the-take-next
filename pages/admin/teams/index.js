@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getToken } from 'next-auth/jwt';
 import { createRepositories } from '../../../lib/dal/factory';
 import { useModal } from '../../../contexts/ModalContext';
@@ -9,6 +9,7 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
   const [teams, setTeams] = useState(initialTeams);
   const [loading, setLoading] = useState(!prefetched);
   const [error, setError] = useState(null);
+  const [selectedLeague, setSelectedLeague] = useState('');
 
   useEffect(() => {
     if (prefetched) return;
@@ -26,11 +27,37 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
     })();
   }, [prefetched]);
 
+  const leagueOptions = useMemo(() => {
+    try {
+      const set = new Set(
+        (teams || [])
+          .map(t => String(t.teamLeague || '').toLowerCase())
+          .filter(Boolean)
+      );
+      return Array.from(set).sort();
+    } catch {
+      return [];
+    }
+  }, [teams]);
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Teams Admin</h1>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">League</label>
+            <select
+              value={selectedLeague}
+              onChange={(e) => setSelectedLeague(e.target.value)}
+              className="px-2 py-2 border rounded"
+            >
+              <option value="">All</option>
+              {leagueOptions.map(lg => (
+                <option key={lg} value={lg}>{lg.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
           <button
             type="button"
             onClick={() => openModal('fetchTeams', { onFetched: async () => {
@@ -64,7 +91,9 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
               </tr>
             </thead>
             <tbody>
-              {teams.map((t) => (
+              {teams
+                .filter((t) => !selectedLeague || String(t.teamLeague || '').toLowerCase() === selectedLeague)
+                .map((t) => (
                 <tr key={`${t.recordId}-${t.teamID}`} className="border-t">
                   <td className="px-3 py-2">{t.teamLeague}</td>
                   <td className="px-3 py-2">{t.teamNameFull || t.teamName}</td>
@@ -77,7 +106,7 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <Link href={`/admin/teams/${encodeURIComponent(t.teamID)}/edit`} className="text-blue-600 hover:underline">Edit</Link>
+                    <Link href={`/admin/teams/${encodeURIComponent(t.recordId)}/edit`} className="text-blue-600 hover:underline">Edit</Link>
                   </td>
                 </tr>
               ))}

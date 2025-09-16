@@ -4,6 +4,7 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
   const [league, setLeague] = useState('nfl');
   const [year, setYear] = useState(new Date().getFullYear());
   const [week, setWeek] = useState(1);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -16,21 +17,52 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
     setError('');
     setResult(null);
     try {
-      if (league !== 'nfl') {
-        throw new Error('Only NFL supported for now');
-      }
-      const res = await fetch('/api/admin/fetchNflEvents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: Number(year), week: Number(week), generateCovers: !!generateCovers }),
+      console.log('🎯 [FetchEventsModal] Fetch pressed →', {
+        league,
+        year: Number(year),
+        week: Number(week),
+        date,
+        generateCovers: !!generateCovers,
       });
+    } catch {}
+    try {
+      let res;
+      if (league === 'nfl') {
+        try {
+          console.log('🏈 [FetchEventsModal] Fetching NFL events…', { year: Number(year), week: Number(week), generateCovers: !!generateCovers });
+        } catch {}
+        res = await fetch('/api/admin/fetchNflEvents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year: Number(year), week: Number(week), generateCovers: !!generateCovers }),
+        });
+      } else if (league === 'mlb') {
+        // MLB uses daily date via RapidAPI schedule -> Postgres
+        const yyyymmdd = (date || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+        try {
+          console.log('⚾ [FetchEventsModal] Fetching MLB events…', { date: yyyymmdd, generateCovers: !!generateCovers });
+        } catch {}
+        res = await fetch('/api/admin/fetchMlbEvents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: yyyymmdd, generateCovers: !!generateCovers }),
+        });
+      } else {
+        throw new Error('Unsupported league');
+      }
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Fetch failed');
       }
+      try {
+        console.log('✅ [FetchEventsModal] Fetch complete', { processedCount: data.processedCount, league });
+      } catch {}
       setResult({ processedCount: data.processedCount });
       onFetched?.();
     } catch (e) {
+      try {
+        console.error('❌ [FetchEventsModal] Fetch error', { message: e?.message || String(e), league });
+      } catch {}
       setError(e.message);
     } finally {
       setLoading(false);
@@ -50,30 +82,46 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
               className="mt-1 px-3 py-2 border rounded w-full"
             >
               <option value="nfl">NFL</option>
+              <option value="mlb">MLB</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Year</label>
-            <input
-              type="number"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="mt-1 px-3 py-2 border rounded w-full"
-              min="2000"
-              max="3000"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Week</label>
-            <input
-              type="number"
-              value={week}
-              onChange={(e) => setWeek(e.target.value)}
-              className="mt-1 px-3 py-2 border rounded w-full"
-              min="1"
-              max="25"
-            />
-          </div>
+          {league === 'nfl' ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Year</label>
+                <input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="mt-1 px-3 py-2 border rounded w-full"
+                  min="2000"
+                  max="3000"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Week</label>
+                <input
+                  type="number"
+                  value={week}
+                  onChange={(e) => setWeek(e.target.value)}
+                  className="mt-1 px-3 py-2 border rounded w-full"
+                  min="1"
+                  max="25"
+                />
+              </div>
+            </>
+          ) : null}
+          {league === 'mlb' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="mt-1 px-3 py-2 border rounded w-full"
+              />
+            </div>
+          ) : null}
           <label className="inline-flex items-center text-sm text-gray-700">
             <input
               type="checkbox"

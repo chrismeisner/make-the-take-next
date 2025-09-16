@@ -2,6 +2,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useModal } from '../../../contexts/ModalContext';
 
 export default function AdminEventDetail() {
   const { data: session, status } = useSession();
@@ -11,6 +12,7 @@ export default function AdminEventDetail() {
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const { openModal } = useModal();
   
 
   useEffect(() => {
@@ -69,6 +71,63 @@ export default function AdminEventDetail() {
         <dt className="font-medium">League</dt>
         <dd>{event.eventLeague}</dd>
       </dl>
+
+      {/* External links */}
+      <div className="mt-4 flex items-center gap-3">
+        {event?.espnGameID && event?.eventLeague && (
+          <a
+            href={`https://www.espn.com/${event.eventLeague}/game/_/gameId/${event.espnGameID}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200"
+          >
+            View on ESPN
+          </a>
+        )}
+        <button
+          className="px-3 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200"
+          onClick={() => {
+            try {
+              const initialDate = event?.eventTime ? new Date(event.eventTime).toISOString().slice(0,10) : '';
+              const initialLeague = event?.eventLeague || '';
+              openModal('addEvent', {
+                initialLeague,
+                initialDate,
+                allowMultiSelect: false,
+                onEventSelected: async (ev) => {
+                  const chosen = Array.isArray(ev) ? ev[0] : ev;
+                  if (!chosen?.id) return;
+                  try {
+                    const body = {
+                      sourceEventId: chosen.id,
+                      // Update basic details to chosen
+                      title: chosen.eventTitle,
+                      league: chosen.eventLeague,
+                      eventTime: chosen.eventTime
+                    };
+                    const r = await fetch(`/api/admin/events/${encodeURIComponent(event.id)}/relink`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(body)
+                    });
+                    const j = await r.json();
+                    if (!r.ok || !j?.success) throw new Error(j?.error || 'Relink failed');
+                    // Refresh event data
+                    const r2 = await fetch(`/api/admin/events/${encodeURIComponent(event.id)}`);
+                    const j2 = await r2.json();
+                    if (j2?.success && j2?.event) setEvent(j2.event);
+                  } catch (e) {
+                    console.error('Relink error:', e);
+                    alert(e.message || 'Failed to relink');
+                  }
+                }
+              });
+            } catch {}
+          }}
+        >
+          Relink Event
+        </button>
+      </div>
 
       {/* Edit Event (cover url or file upload) */}
       <div className="mt-6 p-4 bg-white border rounded">

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import PackPreview from './PackPreview';
 
-export default function PackExplorer({ packs = [], accent = 'blue' }) {
+export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '' }) {
   const [selectedLeagues, setSelectedLeagues] = useState(new Set());
+  const [sortBy, setSortBy] = useState('close-asc'); // default: pack close time, soonest first
 
   // Ensure selected leagues default to include all available leagues
   useEffect(() => {
@@ -32,7 +33,15 @@ export default function PackExplorer({ packs = [], accent = 'blue' }) {
     return Array.from(unique).sort();
   }, [packs]);
 
+  const leagueFilterLc = useMemo(() => (forceLeagueFilter || '').toString().toLowerCase().trim(), [forceLeagueFilter]);
+
   const visiblePacks = useMemo(() => {
+    if (leagueFilterLc) {
+      return (packs || []).filter((p) => (p?.packLeague || '').toString().toLowerCase() === leagueFilterLc);
+    }
+    if (hideLeagueChips) {
+      return packs;
+    }
     if (!selectedLeagues) return packs;
     if (leagues.length > 0 && selectedLeagues.size === 0) return [];
     return (packs || []).filter((p) => {
@@ -40,7 +49,7 @@ export default function PackExplorer({ packs = [], accent = 'blue' }) {
       if (!lg) return true; // Packs without a league are always visible
       return selectedLeagues.has(lg);
     });
-  }, [packs, selectedLeagues, leagues]);
+  }, [packs, selectedLeagues, leagues, leagueFilterLc, hideLeagueChips]);
 
   function toggleLeague(lg) {
     setSelectedLeagues((prev) => {
@@ -51,9 +60,79 @@ export default function PackExplorer({ packs = [], accent = 'blue' }) {
     });
   }
 
+  // Parsing helpers reused across sort modes
+  function parseToMs(val) {
+    if (val == null) return NaN;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^\d{11,}$/.test(trimmed)) {
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : NaN;
+      }
+      const ms = new Date(trimmed).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    }
+    try {
+      const ms = new Date(val).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    } catch { return NaN; }
+  }
+
+  function getCloseMs(p) {
+    const raw = p?.packCloseTime ?? p?.pack_close_time ?? null;
+    const ms = parseToMs(raw);
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+  }
+
+  function getOpenMs(p) {
+    const raw = p?.packOpenTime ?? p?.pack_open_time ?? null;
+    const ms = parseToMs(raw);
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  }
+
+  const sortedPacks = useMemo(() => {
+    const arr = Array.isArray(visiblePacks) ? visiblePacks.slice() : [];
+    switch (sortBy) {
+      case 'close-asc':
+        return arr.sort((a, b) => getCloseMs(a) - getCloseMs(b));
+      case 'close-desc':
+        return arr.sort((a, b) => getCloseMs(b) - getCloseMs(a));
+      case 'open-desc':
+        return arr.sort((a, b) => getOpenMs(b) - getOpenMs(a));
+      case 'created-desc': {
+        const getCreatedMs = (p) => parseToMs(p?.createdAt ?? p?.created_at ?? null);
+        return arr.sort((a, b) => getCreatedMs(b) - getCreatedMs(a));
+      }
+      case 'title-asc':
+        return arr.sort((a, b) => String(a?.packTitle || '').localeCompare(String(b?.packTitle || '')));
+      default:
+        return arr;
+    }
+  }, [visiblePacks, sortBy]);
+
   return (
     <div>
-      {leagues.length > 0 && (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {/* Sort control */}
+        <div className="ml-auto">
+          <label htmlFor="pack-sort" className="sr-only">Sort packs</label>
+          <select
+            id="pack-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          >
+            <option value="close-asc">Close time (soonest first)</option>
+            <option value="close-desc">Close time (latest first)</option>
+            <option value="open-desc">Open time (newest first)</option>
+            <option value="created-desc">Created (newest first)</option>
+            <option value="title-asc">Title (A→Z)</option>
+          </select>
+        </div>
+      </div>
+
+      {!hideLeagueChips && leagues.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {leagues.map((lg) => {
             const isSelected = selectedLeagues.has(lg);
@@ -79,9 +158,9 @@ export default function PackExplorer({ packs = [], accent = 'blue' }) {
         </div>
       )}
 
-      {visiblePacks && visiblePacks.length > 0 ? (
+      {sortedPacks && sortedPacks.length > 0 ? (
         <div className="w-full flex flex-col gap-3 md:gap-4">
-          {visiblePacks.map((pack, idx) => (
+          {sortedPacks.map((pack, idx) => (
             <PackPreview key={pack.packID || pack.airtableId || pack.id} index={idx} pack={pack} accent={accent} />
           ))}
         </div>

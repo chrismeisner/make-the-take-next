@@ -6,14 +6,17 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Teams
 CREATE TABLE IF NOT EXISTS teams (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id TEXT UNIQUE,
-  team_slug TEXT UNIQUE,
+  team_id TEXT,
+  team_slug TEXT,
   name TEXT,
   league TEXT,
   emoji TEXT,
   logo_url TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_teams_league ON teams (league);
+-- Ensure uniqueness by league for team_id and team_slug
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_teams_league_team_id ON teams (league, team_id) WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_teams_league_team_slug ON teams (league, team_slug) WHERE team_slug IS NOT NULL;
 
 -- Add short display name for teams
 ALTER TABLE teams ADD COLUMN IF NOT EXISTS short_name TEXT;

@@ -1,10 +1,10 @@
-// File: pages/api/admin/fetchMlbEvents.js
+// Postgres-only MLB fetch via RapidAPI (major-mlb)
 
 import { getToken } from "next-auth/jwt";
-import Airtable from "airtable";
-
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+import { query } from '../../../lib/db/postgres';
+import { getDataBackend } from '../../../lib/runtimeConfig';
+import { resolveSourceConfig } from '../../../lib/apiSources';
+import { normalizeMajorMlbScoreboard } from '../../../lib/normalize';
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -17,92 +17,132 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { date } = req.body;
-    const dateStr = date
-      ? date
-      : new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    console.log(`[admin/fetchMlbEvents] Get MLB events pressed for date=${dateStr}`);
-    const url = `https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`ESPN API responded with status ${response.status}`);
+    const backend = getDataBackend();
+    if (backend !== 'postgres' || !process.env.DATABASE_URL) {
+      return res.status(400).json({ success: false, error: 'Postgres backend required for MLB fetch' });
     }
-    const data = await response.json();
-    const events = data.events || [];
+
+    const { date, generateCovers } = req.body || {};
+    const yyyymmdd = (date || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+    const yyyy = String(yyyymmdd).slice(0, 4);
+    const mm = String(yyyymmdd).slice(4, 6);
+    const dd = String(yyyymmdd).slice(6, 8);
+
+    const src = resolveSourceConfig('mlb');
+    if (!src.ok) {
+      return res.status(500).json({ success: false, error: 'Missing RAPIDAPI credentials for MLB' });
+    }
+
+    // Prefer schedule endpoint; fall back to scoreboard if needed
+    let fetchUrl = new URL(`https://${src.host}${src.endpoints.schedule || src.endpoints.scoreboard}`);
+    fetchUrl.searchParams.set('year', yyyy);
+    fetchUrl.searchParams.set('month', mm);
+    fetchUrl.searchParams.set('day', dd);
+    console.log(`[admin/fetchMlbEvents] Fetching MLB schedule: ${fetchUrl.toString()}`);
+    let upstream = await fetch(fetchUrl.toString(), { method: 'GET', headers: src.headers });
+    if (!upstream.ok && src.endpoints.scoreboard) {
+      const alt = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+      alt.searchParams.set('year', yyyy);
+      alt.searchParams.set('month', mm);
+      alt.searchParams.set('day', dd);
+      console.log(`[admin/fetchMlbEvents] Schedule failed (${upstream.status}); trying scoreboard: ${alt.toString()}`);
+      upstream = await fetch(alt.toString(), { method: 'GET', headers: src.headers });
+    }
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => '');
+      throw new Error(`RapidAPI MLB schedule failed (${upstream.status}): ${text || upstream.statusText}`);
+    }
+    const data = await upstream.json().catch(() => ({}));
+    const raw = data?.body || data || {};
+    const games = normalizeMajorMlbScoreboard(raw);
+    console.log(`[admin/fetchMlbEvents] Upstream returned ${games.length} games for ${yyyy}-${mm}-${dd}`);
+
     let processedCount = 0;
+    for (const game of games) {
+      const externalId = game?.id ? String(game.id) : null;
+      const eventTime = game?.gameTime || null;
+      let eventTitle = `${game?.away || ''} @ ${game?.home || ''}`.trim();
+      const eventLeague = 'mlb';
 
-    for (const evt of events) {
-      const espnGameID = evt.id;
-      const eventTime = evt.date;
-      const eventTitle = evt.name;
-      const eventStatus = evt.status?.type?.state || evt.status?.type?.shortDetail || "";
-      let eventLeague = data.leagues?.[0]?.name || "";
-      // Normalize league code for MLB
-      if (eventLeague === "Major League Baseball") {
-        eventLeague = "mlb";
+      const homeAbbrev = String(game?.home || '').toUpperCase();
+      const awayAbbrev = String(game?.away || '').toUpperCase();
+      if (!eventTitle || eventTitle === '@') {
+        if (awayAbbrev && homeAbbrev) eventTitle = `${awayAbbrev} @ ${homeAbbrev}`;
       }
-      let homeTeam = "";
-      let awayTeam = "";
-      let homeTeamScore = null;
-      let awayTeamScore = null;
-      let homeTeamId = null;
-      let awayTeamId = null;
-      const comp = evt.competitions?.[0];
-      if (comp && Array.isArray(comp.competitors)) {
-        for (const team of comp.competitors) {
-          if (team.homeAway === "home") {
-            homeTeam = team.team.displayName;
-            homeTeamId = team.team.id?.toString();
-            homeTeamScore = team.score != null ? parseInt(team.score, 10) : null;
-          } else if (team.homeAway === "away") {
-            awayTeam = team.team.displayName;
-            awayTeamId = team.team.id?.toString();
-            awayTeamScore = team.score != null ? parseInt(team.score, 10) : null;
-          }
+
+      let homeTeamIdPg = null;
+      let awayTeamIdPg = null;
+      try {
+        if (homeAbbrev) {
+          const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [homeAbbrev, eventLeague]);
+          homeTeamIdPg = rows?.[0]?.id || null;
         }
-      }
+        if (awayAbbrev) {
+          const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [awayAbbrev, eventLeague]);
+          awayTeamIdPg = rows?.[0]?.id || null;
+        }
+      } catch {}
 
-      // Lookup linked team records in Airtable
-      let homeTeamLink = [];
-      let awayTeamLink = [];
-      if (homeTeamId) {
-        const homeRecs = await base("Teams")
-          .select({ filterByFormula: `AND({teamID}="${homeTeamId}", LOWER({teamLeague})="mlb")`, maxRecords: 1 })
-          .firstPage();
-        if (homeRecs.length) homeTeamLink = [homeRecs[0].id];
-      }
-      if (awayTeamId) {
-        const awayRecs = await base("Teams")
-          .select({ filterByFormula: `AND({teamID}="${awayTeamId}", LOWER({teamLeague})="mlb")`, maxRecords: 1 })
-          .firstPage();
-        if (awayRecs.length) awayTeamLink = [awayRecs[0].id];
-      }
+      const eventIdStable = externalId || `${yyyy}${mm}${dd}-${awayAbbrev}-at-${homeAbbrev}`;
 
-      const existing = await base("Events")
-        .select({ filterByFormula: `{espnGameID}="${espnGameID}"`, maxRecords: 1 })
-        .firstPage();
-      const fields = {
-        espnGameID,
-        eventID: String(espnGameID),
-        eventTime,
-        eventTitle,
-        eventStatus,
-        eventLeague,
-        homeTeamLink,
-        awayTeamLink,
-        homeTeamScore,
-        awayTeamScore,
-      };
-
-      if (existing.length) {
-        await base("Events").update([{ id: existing[0].id, fields }]);
-        console.log(`[admin/fetchMlbEvents] [AT] Updated Event ${espnGameID} → ${existing[0].id}`);
-      } else {
-        const created = await base("Events").create([{ fields }]);
-        console.log(`[admin/fetchMlbEvents] [AT] Created Event ${espnGameID} → ${created[0]?.id}`);
+      // Upsert into Postgres using event_id as the conflict target for MLB
+      // Upsert without requiring a unique constraint by attempting UPDATE first
+      const updateRes = await query(
+        `UPDATE events
+            SET title = $2,
+                league = $3,
+                event_time = $4,
+                home_team = COALESCE($5, home_team),
+                away_team = COALESCE($6, away_team),
+                home_team_id = COALESCE($7, home_team_id),
+                away_team_id = COALESCE($8, away_team_id)
+          WHERE event_id = $1`,
+        [
+          String(eventIdStable),
+          eventTitle || null,
+          eventLeague,
+          eventTime ? new Date(eventTime) : null,
+          homeAbbrev || null,
+          awayAbbrev || null,
+          homeTeamIdPg,
+          awayTeamIdPg,
+        ]
+      );
+      if (!updateRes || updateRes.rowCount === 0) {
+        await query(
+          `INSERT INTO events (event_id, espn_game_id, title, league, event_time, home_team, away_team, home_team_id, away_team_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            String(eventIdStable),
+            null,
+            eventTitle || null,
+            eventLeague,
+            eventTime ? new Date(eventTime) : null,
+            homeAbbrev || null,
+            awayAbbrev || null,
+            homeTeamIdPg,
+            awayTeamIdPg,
+          ]
+        );
       }
 
       processedCount++;
+
+      // Optionally generate event cover immediately, mirroring NFL behavior
+      try {
+        if (generateCovers) {
+          // Look up the internal numeric id for this event by the stable event_id
+          const { rows: eRows } = await query('SELECT id FROM events WHERE event_id = $1 LIMIT 1', [String(eventIdStable)]);
+          const internalId = eRows?.[0]?.id;
+          if (internalId) {
+            try {
+              const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+              const genRes = await fetch(`${baseUrl}/api/admin/events/${internalId}/generateCover`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
+              await genRes.text().catch(() => null);
+            } catch {}
+          }
+        }
+      } catch {}
     }
 
     return res.status(200).json({ success: true, processedCount });
@@ -110,4 +150,4 @@ export default async function handler(req, res) {
     console.error("[admin/fetchMlbEvents] Error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
-} 
+}

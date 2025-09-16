@@ -47,7 +47,7 @@ export default function LandingPage({ packsData = [] }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <section className="lg:col-span-2">
               <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">All Packs</h1>
-              <PackExplorer packs={packsData} accent="green" />
+              <PackExplorer packs={packsData} accent="green" hideLeagueChips={true} />
             </section>
 
             <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
@@ -194,7 +194,7 @@ export async function getServerSideProps(context) {
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to load packs");
       allPacks = Array.isArray(data.packs) ? data.packs : [];
     }
-    // Align filter with Airtable: include active, graded, coming-soon
+    // Include active, coming soon, closed, graded on homepage
     try {
       const statusEmoji = (s) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '-');
@@ -229,22 +229,21 @@ export async function getServerSideProps(context) {
     const filteredPacks = allPacks.filter((p) => {
       const sRaw = String(p?.packStatus || '').toLowerCase();
       const s = sRaw.replace(/\s+/g, '-');
-      // Default-hide graded packs on homepage
       return (
         s === 'active' ||
         s === 'open' ||
         s === 'coming-soon' ||
         s === 'coming-up' ||
+        s === 'closed' ||
+        s === 'graded' ||
         s === ''
       );
     });
     console.log('[HomePage GSSP] filtered packs count =', filteredPacks.length);
-    // Sort: open/active first, then by packCloseTime ascending (soonest closing first).
-    // Packs without close time go last within their status grouping.
+    // Sort: open/active first, then coming soon, then closed, completed, graded (last).
     const statusRank = (p) => {
       const sRaw = String(p?.packStatus || '').toLowerCase();
-      // Normalize minor variants to Airtable's canonical value
-      const s = sRaw.replace(/\s+/g, '-'); // "coming up" -> "coming-up"
+      const s = sRaw.replace(/\s+/g, '-');
       if (s === 'open' || s === 'active') return 0;
       if (s === 'coming-soon' || s === 'coming-up') return 1;
       if (s === 'closed') return 2;

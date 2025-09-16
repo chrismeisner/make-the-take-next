@@ -129,6 +129,21 @@ export default function AdminCreatePackPage() {
                     coverUrl = (first && typeof first === 'object') ? (first.url || first?.thumbnails?.large?.url || first?.thumbnails?.full?.url) : null;
                   }
                 } catch {}
+                // Extract team names (from Airtable-style arrays) and abbreviations if available
+                const firstString = (val) => {
+                  try {
+                    if (Array.isArray(val) && val.length) {
+                      const v = val[0];
+                      if (typeof v === 'string') return v;
+                      if (v && typeof v === 'object' && typeof v.name === 'string') return v.name;
+                    }
+                  } catch {}
+                  return null;
+                };
+                const homeName = firstString(ev.homeTeam) || null;
+                const awayName = firstString(ev.awayTeam) || null;
+                const homeAbbr = ev.homeTeamAbbreviation || null;
+                const awayAbbr = ev.awayTeamAbbreviation || null;
                 return {
                   id,
                   title: ev.eventTitle || id,
@@ -137,6 +152,10 @@ export default function AdminCreatePackPage() {
                   coverUrl: coverUrl || null,
                   homeTeamLogo: ev.homeTeamLogo || null,
                   awayTeamLogo: ev.awayTeamLogo || null,
+                  homeTeamName: homeName,
+                  awayTeamName: awayName,
+                  homeTeamAbbr: homeAbbr,
+                  awayTeamAbbr: awayAbbr,
                 };
               }
             } catch {}
@@ -146,8 +165,8 @@ export default function AdminCreatePackPage() {
         if (!cancelled) {
           setEventInfoById((prev) => {
             const next = { ...prev };
-            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo }) => {
-              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo };
+            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr }) => {
+              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr };
             });
             return next;
           });
@@ -482,6 +501,27 @@ export default function AdminCreatePackPage() {
             className="mt-1 px-3 py-2 border rounded w-full"
             required
           />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventId}
+              onClick={() => {
+                try {
+                  const info = eventInfoById[packEventId] || {};
+                  const awayLabel = (info.awayTeamAbbr || info.awayTeamName || '').toString().trim();
+                  const homeLabel = (info.homeTeamAbbr || info.homeTeamName || '').toString().trim();
+                  if (awayLabel && homeLabel) {
+                    setPackTitle(`${awayLabel} at ${homeLabel}`);
+                  } else if (info.eventTitle) {
+                    setPackTitle(info.eventTitle);
+                  }
+                } catch {}
+              }}
+            >
+              Generate title
+            </button>
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Pack URL</label>

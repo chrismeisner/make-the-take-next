@@ -1,14 +1,12 @@
 // File: pages/api/admin/fetchNflEvents.js
 import { getToken } from "next-auth/jwt";
-import Airtable from "airtable";
 import { query } from '../../../lib/db/postgres';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { resolveSourceConfig } from '../../../lib/apiSources';
 import { normalizeNflScoreboardFromWeekly } from '../../../lib/normalize';
 import { randomBytes } from 'crypto';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+// Airtable removed: Postgres-only
 
 function parseEspnGameIdFromUid(uid) {
   if (!uid || typeof uid !== 'string') return null;
@@ -104,13 +102,34 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'year and week are required numeric values' });
     }
 
-    const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
-    url.searchParams.set('year', String(Number(year)));
-    url.searchParams.set('week', String(Number(week)));
-    console.log(`[admin/fetchNflEvents] Weekly fetch: ${url.toString()}`);
-    const resp = await fetch(url.toString(), { method: 'GET', headers: src.headers });
-    if (!resp.ok) {
-      throw new Error(`RapidAPI weekly schedule responded with ${resp.status}`);
+    // Try the base weekly endpoint; on playoff weeks fallback to alternate params some providers require
+    const baseUrl = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+    baseUrl.searchParams.set('year', String(Number(year)));
+    baseUrl.searchParams.set('week', String(Number(week)));
+    const attempts = [
+      {},
+      // Some providers require explicit postseason flags
+      ...(Number(week) >= 19 ? [
+        { seasonType: 'postseason' },
+        { type: 'postseason' },
+        { type: '3' },
+        { seasonType: '3' },
+      ] : []),
+    ];
+    let resp;
+    let lastStatus = null;
+    for (let i = 0; i < attempts.length; i++) {
+      const extra = attempts[i] || {};
+      const url = new URL(baseUrl.toString());
+      Object.entries(extra).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+      console.log(`[admin/fetchNflEvents] Weekly fetch attempt ${i + 1}/${attempts.length}: ${url.toString()}`);
+      // eslint-disable-next-line no-await-in-loop
+      resp = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+      lastStatus = resp.status;
+      if (resp.ok) break;
+    }
+    if (!resp || !resp.ok) {
+      throw new Error(`RapidAPI weekly schedule responded with ${lastStatus || 'unknown'} (after ${attempts.length} attempts)`);
     }
     const raw = await resp.json();
     const games = normalizeNflScoreboardFromWeekly(raw);
@@ -119,35 +138,7 @@ export default async function handler(req, res) {
     let processedCount = 0;
     const eventsOut = [];
 
-    // Cache for mapping Airtable Team record IDs -> Postgres teams.id
-    const pgTeamIdByAirtableId = new Map();
-    // Helper to resolve a Postgres team id given an Airtable Teams record id
-    async function resolvePgTeamId(airtableTeamRecordId) {
-      if (!airtableTeamRecordId) return null;
-      if (pgTeamIdByAirtableId.has(airtableTeamRecordId)) {
-        return pgTeamIdByAirtableId.get(airtableTeamRecordId);
-      }
-      try {
-        const rec = await base('Teams').find(airtableTeamRecordId);
-        const f = rec?.fields || {};
-        const teamIdText = f.teamID || null;
-        const teamSlug = f.teamSlug || f.teamAbbreviation || null;
-        // Try lookup by team_id first, then by slug (case-insensitive)
-        let pgId = null;
-        if (teamIdText) {
-          const { rows } = await query('SELECT id FROM teams WHERE team_id = $1 LIMIT 1', [teamIdText]);
-          pgId = rows?.[0]?.id || null;
-        }
-        if (!pgId && teamSlug) {
-          const { rows } = await query('SELECT id FROM teams WHERE team_slug = $1 OR UPPER(team_slug) = UPPER($1) LIMIT 1', [teamSlug]);
-          pgId = rows?.[0]?.id || null;
-        }
-        pgTeamIdByAirtableId.set(airtableTeamRecordId, pgId);
-        return pgId;
-      } catch (_) {
-        return null;
-      }
-    }
+    // Postgres-only: helpers will resolve teams by slug and league directly
 
     const backend = getDataBackend();
     const generateEventId = () => {
@@ -179,84 +170,33 @@ export default async function handler(req, res) {
         if (awayAbbrev && homeAbbrev) eventTitle = `${awayAbbrev} @ ${homeAbbrev}`;
       }
 
-      // Link Teams favoring teamAbbreviation, then nickname fallback
-      let homeTeamLink = [];
-      let awayTeamLink = [];
+      // Resolve Postgres team ids by team_slug and league
+      let homeTeamIdPg = null;
+      let awayTeamIdPg = null;
       try {
         if (homeAbbrev) {
-          const homeRecs = await base('Teams')
-            .select({ filterByFormula: `AND({teamAbbreviation}="${homeAbbrev}", LOWER({teamLeague})="nfl")`, maxRecords: 1 })
-            .firstPage();
-          if (homeRecs.length) homeTeamLink = [homeRecs[0].id];
+          const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [homeAbbrev, eventLeague]);
+          homeTeamIdPg = rows?.[0]?.id || null;
         }
         if (awayAbbrev) {
-          const awayRecs = await base('Teams')
-            .select({ filterByFormula: `AND({teamAbbreviation}="${awayAbbrev}", LOWER({teamLeague})="nfl")`, maxRecords: 1 })
-            .firstPage();
-          if (awayRecs.length) awayTeamLink = [awayRecs[0].id];
+          const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [awayAbbrev, eventLeague]);
+          awayTeamIdPg = rows?.[0]?.id || null;
         }
-      } catch (e) {
-        console.warn('[admin/fetchNflEvents] Team link lookup failed:', e);
-      }
+      } catch {}
 
-      // Summary log for linked records
-      console.log(
-        `[admin/fetchNflEvents] Team link results: ` +
-        `home="${homeTeamName}" (${homeAbbrev}) -> ${homeTeamLink[0] || 'none'} | ` +
-        `away="${awayTeamName}" (${awayAbbrev}) -> ${awayTeamLink[0] || 'none'}`
-      );
-
-      const fields = {
-        espnGameID,
-        eventID: String(espnGameID),
-        eventTime,
-        eventTitle,
-        eventStatus,
-        eventLabel,
-        homeTeamLink,
-        awayTeamLink,
-        eventLeague,
-      };
+      const fields = { espnGameID, eventID: String(espnGameID), eventTime, eventTitle, eventStatus, eventLabel, eventLeague };
 
       if (!espnGameID) {
         console.warn('[admin/fetchNflEvents] Skipping game without espnGameID', game.uid);
         continue;
       }
 
-      if (backend === 'airtable') {
-        const existing = await base('Events')
-          .select({ filterByFormula: `{espnGameID}="${espnGameID}"`, maxRecords: 1 })
-          .firstPage();
-        if (existing.length) {
-          await base('Events').update([{ id: existing[0].id, fields }]);
-          console.log(`[admin/fetchNflEvents] Upserted Event (updated) ${espnGameID} (home=${homeAbbrev}, away=${awayAbbrev}) → ${existing[0].id}`);
-        } else {
-          const created = await base('Events').create([{ fields }]);
-          console.log(`[admin/fetchNflEvents] Upserted Event (created) ${espnGameID} (home=${homeAbbrev}, away=${awayAbbrev}) → ${created[0]?.id}`);
-        }
-      }
+      // Airtable removed: no-op
 
       // Also upsert into Postgres if configured
       try {
         if (backend === 'postgres' && process.env.DATABASE_URL) {
-          let homeTeamIdPg = Array.isArray(homeTeamLink) && homeTeamLink.length
-            ? await resolvePgTeamId(homeTeamLink[0])
-            : null;
-          let awayTeamIdPg = Array.isArray(awayTeamLink) && awayTeamLink.length
-            ? await resolvePgTeamId(awayTeamLink[0])
-            : null;
           console.log(`[admin/fetchNflEvents] [PG] Upserting event espnGameID=${espnGameID} league=${eventLeague} home_pg=${homeTeamIdPg} away_pg=${awayTeamIdPg}`);
-          // Resolve team_ids by team_slug + league (fallback if link lookup failed)
-          try {
-            if (!homeTeamIdPg && homeAbbrev) {
-              const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [homeAbbrev, eventLeague]);
-              homeTeamIdPg = rows?.[0]?.id || null;
-            }
-            if (!awayTeamIdPg && awayAbbrev) {
-              const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [awayAbbrev, eventLeague]);
-              awayTeamIdPg = rows?.[0]?.id || null;
-            }
-          } catch {}
           // Minimal fields plus team names and foreign keys
           const { rows: pgRows } = await query(
             `INSERT INTO events (espn_game_id, title, league, event_time, event_id, home_team, away_team, home_team_id, away_team_id, city, state, venue, tv, week)

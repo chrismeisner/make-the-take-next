@@ -7,7 +7,7 @@ export default function PacksIndexPage({ packsData }) {
   return (
     <PageContainer>
       <h1 className="text-2xl font-bold mb-4">All Packs</h1>
-      <PackExplorer packs={packsData} />
+      <PackExplorer packs={packsData} hideLeagueChips={true} />
     </PageContainer>
   );
 }

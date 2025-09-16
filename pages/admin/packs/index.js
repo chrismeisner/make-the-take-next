@@ -15,12 +15,6 @@ export default function AdminPacksPage() {
 
   // Build status filter options from fetched packs
   const statusOptions = Array.from(new Set(packs.map(p => p.packStatus).filter(Boolean))).sort();
-  // Default to only showing coming-soon on first load (if present)
-  useEffect(() => {
-    if (visibleStatuses == null && statusOptions.includes('coming-soon')) {
-      setVisibleStatuses(['coming-soon']);
-    }
-  }, [statusOptions, visibleStatuses]);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
