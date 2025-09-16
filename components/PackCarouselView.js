@@ -233,6 +233,23 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               Share this pack
             </button>
           </div>
+          {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
+            <div className="mt-4">
+              <div className="text-sm font-medium text-gray-700">Links to teams</div>
+              <ul className="mt-2 flex flex-wrap gap-3">
+                {packData.linkedTeams.map((t) => (
+                  <li key={t.slug}>
+                    <Link href={`/teams/${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-2 text-blue-600 underline">
+                      {t.logoUrl && (
+                        <img src={t.logoUrl} alt={t.name} className="w-5 h-5 rounded-sm" />
+                      )}
+                      <span>{t.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {/* Left column wrapper: details + tabs */}
@@ -260,6 +277,23 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   Share this pack
                 </button>
               </div>
+              {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-sm font-medium text-gray-700">Links to teams</div>
+                  <ul className="mt-2 flex flex-wrap gap-3">
+                    {packData.linkedTeams.map((t) => (
+                      <li key={t.slug}>
+                        <Link href={`/teams/${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-2 text-blue-600 underline">
+                          {t.logoUrl && (
+                            <img src={t.logoUrl} alt={t.name} className="w-5 h-5 rounded-sm" />
+                          )}
+                          <span>{t.name}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {Array.isArray(packData.contests) && packData.contests.length > 0 && (
                 <div className="mt-2 text-sm text-gray-700">
                   <div className="font-medium">In contest{packData.contests.length > 1 ? 's' : ''}:</div>

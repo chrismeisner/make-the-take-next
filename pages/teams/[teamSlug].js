@@ -1,4 +1,6 @@
 import React from 'react';
+import { useEffect } from 'react';
+import { useModal } from '../../contexts/ModalContext';
 import Head from 'next/head';
 import { query } from '../../lib/db/postgres';
 import PageContainer from '../../components/PageContainer';
@@ -169,6 +171,29 @@ export async function getServerSideProps({ params }) {
 }
 
 export default function TeamPage({ team, packsData, leaderboard }) {
+  const { openModal } = useModal();
+
+  useEffect(() => {
+    if (!Array.isArray(packsData) || packsData.length === 0) return;
+    const now = Date.now();
+    const active = packsData.find((p) => {
+      const status = (p.packStatus || '').toLowerCase();
+      const openOk = p.packOpenTime ? new Date(p.packOpenTime).getTime() <= now : true;
+      const closeOk = p.packCloseTime ? new Date(p.packCloseTime).getTime() > now : true;
+      const timeWindowActive = openOk && closeOk;
+      const hasProps = (p.propsCount || 0) > 0;
+      return hasProps && (status === 'active' || status === 'open' || timeWindowActive);
+    });
+    if (active) {
+      openModal('packActive', {
+        packTitle: active.packTitle,
+        packURL: active.packURL,
+        coverUrl: Array.isArray(active.packCover) ? active.packCover[0]?.url : (typeof active.packCover === 'string' ? active.packCover : null),
+        packCloseTime: active.packCloseTime || active.eventTime || null,
+      });
+    }
+  }, [packsData, openModal]);
+
   return (
     <div className="bg-white text-gray-900">
       <Head>

@@ -10,6 +10,7 @@ import PrizeModal from "./modals/PrizeModal";
 import FeaturedPackModal from "./modals/FeaturedPackModal";
 import PackCompletedModal from "./modals/PackCompletedModal";
 import MembersAccessModal from "./modals/MembersAccessModal"; // <-- Import your new modal
+import PackGradedModal from "./modals/PackGradedModal";
 import SuperPropCreatedModal from "./modals/SuperPropCreatedModal";
 import AddEventModal from "./modals/AddEventModal";
 import AddPropModal from "./modals/AddPropModal";
@@ -28,6 +29,7 @@ import NotifyMeModal from "./modals/NotifyMeModal";
 import SharePackModal from "./modals/SharePackModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
+import PackActiveModal from "./modals/PackActiveModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 
 export default function GlobalModalRenderer() {
@@ -45,6 +47,19 @@ export default function GlobalModalRenderer() {
           isOpen={true}
           onClose={closeModal}
           onFetched={onFetched}
+        />
+      );
+    }
+    case "packActive": {
+      const { packTitle, packURL, coverUrl, packCloseTime } = modalConfig.modalProps;
+      return (
+        <PackActiveModal
+          isOpen={true}
+          onClose={closeModal}
+          packTitle={packTitle}
+          packURL={packURL}
+          coverUrl={coverUrl}
+          packCloseTime={packCloseTime}
         />
       );
     }
@@ -249,6 +264,16 @@ export default function GlobalModalRenderer() {
 		  newTakeIDs={modalConfig.modalProps.newTakeIDs}
 		  selectedChoices={modalConfig.modalProps.selectedChoices}
 		  packProps={modalConfig.modalProps.packProps}
+		/>
+	  );
+	case "packGraded":
+	  return (
+		<PackGradedModal
+		  isOpen={true}
+		  onClose={closeModal}
+		  packTitle={modalConfig.modalProps.packTitle}
+		  packProps={modalConfig.modalProps.packProps}
+		  packURL={modalConfig.modalProps.packURL}
 		/>
 	  );
 	case "membersAccess": // <-- NEW case

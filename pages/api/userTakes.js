@@ -36,6 +36,9 @@ export default async function handler(req, res) {
       takeMobile: t.takeMobile || null,
       takeStatus: t.takeStatus || null,
       takeResult: t.takeResult || null,
+      propSide: t.propSide || null,
+      takePts: typeof t.takePts === 'number' ? t.takePts : (t.takePts != null ? Number(t.takePts) : 0),
+      tokens: typeof t.tokens === 'number' ? t.tokens : (t.tokens != null ? Number(t.tokens) : 0),
       packs: t.packs || [],
     }));
     return res.status(200).json({ success: true, takes: simplified });

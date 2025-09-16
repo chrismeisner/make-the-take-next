@@ -286,6 +286,11 @@ export default function GradePropsPage() {
       if (!parsedParams.espnGameID && prop?.propESPNLookup) {
         parsedParams.espnGameID = String(prop.propESPNLookup);
       }
+      // Fallback to Event API Readout game ID if present
+      if (!parsedParams.espnGameID && apiReadouts?.[airtableId]?.game?.id) {
+        parsedParams.espnGameID = String(apiReadouts[airtableId].game.id);
+        console.log('[GradeProps] Injected espnGameID from readout', { airtableId, espnGameID: parsedParams.espnGameID });
+      }
       // Inference helpers shared by all formulas
       const ensureGameDateFromLookups = () => {
         if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
@@ -402,6 +407,9 @@ export default function GradePropsPage() {
       if (!parsedParams.espnGameID && prop?.propESPNLookup) {
         parsedParams.espnGameID = String(prop.propESPNLookup);
       }
+      if (!parsedParams.espnGameID && apiReadouts?.[airtableId]?.game?.id) {
+        parsedParams.espnGameID = String(apiReadouts[airtableId].game.id);
+      }
       if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
         try {
           const d = new Date(prop.propEventTimeLookup);
@@ -464,6 +472,11 @@ export default function GradePropsPage() {
       }
       // Inject fallbacks for espnGameID/gameDate
       if (!parsedParams.espnGameID && prop?.propESPNLookup) parsedParams.espnGameID = String(prop.propESPNLookup);
+      // If still missing, use Event API Readout game ID
+      if (!parsedParams.espnGameID && apiReadouts?.[airtableId]?.game?.id) {
+        parsedParams.espnGameID = String(apiReadouts[airtableId].game.id);
+        console.log('[GradeProps] Preview injected espnGameID from readout', { airtableId, espnGameID: parsedParams.espnGameID });
+      }
       if (!parsedParams.gameDate && prop?.propEventTimeLookup) {
         try {
           const d = new Date(prop.propEventTimeLookup);
@@ -555,7 +568,11 @@ export default function GradePropsPage() {
                       const fk = String(prop?.formulaKey || '');
                       const fp = prop?.formulaParams ? JSON.parse(prop.formulaParams) : {};
                       const isWhoWins = fk === 'who_wins';
-                      const readyWhoWins = isWhoWins && Boolean(fp.espnGameID && fp.gameDate && fp.whoWins && fp.whoWins.sideAMap && fp.whoWins.sideBMap);
+                      const whoWinsHasEspn = Boolean(fp.espnGameID || prop.propESPNLookup || (apiReadouts?.[prop.airtableId]?.game?.id));
+                      const whoWinsHasDate = Boolean(fp.gameDate || prop.propEventTimeLookup);
+                      const readyWhoWins = isWhoWins && Boolean(
+                        whoWinsHasEspn && whoWinsHasDate && fp.whoWins && fp.whoWins.sideAMap && fp.whoWins.sideBMap
+                      );
                       return (
                         <div className="text-xs mt-1">
                           {isAuto ? (
@@ -632,7 +649,11 @@ export default function GradePropsPage() {
                       const isTeamOU = fk === 'team_stat_over_under';
                       const isMulti = fk === 'player_multi_stat_ou';
                       const isPlayerMultiH2H = fk === 'player_multi_stat_h2h';
-                      const readyWhoWins = isWhoWins && Boolean(fp.espnGameID && fp.gameDate && fp.whoWins && fp.whoWins.sideAMap && fp.whoWins.sideBMap);
+                      const whoWinsHasEspn = Boolean(fp.espnGameID || prop.propESPNLookup || (apiReadouts?.[prop.airtableId]?.game?.id));
+                      const whoWinsHasDate = Boolean(fp.gameDate || prop.propEventTimeLookup);
+                      const readyWhoWins = isWhoWins && Boolean(
+                        whoWinsHasEspn && whoWinsHasDate && fp.whoWins && fp.whoWins.sideAMap && fp.whoWins.sideBMap
+                      );
                       const readyStatOU = isStatOU && Boolean(
                         fp.espnGameID && fp.gameDate && fp.metric && fp.sides && fp.sides.A && fp.sides.B &&
                         fp.sides.A.comparator && fp.sides.A.threshold != null &&

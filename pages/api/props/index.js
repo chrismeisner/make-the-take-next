@@ -276,6 +276,7 @@ export default async function handler(req, res) {
           formulaParams,
           propCover,
           propCoverSource,
+          eventId,
         } = req.body || {};
         if (!propId) {
           return res.status(400).json({ success: false, error: "Missing propId" });
@@ -316,6 +317,9 @@ export default async function handler(req, res) {
           } catch {
             fields.formula_params = { raw: String(formulaParams) };
           }
+        }
+        if (eventId !== undefined) {
+          fields.event_id = eventId || null;
         }
         const normalizeSource = (s) => {
           const v = String(s || '').toLowerCase();

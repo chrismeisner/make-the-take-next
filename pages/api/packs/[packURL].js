@@ -72,6 +72,8 @@ export default async function handler(req, res) {
   let awayTeam = null;
   let homeTeamScore = null;
   let awayTeamScore = null;
+  // Collect teams linked to this pack via events and props
+  let linkedTeams = [];
 
   if (eventIDs.length > 0) {
     const firstEventID = eventIDs[0];
@@ -302,6 +304,55 @@ export default async function handler(req, res) {
 	// ---------------------------------------------
 	// 5. Consolidate pack data
 	// ---------------------------------------------
+
+    // Build linkedTeams from pack events and props
+    try {
+      if (packRecordId) {
+        const { rows: teamRows } = await query(
+          `WITH team_ids AS (
+             SELECT e.home_team_id AS team_id
+               FROM packs_events pe
+               JOIN events e ON e.id = pe.event_id
+              WHERE pe.pack_id = $1
+             UNION
+             SELECT e.away_team_id AS team_id
+               FROM packs_events pe
+               JOIN events e ON e.id = pe.event_id
+              WHERE pe.pack_id = $1
+             UNION
+             SELECT e.home_team_id AS team_id
+               FROM packs p
+               JOIN events e ON e.id = p.event_id
+              WHERE p.id = $1
+             UNION
+             SELECT e.away_team_id AS team_id
+               FROM packs p
+               JOIN events e ON e.id = p.event_id
+              WHERE p.id = $1
+             UNION
+             SELECT pt.team_id AS team_id
+               FROM props pr
+               JOIN props_teams pt ON pt.prop_id = pr.id
+              WHERE pr.pack_id = $1
+           )
+           SELECT DISTINCT t.team_slug, t.name, t.logo_url
+             FROM team_ids ti
+             JOIN teams t ON t.id = ti.team_id
+            WHERE t.team_slug IS NOT NULL`,
+          [packRecordId]
+        );
+        linkedTeams = (teamRows || []).map((r) => ({
+          slug: r.team_slug,
+          name: r.name,
+          logoUrl: r.logo_url || null,
+        }));
+      }
+    } catch (e) {
+      // Non-fatal if team discovery fails
+      // eslint-disable-next-line no-console
+      console.warn('[api/packs/[packURL]] linkedTeams lookup failed =>', e?.message || e);
+      linkedTeams = [];
+    }
 	// Additional pack detail fields
 	const packCreatorID = null;
 	const packCreatorUsername = null;
@@ -353,6 +404,7 @@ export default async function handler(req, res) {
     packID: packFields.packID,
     packTitle: packFields.packTitle || "Untitled Pack",
     packSummary: packFields.packSummary || "",
+    packStatus: packFields.packStatus || "",
     packType: packFields.packType || "",
     packLeague: packFields.packLeague || null,
     firstPlace: packFields.firstPlace || "",
@@ -378,6 +430,7 @@ export default async function handler(req, res) {
     awayTeamScore,
     contentData,
     contests: contestsData,
+    linkedTeams,
   };
 
   console.log("[packURL] final leaderboard =>", leaderboard);

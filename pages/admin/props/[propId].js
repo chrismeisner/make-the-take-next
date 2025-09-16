@@ -1,12 +1,52 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useModal } from '../../../contexts/ModalContext';
-import EventSelector from '../../../components/EventSelector';
 
 export default function EditPropPage() {
   const router = useRouter();
   const { propId } = router.query;
   const { openModal } = useModal();
+
+  // Open shared AddEventModal to link/change the event for this prop
+  const openLinkEventModal = () => {
+    openModal('addEvent', {
+      allowMultiSelect: false,
+      initialLeague: event?.eventLeague || propType || '',
+      initialDate: (() => {
+        try {
+          if (!event?.eventTime) return '';
+          const d = new Date(event.eventTime);
+          const tzOffsetMs = d.getTimezoneOffset() * 60000;
+          return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+        } catch {
+          return '';
+        }
+      })(),
+      onEventSelected: async (sel) => {
+        try {
+          const chosen = Array.isArray(sel) ? (sel[0] || null) : sel;
+          const evtId = chosen?.id || chosen?.airtableId || null;
+          if (!evtId) { setError('Invalid event selection'); return; }
+          const res = await fetch('/api/props', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ propId, eventId: evtId }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'Failed to link event');
+          const evRes = await fetch(`/api/admin/events/${encodeURIComponent(evtId)}`);
+          const evJson = await evRes.json();
+          const ev = (evRes.ok && evJson?.success) ? evJson.event : null;
+          setEvent(ev || { airtableId: evtId, eventTitle: chosen.eventTitle, eventTime: chosen.eventTime, eventLeague: chosen.eventLeague });
+          setEventReadout(null);
+          setShowEventReadout(true);
+          if (!eventReadoutLoading) fetchEventApiReadout();
+        } catch (e) {
+          setError(e.message || 'Failed to link event');
+        }
+      },
+    });
+  };
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -377,6 +417,20 @@ export default function EditPropPage() {
           setPropCoverSource(normalized);
         })();
         setEvent(p.event || null);
+        try {
+          if (p?.event) {
+            console.log('[EditProp] Linked event loaded', {
+              propId,
+              eventId: p.event?.airtableId || p.event?.id,
+              eventTitle: p.event?.eventTitle,
+              eventLeague: p.event?.eventLeague,
+              espnGameID: p.event?.espnGameID,
+              eventTime: p.event?.eventTime,
+            });
+          } else {
+            console.log('[EditProp] No event linked to prop', { propId });
+          }
+        } catch {}
         setGradingMode(p.gradingMode || 'manual');
         setFormulaKey(p.formulaKey || '');
         setFormulaParamsText(p.formulaParams || '');
@@ -623,6 +677,7 @@ export default function EditPropPage() {
     try { parsed = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; } catch {}
     // Inject fallbacks for espnGameID/gameDate
     if (!parsed.espnGameID && event?.espnGameID) parsed.espnGameID = String(event.espnGameID);
+    if (!parsed.espnGameID && eventReadout?.id) parsed.espnGameID = String(eventReadout.id);
     if (!parsed.gameDate && event?.eventTime) {
       try {
         const d = new Date(event.eventTime);
@@ -761,17 +816,59 @@ export default function EditPropPage() {
         // We still pass no date filters; the endpoint needs year/week to return games.
       }
       if (espnId) params.set('gameID', espnId);
-      const resp = await fetch(`/api/admin/api-tester/status?${params.toString()}`);
+      const url = `/api/admin/api-tester/status?${params.toString()}`;
+      try {
+        console.log('[EditProp] Fetching Event API Readout', {
+          propId,
+          eventId: event?.airtableId || event?.id,
+          eventTitle: event?.eventTitle,
+          eventLeague: event?.eventLeague,
+          dataSource: src,
+          gameDate,
+          espnGameID: espnId || null,
+          url,
+        });
+      } catch {}
+      const resp = await fetch(url);
       const json = await resp.json();
       if (!resp.ok || !json.success) throw new Error(json.error || 'Failed to fetch event readout');
       const games = Array.isArray(json.games) ? json.games : [];
-      setEventReadout(games[0] || null);
+      const chosen = games[0] || null;
+      try {
+        console.log('[EditProp] Event API Readout received', {
+          found: games.length,
+          chosen: chosen ? { id: chosen.id, away: chosen.away, home: chosen.home, status: chosen.gameStatus } : null,
+        });
+      } catch {}
+      setEventReadout(chosen);
     } catch (e) {
       setEventReadoutError(e.message || 'Failed to fetch event readout');
     } finally {
       setEventReadoutLoading(false);
     }
   };
+
+  // Compare linked event vs readout to surface discrepancies
+  useEffect(() => {
+    try {
+      if (!event && !eventReadout) return;
+      const title = String(event?.eventTitle || '').trim();
+      const away = String(eventReadout?.away || '').trim();
+      const home = String(eventReadout?.home || '').trim();
+      const readoutLabel = away && home ? `${away} @ ${home}` : '';
+      const gidEvent = String(event?.espnGameID || '').trim();
+      const gidReadout = String(eventReadout?.id || '').trim();
+      const mismatch = Boolean(title && readoutLabel && title !== readoutLabel);
+      const idMismatch = Boolean(gidEvent && gidReadout && gidEvent !== gidReadout);
+      console.log('[EditProp] Event vs Readout comparison', {
+        propId,
+        event: { title, league: event?.eventLeague || null, espnGameID: gidEvent },
+        readout: { id: gidReadout || null, label: readoutLabel || null, status: eventReadout?.gameStatus || null },
+        titleMismatch: mismatch,
+        idMismatch,
+      });
+    } catch {}
+  }, [event, eventReadout]);
   useEffect(() => {
     if (autoGradeKey === 'who_wins') {
       if (!eventReadout && !eventReadoutLoading) fetchEventApiReadout();
@@ -1083,36 +1180,18 @@ export default function EditPropPage() {
           <div className="text-sm font-medium text-gray-700">What event is this prop linked to?</div>
           <div className="mt-1 flex items-center gap-2">
             <div className="text-sm text-gray-700">{event?.eventTitle || 'No event linked'}</div>
-            <EventSelector
-              selectedEvent={event}
-              onSelect={(evt) => {
-                const evtId = evt?.airtableId || evt?.id || null;
-                if (!evtId || typeof evtId !== 'string' || !evtId.startsWith('rec')) return;
-                (async () => {
-                  try {
-                    const res = await fetch('/api/props', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ propId, eventId: evtId }),
-                    });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      setEvent({ airtableId: evtId, eventTitle: evt.eventTitle, eventTime: evt.eventTime, eventLeague: evt.eventLeague });
-                    } else {
-                      setError(data.error || 'Failed to link event');
-                    }
-                  } catch (e) {
-                    setError(e.message || 'Failed to link event');
-                  }
-                })();
-              }}
-              league={event?.eventLeague || ''}
-            />
+            <button
+              type="button"
+              onClick={openLinkEventModal}
+              className="mt-1 px-2 py-1 bg-gray-200 rounded"
+            >
+              Change Event
+            </button>
           </div>
           <div className="mt-2 text-sm">
             {(() => {
               const league = String(event?.eventLeague || propType || '').toLowerCase();
-              const gid = String(event?.espnGameID || '').trim();
+              const gid = String(event?.espnGameID || eventReadout?.id || '').trim();
               if (!gid) return (<div className="text-gray-700">No ESPN event linked</div>);
               const url = `https://www.espn.com/${league}/game/_/gameId/${gid}`;
               return (
@@ -1914,7 +1993,7 @@ export default function EditPropPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
                 <div className="font-medium">Derived</div>
-                <div className="text-gray-700">ESPN GameID: {String(event?.espnGameID || '') || '–'}</div>
+                <div className="text-gray-700">ESPN GameID: {String(event?.espnGameID || eventReadout?.id || '') || '–'}</div>
                 <div className="text-gray-700">Source: <span className="font-mono">{dataSource}</span></div>
               </div>
               <div>

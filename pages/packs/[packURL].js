@@ -240,6 +240,13 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
       });
     }
   }, [friendProfile, hasAcceptedChallenge, openModal, friendTakesByProp, challengerTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptIdForChallenge]);
+  // Show Pack Graded modal on load if the pack is graded and not a referral view
+  useEffect(() => {
+    const status = String(packData?.packStatus || '').toLowerCase();
+    if (status === 'graded' && !router.query.ref) {
+      openModal('packGraded', { packTitle: packData.packTitle, packProps: packData.props, packURL: packData.packURL });
+    }
+  }, [packData?.packStatus, packData?.packTitle, packData?.props, openModal, router.query.ref]);
   // If this is a superprop pack, render the prop detail view instead of carousel
   if (packData.packType === 'superprop') {
     const superProp = Array.isArray(packData.props) && packData.props[0];
@@ -282,6 +289,23 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
                 {packData.packCreatorUsername || packData.packCreatorID}
               </Link>
             </p>
+          )}
+          {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
+            <div className="mb-4">
+              <div className="text-sm font-medium text-gray-700">Links to teams</div>
+              <ul className="mt-2 flex flex-wrap gap-3">
+                {packData.linkedTeams.map((t) => (
+                  <li key={t.slug}>
+                    <Link href={`/teams/${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-2 text-blue-600 underline">
+                      {t.logoUrl && (
+                        <img src={t.logoUrl} alt={t.name} className="w-5 h-5 rounded-sm" />
+                      )}
+                      <span>{t.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
             <PropDetailPage

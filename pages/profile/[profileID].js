@@ -283,6 +283,7 @@ export default function ProfilePage() {
                 <th className="px-4 py-2 text-left">Event</th>
                 <th className="px-4 py-2 text-left">Pack</th>
                 <th className="px-4 py-2 text-left">Points</th>
+                <th className="px-4 py-2 text-left">Tokens</th>
                 <th className="px-4 py-2 text-left">Result</th>
                 <th className="px-4 py-2 text-left">Date</th>
               </tr>
@@ -329,6 +330,7 @@ export default function ProfilePage() {
                     ) : 'N/A'}
                   </td>
                   <td className="border px-4 py-2">{Math.round(take.takePTS)}</td>
+                  <td className="border px-4 py-2">{Math.round(take.takeTokens || (take.takePTS ? take.takePTS * 0.2 : 0))}</td>
                   <td className="border px-4 py-2">
                     {(() => {
                       const result = take.propStatus === 'closed' ? 'Pending' : take.takeResult;
