@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import PackPreview from './PackPreview';
 
-export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '' }) {
+export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '', forceTeamSlugFilter = '' }) {
   const [selectedLeagues, setSelectedLeagues] = useState(new Set());
   const [sortBy, setSortBy] = useState('close-asc'); // default: pack close time, soonest first
 
@@ -34,22 +34,32 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
   }, [packs]);
 
   const leagueFilterLc = useMemo(() => (forceLeagueFilter || '').toString().toLowerCase().trim(), [forceLeagueFilter]);
+  const teamFilterLc = useMemo(() => (forceTeamSlugFilter || '').toString().toLowerCase().trim(), [forceTeamSlugFilter]);
 
   const visiblePacks = useMemo(() => {
+    let list = packs || [];
+    if (teamFilterLc) {
+      list = list.filter((p) => {
+        const h = (p?.homeTeamSlug || '').toString().toLowerCase();
+        const a = (p?.awayTeamSlug || '').toString().toLowerCase();
+        return h === teamFilterLc || a === teamFilterLc;
+      });
+    }
     if (leagueFilterLc) {
-      return (packs || []).filter((p) => (p?.packLeague || '').toString().toLowerCase() === leagueFilterLc);
+      list = list.filter((p) => (p?.packLeague || '').toString().toLowerCase() === leagueFilterLc);
+      return list;
     }
     if (hideLeagueChips) {
-      return packs;
+      return list;
     }
-    if (!selectedLeagues) return packs;
+    if (!selectedLeagues) return list;
     if (leagues.length > 0 && selectedLeagues.size === 0) return [];
-    return (packs || []).filter((p) => {
+    return list.filter((p) => {
       const lg = (p?.packLeague || '').toString().toLowerCase();
       if (!lg) return true; // Packs without a league are always visible
       return selectedLeagues.has(lg);
     });
-  }, [packs, selectedLeagues, leagues, leagueFilterLc, hideLeagueChips]);
+  }, [packs, selectedLeagues, leagues, leagueFilterLc, hideLeagueChips, teamFilterLc]);
 
   function toggleLeague(lg) {
     setSelectedLeagues((prev) => {
@@ -114,6 +124,11 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {teamFilterLc && (
+          <div className="text-sm text-gray-700">
+            Showing team: <strong>{teamFilterLc.toUpperCase()}</strong>
+          </div>
+        )}
         {/* Sort control */}
         <div className="ml-auto">
           <label htmlFor="pack-sort" className="sr-only">Sort packs</label>

@@ -47,7 +47,12 @@ export default function LandingPage({ packsData = [] }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <section className="lg:col-span-2">
               <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">All Packs</h1>
-              <PackExplorer packs={packsData} accent="green" hideLeagueChips={true} />
+              <PackExplorer
+                packs={packsData}
+                accent="green"
+                hideLeagueChips={true}
+                forceTeamSlugFilter={(router.query.team || '').toString()}
+              />
             </section>
 
             <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
@@ -88,11 +93,14 @@ export async function getServerSideProps(context) {
   try {
     // Promo redirect: honor ?packs=<key> or ?promo=<key>
     try {
-      const promoKey = (context.query?.packs || context.query?.promo || '').toString().trim();
+      const candidates = ['packs','team','promo'];
+      const foundParam = candidates.find((p) => context.query?.[p]);
+      const promoKey = foundParam ? String(context.query[foundParam]).trim() : '';
       if (promoKey) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), Number.parseInt(process.env.SSR_FETCH_TIMEOUT_MS || '6000', 10));
-        const res = await fetch(`${origin}/api/promo/resolve?key=${encodeURIComponent(promoKey)}`, { signal: controller.signal });
+        const qs = new URLSearchParams({ key: promoKey, param: foundParam }).toString();
+        const res = await fetch(`${origin}/api/promo/resolve?${qs}`, { signal: controller.signal });
         clearTimeout(timeout);
         if (res.ok) {
           const data = await res.json();

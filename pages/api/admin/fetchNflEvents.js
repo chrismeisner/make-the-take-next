@@ -282,8 +282,6 @@ export default async function handler(req, res) {
         eventTitle,
         eventStatus,
         eventLabel,
-        homeTeamLink,
-        awayTeamLink,
         homeTeam: homeTeamName,
         awayTeam: awayTeamName,
         week: Number(week),
@@ -312,14 +310,7 @@ export default async function handler(req, res) {
       } catch (_) {}
     }
 
-    if (eventsOut.length) {
-      const teamRecs = await base('Teams').select({ fields: ['teamSlug'] }).all();
-      const slugMap = Object.fromEntries(teamRecs.map(r => [r.id, r.fields.teamSlug]));
-      eventsOut.forEach(e => {
-        e.homeTeamSlug = e.homeTeamLink?.[0] ? slugMap[e.homeTeamLink[0]] || null : null;
-        e.awayTeamSlug = e.awayTeamLink?.[0] ? slugMap[e.awayTeamLink[0]] || null : null;
-      });
-    }
+    // Postgres-only response: no Airtable link fields or slug backfill
 
     console.log(`[admin/fetchNflEvents] Found ${processedCount} games for year=${year}, week=${Number(week)}`);
     return res.status(200).json({ success: true, processedCount, events: eventsOut });

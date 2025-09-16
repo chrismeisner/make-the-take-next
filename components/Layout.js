@@ -28,6 +28,7 @@ export default function Layout({ children }) {
         { label: "Teams", href: "/admin/teams" },
         { label: "Packs", href: "/admin/packs" },
         { label: "Props", href: "/admin/props" },
+        { label: "Promo Links", href: "/admin/promo-links" },
         { label: "API Tester", href: "/admin/api-tester" },
       ],
     },

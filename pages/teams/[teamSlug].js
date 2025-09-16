@@ -1,239 +1,207 @@
-import React, { useState, useMemo } from 'react';
-import Airtable from 'airtable';
-import Layout from '../../components/Layout';
+import React from 'react';
+import Head from 'next/head';
+import { query } from '../../lib/db/postgres';
+import PageContainer from '../../components/PageContainer';
+import PackExplorer from '../../components/PackExplorer';
 import LeaderboardTable from '../../components/LeaderboardTable';
-import Link from 'next/link';
-import { aggregateTakeStats } from '../../lib/leaderboard';
+import MarketplacePreview from '../../components/MarketplacePreview';
 
 export async function getServerSideProps({ params }) {
   const { teamSlug } = params;
-  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-    .base(process.env.AIRTABLE_BASE_ID);
 
-  // Fetch the team record matching the slug
-  const teamRecords = await base('Teams')
-    .select({
-      filterByFormula: `{teamSlug}="${teamSlug}"`,
-      maxRecords: 1,
-    })
-    .firstPage();
-  if (!teamRecords.length) {
-    return { notFound: true };
-  }
-  const teamRec = teamRecords[0];
-
-  // Map fields for the team
+  // Lookup team by slug
+  const { rows: teamRows } = await query(
+    `SELECT id, team_id, team_slug, name, league, logo_url
+       FROM teams
+      WHERE LOWER(team_slug) = LOWER($1)
+      LIMIT 1`,
+    [teamSlug]
+  );
+  if (!teamRows.length) return { notFound: true };
   const team = {
-    recordId: teamRec.id,
-    teamSlug,
-    teamID: teamRec.fields.teamID || '',
-    teamName: teamRec.fields.teamName || '',
-    teamNameFull: teamRec.fields.teamNameFull || teamRec.fields.teamName || '',
-    teamType: teamRec.fields.teamType || '',
-    teamLogo: Array.isArray(teamRec.fields.teamLogo)
-      ? teamRec.fields.teamLogo.map(img => ({ url: img.url, filename: img.filename }))
-      : [],
+    id: teamRows[0].id,
+    teamID: teamRows[0].team_id || teamRows[0].id,
+    teamSlug: teamRows[0].team_slug || teamSlug,
+    teamName: teamRows[0].name || '',
+    teamNameFull: teamRows[0].name || '',
+    teamLeague: teamRows[0].league || '',
+    teamLogoURL: teamRows[0].logo_url || null,
   };
 
-  // Fetch packs linked to this team
-  // Fetch packs for this team by matching teamID field
-  const teamID = teamRec.fields.teamID;
-  const packRecords = await base('Packs')
-    .select({
-      filterByFormula: `FIND("${teamID}", ARRAYJOIN({teamID}))`,
-      maxRecords: 100,
-    })
-    .all();
+  // Fetch packs joined to events; include team slugs so client filter works
+  const { rows } = await query(
+    `WITH sp AS (
+       SELECT p.id,
+              p.pack_id,
+              p.pack_url,
+              p.title,
+              p.summary,
+              p.prize,
+              p.cover_url,
+              p.league,
+              p.created_at,
+              p.pack_status,
+              p.pack_open_time,
+              p.pack_close_time,
+              p.event_id,
+              e.event_time,
+              e.title AS event_title,
+              ht.team_slug AS home_team_slug,
+              at.team_slug AS away_team_slug,
+              ht.name AS home_team_name,
+              at.name AS away_team_name
+         FROM packs p
+    LEFT JOIN events e ON e.id = p.event_id
+    LEFT JOIN teams ht ON e.home_team_id = ht.id
+    LEFT JOIN teams at ON e.away_team_id = at.id
+        WHERE (
+          (LOWER(ht.team_slug) = LOWER($1) AND LOWER(COALESCE(ht.league, '')) = LOWER($2))
+          OR (LOWER(at.team_slug) = LOWER($1) AND LOWER(COALESCE(at.league, '')) = LOWER($2))
+        )
+        ORDER BY p.created_at DESC NULLS LAST
+        LIMIT 120
+     )
+     SELECT sp.*,
+            COALESCE(pa.props_count, 0) AS props_count
+       FROM sp
+  LEFT JOIN (
+         SELECT p.pack_id, COUNT(*)::int AS props_count
+           FROM props p
+       GROUP BY p.pack_id
+       ) pa ON pa.pack_id = sp.id`,
+    [teamSlug, team.teamLeague]
+  );
 
-  // Map packs and collect their linked Event IDs
-  const rawPacks = packRecords.map(rec => ({
-    recordId: rec.id,
-    packURL: rec.fields.packURL,
-    packTitle: rec.fields.packTitle || '(No Title)',
-    packSummary: rec.fields.packSummary || '',
-    packCover: Array.isArray(rec.fields.packCover) ? rec.fields.packCover.map(img => img.url) : [],
-    eventIds: rec.fields.Event || [],
+  const toIso = (t) => (t ? new Date(t).toISOString() : null);
+  const packsData = rows.map((r) => ({
+    airtableId: r.id,
+    eventId: r.event_id || null,
+    eventTitle: r.event_title || null,
+    propEventRollup: [],
+    packID: r.pack_id || r.id,
+    packTitle: r.title || 'Untitled Pack',
+    packURL: r.pack_url || '',
+    packCover: r.cover_url || null,
+    packPrize: r.prize || '',
+    prizeSummary: '',
+    packSummary: r.summary || '',
+    packType: '',
+    packLeague: r.league || null,
+    packStatus: r.pack_status || '',
+    packOpenTime: toIso(r.pack_open_time) || null,
+    packCloseTime: r.pack_close_time || null,
+    eventTime: toIso(r.event_time) || null,
+    firstPlace: '',
+    createdAt: toIso(r.created_at) || null,
+    propsCount: Number(r.props_count || 0),
+    winnerProfileID: null,
+    packWinnerRecordIds: [],
+    takeCount: 0,
+    userTakesCount: 0,
+    homeTeamSlug: r.home_team_slug || null,
+    awayTeamSlug: r.away_team_slug || null,
+    homeTeamName: r.home_team_name || null,
+    awayTeamName: r.away_team_name || null,
   }));
-  // Batch-fetch all linked Event records
-  const allEventIds = Array.from(new Set(rawPacks.flatMap(p => p.eventIds)));
-  let eventRecs = [];
-  if (allEventIds.length > 0) {
-    const formula = `OR(${allEventIds.map(id => `RECORD_ID()="${id}"`).join(',')})`;
-    eventRecs = await base('Events').select({ filterByFormula: formula, maxRecords: allEventIds.length }).all();
-  }
-  const eventMap = Object.fromEntries(eventRecs.map(er => [er.id, er.fields]));
-  // Combine event details back into packs
-  const packs = rawPacks.map(p => {
-    const evId = Array.isArray(p.eventIds) ? p.eventIds[0] : p.eventIds;
-    const evFields = evId && eventMap[evId];
-    return {
-      recordId: p.recordId,
-      packURL: p.packURL,
-      packTitle: p.packTitle,
-      packSummary: p.packSummary,
-      packCover: p.packCover,
-      event: evFields
-        ? { eventTime: evFields.eventTime || null, eventLeague: evFields.eventLeague || '' }
-        : null,
-    };
-  });
-  // Sort packs by most recent event time (descending)
-  packs.sort((a, b) => {
-    const aTime = a.event?.eventTime ? new Date(a.event.eventTime).getTime() : 0;
-    const bTime = b.event?.eventTime ? new Date(b.event.eventTime).getTime() : 0;
-    return bTime - aTime;
-  });
 
-  // Decorative start of leaderboard logging
-  console.log(`🏆🏆 [teams] Team Leaderboard START for ${team.teamNameFull} (ID: ${team.recordId}) 🏆🏆`);
-  // Log before fetching takes for leaderboard
-  console.log(`🔍 [teams] Fetching takes for team ${team.teamNameFull} (teamID ${teamID}) 🔍`);
-  // Fetch takes via the lookup 'teamID' field in the Takes table
-  const takeRecs = await base('Takes')
-    .select({
-      filterByFormula: `FIND("${teamID}", ARRAYJOIN({teamID}))`,
-    })
-    .all();
-  console.log(`📥 [teams] Fetched takes count: ${takeRecs.length} 📥`);
-  // Log before aggregating stats
-  console.log(`🧮 [teams] Aggregating team stats 🧮`);
-  const takeCount = takeRecs.length;
-  const teamStats = aggregateTakeStats(takeRecs);
-  console.log(`✅ [teams] teamStats:`, teamStats);
-  // Decorative end of leaderboard logging
-  console.log(`🎉🎉🎉 [teams] Team Leaderboard COMPLETE for ${team.teamNameFull} 🎉🎉🎉`);
+  // Build team leaderboard aggregated from takes linked to this team's packs/events/props
+  const { rows: lbRows } = await query(
+    `WITH filtered_takes AS (
+       SELECT t.take_mobile,
+              t.take_result,
+              COALESCE(t.take_pts, 0) AS take_pts
+         FROM takes t
+         JOIN props pr ON pr.id = t.prop_id
+         LEFT JOIN packs pk ON pk.id = COALESCE(t.pack_id, pr.pack_id)
+         LEFT JOIN events ev_pk ON ev_pk.id = pk.event_id
+         LEFT JOIN events ev_pr ON ev_pr.id = pr.event_id
+        WHERE t.take_status = 'latest'
+          AND (
+            (ev_pk.home_team_id = $1 OR ev_pk.away_team_id = $1)
+            OR (ev_pr.home_team_id = $1 OR ev_pr.away_team_id = $1)
+            OR EXISTS (
+              SELECT 1 FROM props_teams pt
+               WHERE pt.prop_id = pr.id AND pt.team_id = $1
+            )
+            OR EXISTS (
+              SELECT 1
+                FROM packs_events pe
+                JOIN events e2 ON e2.id = pe.event_id
+               WHERE pe.pack_id = pk.id AND (e2.home_team_id = $1 OR e2.away_team_id = $1)
+            )
+          )
+     ),
+     agg AS (
+       SELECT take_mobile,
+              COUNT(*)::int AS takes,
+              SUM(CASE WHEN take_result = 'won'  THEN 1 ELSE 0 END)::int AS won,
+              SUM(CASE WHEN take_result = 'lost' THEN 1 ELSE 0 END)::int AS lost,
+              SUM(CASE WHEN take_result = 'push' THEN 1 ELSE 0 END)::int AS pushed,
+              SUM(take_pts)::int AS points
+         FROM filtered_takes
+        GROUP BY take_mobile
+     )
+     SELECT a.take_mobile,
+            a.takes,
+            a.won,
+            a.lost,
+            a.pushed,
+            a.points,
+            pr.profile_id
+       FROM agg a
+       LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
+      ORDER BY a.points DESC, a.takes DESC
+      LIMIT 200`,
+    [team.id]
+  );
 
-  // Fetch profiles to map phone -> profileID for usernames
-  const allProfiles = await base('Profiles').select({ maxRecords: 5000 }).all();
-  const phoneToProfileID = new Map();
-  allProfiles.forEach(profile => {
-    const { profileMobile, profileID } = profile.fields;
-    if (profileMobile && profileID) {
-      phoneToProfileID.set(profileMobile, profileID);
-    }
-  });
-  // Build unified leaderboard data
-  const leaderboard = teamStats.map(s => ({
-    phone: s.phone,
-    takes: s.takes,
-    points: s.points,
-    won: s.won,
-    lost: s.lost,
-    pushed: s.pushed,
-    profileID: phoneToProfileID.get(s.phone) || null,
+  const leaderboard = lbRows.map((r) => ({
+    phone: r.take_mobile,
+    takes: Number(r.takes || 0),
+    points: Number(r.points || 0),
+    won: Number(r.won || 0),
+    lost: Number(r.lost || 0),
+    pushed: Number(r.pushed || 0),
+    profileID: r.profile_id || null,
   }));
-  return { props: { team, packs, takeCount, leaderboard } };
+
+  return { props: { team, packsData, leaderboard } };
 }
 
-export default function TeamPage({ team, packs, takeCount, leaderboard }) {
-  // State for selected sort option
-  const [sortOption, setSortOption] = useState('recent');
-  // Memoized sorted packs based on sortOption
-  const sortedPacks = useMemo(() => {
-    const arr = [...packs];
-    switch (sortOption) {
-      case 'oldest':
-        return arr.sort((a, b) =>
-          (a.event?.eventTime ? new Date(a.event.eventTime).getTime() : 0) -
-          (b.event?.eventTime ? new Date(b.event.eventTime).getTime() : 0)
-        );
-      case 'title-asc':
-        return arr.sort((a, b) => a.packTitle.localeCompare(b.packTitle));
-      case 'title-desc':
-        return arr.sort((a, b) => b.packTitle.localeCompare(a.packTitle));
-      case 'recent':
-      default:
-        return arr.sort((a, b) =>
-          (b.event?.eventTime ? new Date(b.event.eventTime).getTime() : 0) -
-          (a.event?.eventTime ? new Date(a.event.eventTime).getTime() : 0)
-        );
-    }
-  }, [packs, sortOption]);
-
+export default function TeamPage({ team, packsData, leaderboard }) {
   return (
-    <Layout>
-      <div className="space-y-6">
-        <header className="flex items-center space-x-4">
-          {team.teamLogo[0] && (
-            <img
-              src={team.teamLogo[0].url}
-              alt={team.teamNameFull}
-              className="w-16 h-16 rounded"
-            />
-          )}
-          <h1 className="text-3xl font-bold">{team.teamNameFull}</h1>
-        </header>
-
-        {/* Team Leaderboard */}
-        <section>
-          <h2 className="text-2xl font-semibold">Team Leaderboard</h2>
-          <p className="mt-2 text-lg">Total takes: {takeCount}</p>
-          {leaderboard.length > 0 ? (
-            <LeaderboardTable leaderboard={leaderboard} />
-          ) : (
-            <p className="text-gray-600 mt-2">No takes for this team yet.</p>
-          )}
-        </section>
-
-        {/* Pack list */}
-        <section>
-          <h2 className="text-2xl font-semibold">Packs</h2>
-          {/* Sort dropdown */}
-          <div className="mt-2 flex items-center space-x-2">
-            <label htmlFor="sort" className="text-sm font-medium">Sort by:</label>
-            <select
-              id="sort"
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value)}
-              className="border rounded p-1 text-sm"
-            >
-              <option value="recent">Most recent event first</option>
-              <option value="oldest">Oldest event first</option>
-              <option value="title-asc">Pack title A→Z</option>
-              <option value="title-desc">Pack title Z→A</option>
-            </select>
-          </div>
-          {sortedPacks.length > 0 ? (
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {sortedPacks.map(pack => (
-                <div
-                  key={pack.recordId}
-                  className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition"
-                >
-                  <div className="w-full aspect-square relative bg-gray-100">
-                    {pack.packCover[0] ? (
-                      <img
-                        src={pack.packCover[0]}
-                        alt={pack.packTitle}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="text-xl font-semibold mb-2">
-                      <Link href={`/packs/${pack.packURL}`} className="hover:underline text-blue-600">
-                        {pack.packTitle}
-                      </Link>
-                    </h3>
-                    <p className="text-gray-700 text-sm">{pack.packSummary}</p>
-                    {/* Show event time if available */}
-                    {pack.event?.eventTime && (
-                      <p className="mt-2 text-sm text-gray-500">
-                        {new Date(pack.event.eventTime).toLocaleString()}
-                        {pack.event.eventLeague && ` — ${pack.event.eventLeague}`}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
+    <div className="bg-white text-gray-900">
+      <Head>
+        <title>{team.teamNameFull || team.teamName} | Make the Take</title>
+      </Head>
+      <div className="p-4 w-full">
+        <PageContainer>
+          <div className="mb-4 flex items-center gap-3">
+            {team.teamLogoURL && (
+              <img src={team.teamLogoURL} alt={team.teamNameFull || team.teamName} className="w-12 h-12 rounded" />
+            )}
+            <div>
+              <h1 className="text-2xl font-bold">{team.teamNameFull || team.teamName}</h1>
+              <p className="text-gray-600 text-sm">Team feed</p>
             </div>
-          ) : (
-            <p className="text-gray-600 mt-2">No packs found for this team.</p>
-          )}
-        </section>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <section className="lg:col-span-2">
+              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Packs</h2>
+              <PackExplorer packs={packsData} accent="green" hideLeagueChips={true} forceTeamSlugFilter={team.teamSlug} />
+            </section>
+
+            <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
+              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Team Leaderboard</h2>
+              <LeaderboardTable leaderboard={(leaderboard || []).slice(0, 10)} />
+              <div className="mt-8">
+                <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
+              </div>
+            </aside>
+          </div>
+        </PageContainer>
       </div>
-    </Layout>
+    </div>
   );
-} 
+}

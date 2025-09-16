@@ -86,6 +86,7 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
                 <th className="text-left px-3 py-2">League</th>
                 <th className="text-left px-3 py-2">Name</th>
                 <th className="text-left px-3 py-2">Slug</th>
+                <th className="text-left px-3 py-2">Public</th>
                 <th className="text-left px-3 py-2">Logo</th>
                 <th className="text-left px-3 py-2">Actions</th>
               </tr>
@@ -98,6 +99,21 @@ export default function TeamsAdmin({ initialTeams = [], prefetched = false }) {
                   <td className="px-3 py-2">{t.teamLeague}</td>
                   <td className="px-3 py-2">{t.teamNameFull || t.teamName}</td>
                   <td className="px-3 py-2">{t.teamAbbreviation}</td>
+                  <td className="px-3 py-2">
+                    {t.teamAbbreviation ? (
+                      <a
+                        href={`/${encodeURIComponent(t.teamAbbreviation)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                        title={`Open /${t.teamAbbreviation} in new tab`}
+                      >
+                        /{t.teamAbbreviation}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {t.teamLogoURL ? (
                       <img src={t.teamLogoURL} alt={t.teamNameFull || t.teamName} className="w-8 h-8 object-contain" />

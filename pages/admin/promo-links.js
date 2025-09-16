@@ -4,7 +4,7 @@ import Link from 'next/link';
 export default function AdminPromoLinksPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ key: '', destination_url: '', notes: '', active: true, priority: 0, expires_at: '' });
+  const [form, setForm] = useState({ key: '', param_key: 'packs', destination_url: '', notes: '', active: true, priority: 0, expires_at: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -59,9 +59,21 @@ export default function AdminPromoLinksPage() {
         <h2 className="text-lg font-semibold mb-3">Create / Update</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
+            <label className="block text-sm font-medium">Param</label>
+            <select
+              className="mt-1 w-full border rounded px-2 py-1"
+              value={form.param_key}
+              onChange={(e) => setForm({ ...form, param_key: e.target.value })}
+            >
+              <option value="packs">packs</option>
+              <option value="team">team</option>
+              <option value="promo">promo</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium">Key</label>
             <input className="mt-1 w-full border rounded px-2 py-1" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder="phillies" required />
-            <p className="text-xs text-gray-500 mt-1">URL example: https://yoursite.com/?packs={form.key || 'phillies'}</p>
+            <p className="text-xs text-gray-500 mt-1">URL example: https://yoursite.com/?{form.param_key || 'packs'}={form.key || 'phillies'}</p>
           </div>
           <div>
             <label className="block text-sm font-medium">Destination URL</label>
@@ -115,6 +127,7 @@ export default function AdminPromoLinksPage() {
                         className="text-blue-600 underline text-sm"
                         onClick={() => setForm({
                           key: r.key,
+                          param_key: r.param_key || 'packs',
                           destination_url: r.destination_url,
                           notes: r.notes || '',
                           active: r.active,
@@ -123,7 +136,7 @@ export default function AdminPromoLinksPage() {
                         })}
                       >Edit</button>
                     </div>
-                    <div className="text-xs text-gray-500">/?packs={r.key}</div>
+                    <div className="text-xs text-gray-500">/?{r.param_key || 'packs'}={r.key}</div>
                   </td>
                   <td className="px-4 py-2 border">{r.destination_url}</td>
                   <td className="px-4 py-2 border">{r.active ? 'Yes' : 'No'}</td>

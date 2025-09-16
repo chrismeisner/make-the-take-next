@@ -115,6 +115,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'No MLB team IDs discovered or provided' });
     }
 
+    function toSlug(input) {
+      if (!input) return '';
+      const s = String(input).toLowerCase();
+      return s.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    }
+
     let processedCount = 0;
     for (const id of teamIds) {
       try {
@@ -126,9 +132,11 @@ export default async function handler(req, res) {
 
         const teamId = String(t?.team?.id || t?.id || id);
         const abv = String(t?.team?.abbreviation || t?.abbreviation || t?.shortDisplayName || '').toUpperCase();
-        const name = String(t?.team?.displayName || t?.displayName || t?.name || '').trim();
+        const name = String(t?.team?.displayName || t?.displayName || t?.name || '').trim(); // full name
         const logo = t?.team?.logos?.[0]?.href || t?.logos?.[0]?.href || t?.team?.logo || t?.logo || null;
-        const shortName = String(t?.team?.shortDisplayName || t?.shortDisplayName || abv || '').trim();
+        const nickname = String(t?.team?.shortDisplayName || t?.shortDisplayName || '').trim();
+        const shortName = nickname || abv;
+        const preferredSlug = toSlug(nickname || name);
 
         if (!teamId || !abv || !name) continue;
 
@@ -140,14 +148,14 @@ export default async function handler(req, res) {
              name = COALESCE(EXCLUDED.name, teams.name),
              logo_url = COALESCE(EXCLUDED.logo_url, teams.logo_url),
              short_name = COALESCE(EXCLUDED.short_name, teams.short_name)`,
-          [teamId, abv, name, logo, shortName]
+          [teamId, preferredSlug || abv.toLowerCase(), name, logo, shortName]
         );
 
         // Also try to ensure uniqueness on slug if present (optional secondary upsert)
-        if (abv) {
+        if (preferredSlug || abv) {
           await query(
             `UPDATE teams SET team_slug = $1 WHERE league = 'mlb' AND team_id = $2 AND (team_slug IS NULL OR team_slug = '')`,
-            [abv, teamId]
+            [preferredSlug || abv.toLowerCase(), teamId]
           );
         }
 

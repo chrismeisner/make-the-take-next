@@ -66,12 +66,20 @@ export default async function handler(req, res) {
     const teams = data.sports?.[0]?.leagues?.[0]?.teams || [];
     let processedCount = 0;
 
+    function toSlug(input) {
+      if (!input) return '';
+      const s = String(input).toLowerCase();
+      return s.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    }
+
     for (const item of teams) {
       const teamInfo = item.team || item;
       const teamID = teamInfo.id?.toString();
-      const teamName = teamInfo.name || teamInfo.displayName || "";
+      const teamNameFull = teamInfo.displayName || teamInfo.name || "";
       const teamLogoURL = teamInfo.logos?.[0]?.href || "";
       const teamAbbreviation = teamInfo.abbreviation || "";
+      const nickname = teamInfo.shortDisplayName || teamInfo.nickname || '';
+      const preferredSlug = toSlug(nickname || teamName);
       // Upsert into Postgres teams
       await query(
         `INSERT INTO teams (team_id, team_slug, name, league, logo_url, short_name)
@@ -83,10 +91,10 @@ export default async function handler(req, res) {
            short_name = COALESCE(EXCLUDED.short_name, teams.short_name)`,
         [
           String(teamID),
-          String(teamAbbreviation || '').toUpperCase(),
-          String(teamName || ''),
+          preferredSlug || String(teamAbbreviation || '').toLowerCase(),
+          String(teamNameFull || ''),
           teamLogoURL || null,
-          String(teamAbbreviation || '').toUpperCase(),
+          nickname || String(teamAbbreviation || '').toUpperCase(),
         ]
       );
 
