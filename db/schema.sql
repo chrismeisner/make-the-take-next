@@ -361,3 +361,13 @@ BEGIN
     EXECUTE FUNCTION set_promo_links_updated_at();
   END IF;
 END $$;
+
+-- Notifications: link packs to profiles who asked to be notified
+CREATE TABLE IF NOT EXISTS pack_notifications (
+  pack_id UUID REFERENCES packs(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (pack_id, profile_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pack_notifications_pack ON pack_notifications (pack_id);
+CREATE INDEX IF NOT EXISTS idx_pack_notifications_profile ON pack_notifications (profile_id);

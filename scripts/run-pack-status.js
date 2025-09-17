@@ -1,7 +1,54 @@
 // scripts/run-pack-status.js
 // Run the same pack status transitions as the admin API, for cron use.
 
-import { query, getPgPool } from '../lib/db/postgres.js';
+const { Pool } = require('pg');
+
+function shouldUseSsl(connectionString) {
+  try {
+    if (process.env.NODE_ENV === 'production') return true;
+    if (process.env.PGSSLMODE) return true;
+    if (/\bsslmode=/i.test(connectionString || '')) return true;
+    if (/amazonaws\.com/i.test(connectionString || '')) return true;
+  } catch {}
+  return false;
+}
+
+function createPool() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('⛔️ [pack-status] Missing DATABASE_URL');
+  }
+  const pool = new Pool({
+    connectionString,
+    ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+    max: Number.parseInt(process.env.PG_POOL_MAX || '5', 10),
+    idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
+    connectionTimeoutMillis: Number.parseInt(process.env.PG_CONN_TIMEOUT_MS || '30000', 10),
+    keepAlive: true,
+  });
+  // Apply safe server-side limits on connect (best-effort)
+  try {
+    const stmtMs = Number.parseInt(process.env.PG_STATEMENT_TIMEOUT_MS || '8000', 10);
+    const idleXactMs = Number.parseInt(process.env.PG_IDLE_IN_XACT_TIMEOUT_MS || '5000', 10);
+    const lockMs = Number.parseInt(process.env.PG_LOCK_TIMEOUT_MS || '5000', 10);
+    const appName = (process.env.PG_APP_NAME || 'make-the-take-cron').replace(/'/g, "''");
+    pool.on('connect', (client) => {
+      const tasks = [];
+      if (Number.isFinite(stmtMs) && stmtMs > 0) tasks.push(client.query(`SET statement_timeout TO ${stmtMs}`));
+      if (Number.isFinite(idleXactMs) && idleXactMs > 0) tasks.push(client.query(`SET idle_in_transaction_session_timeout TO ${idleXactMs}`));
+      if (Number.isFinite(lockMs) && lockMs > 0) tasks.push(client.query(`SET lock_timeout TO ${lockMs}`));
+      tasks.push(client.query(`SET application_name TO '${appName}'`));
+      Promise.allSettled(tasks).catch(() => {});
+    });
+  } catch {}
+  return pool;
+}
+
+const pool = createPool();
+
+async function query(text, params) {
+  return pool.query(text, params);
+}
 
 async function run() {
   const backend = String(process.env.DATA_BACKEND || 'postgres').toLowerCase();
@@ -50,10 +97,7 @@ async function run() {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;
   } finally {
-    try {
-      const pool = getPgPool();
-      await pool.end();
-    } catch {}
+    try { await pool.end(); } catch {}
   }
 }
 
