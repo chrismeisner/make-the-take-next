@@ -22,6 +22,7 @@ export default function AdminPropsPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [fromDateTime, setFromDateTime] = useState('');
   const [toDateTime, setToDateTime] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState([]);
 
   const [savingRow, setSavingRow] = useState(null);
   const [deletingRow, setDeletingRow] = useState(null);
@@ -96,7 +97,13 @@ export default function AdminPropsPage() {
     const fromMs = fromDateTime ? new Date(fromDateTime).getTime() : null;
     const toMs = toDateTime ? new Date(toDateTime).getTime() : null;
     return items
-      .filter((p) => !statusFilter || String(p.propStatus).toLowerCase() === statusFilter)
+      .filter((p) => {
+        const s = String(p.propStatus).toLowerCase();
+        if (selectedStatuses && selectedStatuses.length > 0) {
+          return selectedStatuses.includes(s);
+        }
+        return !statusFilter || s === statusFilter;
+      })
       .filter((p) => !leagueFilter || p.eventLeague === leagueFilter)
       .filter((p) => {
         if (!t) return true;
@@ -117,7 +124,7 @@ export default function AdminPropsPage() {
         const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return sortOrder === 'asc' ? ta - tb : tb - ta;
       });
-  }, [items, searchText, statusFilter, leagueFilter, sortOrder, fromDateTime, toDateTime]);
+  }, [items, searchText, statusFilter, selectedStatuses, leagueFilter, sortOrder, fromDateTime, toDateTime]);
 
   const handleStatusChange = async (airtableId, newStatus) => {
     setSavingRow(airtableId);
@@ -185,6 +192,34 @@ export default function AdminPropsPage() {
       {!isAuthLoading && session && (
         <>
       <h1 className="text-2xl font-bold mb-4">Props Management</h1>
+
+      <div className="mb-4">
+        <div className="text-sm font-medium text-gray-700 mb-1">Statuses</div>
+        <div className="flex flex-wrap items-center gap-3">
+          {allowedStatuses.map((s) => (
+            <label key={s} className="inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={selectedStatuses.includes(s)}
+                onChange={() => {
+                  setSelectedStatuses((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+                }}
+              />
+              <span className="text-sm capitalize">{s}</span>
+            </label>
+          ))}
+          {selectedStatuses.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedStatuses([])}
+              className="text-xs px-2 py-1 border rounded border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>

@@ -52,7 +52,13 @@ export default function AdminEditPackPage() {
           return;
         }
         const found = data.pack;
-        const statuses = Array.from(new Set(['active', 'draft', 'closed', found.packStatus].filter(Boolean)));
+        const normalizeStatus = (s) => {
+          const v = String(s || '').trim().toLowerCase();
+          if (v === 'coming soon' || v === 'coming-soon' || v === 'coming up' || v === 'coming-up' || v === 'upcoming') return 'coming-soon';
+          return v;
+        };
+        const normalizedFoundStatus = normalizeStatus(found.packStatus);
+        const statuses = Array.from(new Set(['active', 'live', 'draft', 'closed', 'coming-soon', 'archived', normalizedFoundStatus].filter(Boolean)));
         setStatusOptions(statuses);
         setPackTitle(found.packTitle || found.title || '');
         setPackURL(found.packURL || found.url || '');
@@ -62,7 +68,7 @@ export default function AdminEditPackPage() {
         const cover = found.packCover || found.packCoverUrl || '';
         setPackCoverUrl(cover);
         if (cover) setCoverPreviewUrl(cover);
-        setPackStatus(found.packStatus || 'active');
+        setPackStatus(normalizedFoundStatus || 'active');
         // Initialize open time if present on detail payload
         if (found.packURL || found.url) {
           try {
@@ -158,7 +164,10 @@ export default function AdminEditPackPage() {
 
   useEffect(() => {
     const ids = Array.from(new Set([...(packEventIds || []), packEventId].filter(Boolean)));
-    const missing = ids.filter((id) => !eventInfoById[id]);
+    const missing = ids.filter((id) => {
+      const info = eventInfoById[id];
+      return !info || info.__needsHydration === true;
+    });
     if (missing.length === 0) return;
     let cancelled = false;
     (async () => {
@@ -433,14 +442,14 @@ export default function AdminEditPackPage() {
                         // Seed titles from selection
                         setEventInfoById(prev => {
                           const next = { ...prev };
-                          ev.forEach(e => { if (e?.id) next[e.id] = { eventTitle: e.eventTitle || e.id, eventTime: null }; });
+                        ev.forEach(e => { if (e?.id) next[e.id] = { eventTitle: e.eventTitle || e.id, eventTime: null, __needsHydration: true }; });
                           return next;
                         });
                       } else {
                         if (!ev || !ev.id) return;
                         setPackEventId(ev.id);
                         setPackEventIds(prev => Array.from(new Set([...(prev || []), ev.id])));
-                        setEventInfoById(prev => ({ ...prev, [ev.id]: { eventTitle: ev.eventTitle || ev.id, eventTime: null } }));
+                      setEventInfoById(prev => ({ ...prev, [ev.id]: { eventTitle: ev.eventTitle || ev.id, eventTime: null, __needsHydration: true } }));
                       }
                     } catch {}
                   },
@@ -867,11 +876,14 @@ export default function AdminEditPackPage() {
             onChange={(e) => setPackStatus(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           >
-            {statusOptions.map(status => (
-              <option key={status} value={status}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-              </option>
-            ))}
+            {statusOptions.map(status => {
+              const label = status === 'coming-soon'
+                ? 'Coming soon'
+                : (status.charAt(0).toUpperCase() + status.slice(1));
+              return (
+                <option key={status} value={status}>{label}</option>
+              );
+            })}
           </select>
         </div>
         <div className="flex space-x-2">

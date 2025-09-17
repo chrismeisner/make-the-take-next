@@ -134,7 +134,7 @@ export async function getServerSideProps(context) {
       const s = String(p?.packStatus || '').toLowerCase().replace(/\s+/g, '-');
       if (s === 'open' || s === 'active') return 0;
       if (s === 'coming-soon' || s === 'coming-up') return 1;
-      if (s === 'closed') return 2;
+      if (s === 'closed' || s === 'live') return 2;
       if (s === 'completed') return 3;
       if (s === 'graded') return 4;
       return 5;

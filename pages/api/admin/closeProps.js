@@ -1,5 +1,7 @@
 import { getToken } from "next-auth/jwt";
 import Airtable from "airtable";
+import { getDataBackend } from "../../../lib/runtimeConfig";
+import { query } from "../../../lib/db/postgres";
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
   .base(process.env.AIRTABLE_BASE_ID);
@@ -12,6 +14,82 @@ export default async function handler(req, res) {
   if (!token) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
+  // Postgres path (primary going forward)
+  if (getDataBackend() === 'postgres') {
+    try {
+      // Find open props whose close_time has passed
+      const { rows: toClose } = await query(
+        `SELECT id, pack_id, COALESCE(prop_order, 0) AS prop_order
+           FROM props
+          WHERE LOWER(COALESCE(prop_status, '')) = 'open'
+            AND close_time IS NOT NULL
+            AND close_time < NOW()`
+      );
+      const closedCount = (toClose || []).length;
+      if (!toClose || toClose.length === 0) {
+        return res.status(200).json({ success: true, closedCount: 0 });
+      }
+
+      // Group by pack_id (null pack handled separately)
+      const byPack = new Map(); // pack_id -> prop rows
+      const withoutPack = [];
+      for (const r of toClose) {
+        if (r.pack_id) {
+          if (!byPack.has(r.pack_id)) byPack.set(r.pack_id, []);
+          byPack.get(r.pack_id).push(r);
+        } else {
+          withoutPack.push(r);
+        }
+      }
+
+      // Transactionally close and reorder
+      await query('BEGIN');
+      try {
+        // Close props without pack (no reorder)
+        if (withoutPack.length > 0) {
+          const ids = withoutPack.map(r => r.id);
+          await query(
+            `UPDATE props
+                SET prop_status = 'closed', updated_at = NOW()
+              WHERE id = ANY($1::uuid[])`,
+            [ids]
+          );
+        }
+
+        // For each pack, compute current max order and push closing props to end
+        for (const [packId, rows] of byPack.entries()) {
+          const { rows: maxRows } = await query(
+            `SELECT COALESCE(MAX(prop_order), 0) AS max_order FROM props WHERE pack_id = $1`,
+            [packId]
+          );
+          let currentMax = maxRows && maxRows[0] ? Number(maxRows[0].max_order) : 0;
+          // Sort stably by existing order to preserve relative ordering
+          const sorted = rows.slice().sort((a, b) => Number(a.prop_order) - Number(b.prop_order));
+          for (const r of sorted) {
+            currentMax += 1;
+            await query(
+              `UPDATE props
+                  SET prop_status = 'closed', prop_order = $1, updated_at = NOW()
+                WHERE id = $2`,
+              [currentMax, r.id]
+            );
+          }
+        }
+
+        await query('COMMIT');
+      } catch (txErr) {
+        await query('ROLLBACK').catch(() => {});
+        throw txErr;
+      }
+
+      return res.status(200).json({ success: true, closedCount });
+    } catch (error) {
+      console.error("[admin/closeProps PG] Error closing props:", error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  // Airtable fallback (legacy)
   try {
     // Fetch props with status 'open' and close time before now
     const recordsToClose = await base("Props")

@@ -29,15 +29,16 @@ export default async function handler(req, res) {
   }
   try {
     let url;
+    let headersToUse = src.headers;
     if (src.source === 'major-mlb') {
-      // major-mlb scoreboard expects year, month, day
+      // Use ESPN site scoreboard directly so IDs match ESPN event IDs
       const yyyy = String(dateToUse).slice(0, 4);
       const mm = String(dateToUse).slice(4, 6);
       const dd = String(dateToUse).slice(6, 8);
-      url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
-      url.searchParams.set('year', yyyy);
-      url.searchParams.set('month', mm);
-      url.searchParams.set('day', dd);
+      const yyyymmdd = `${yyyy}${mm}${dd}`;
+      url = new URL(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard`);
+      url.searchParams.set('dates', yyyymmdd);
+      headersToUse = { Accept: 'application/json' };
       // limit optional; omit to use default
     } else if (src.source === 'nfl') {
       // nfl schedule weekly requires year and week
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
 
     const upstream = await fetch(url.toString(), {
       method: 'GET',
-      headers: src.headers,
+      headers: headersToUse,
     });
 
     const upstreamText = await upstream.clone().text().catch(() => '');

@@ -87,6 +87,32 @@ export default async function handler(req, res) {
         espnGameID = ev.espnGameID || null;
         eventLeague = ev.eventLeague || null;
         packEventTime = ev.eventTime || null;
+        try {
+          if (espnGameID && eventLeague) {
+            const toPathLeague = (lg) => {
+              const v = String(lg || '').toLowerCase();
+              switch (v) {
+                case 'mlb': return 'baseball/mlb';
+                case 'nba': return 'basketball/nba';
+                case 'nfl': return 'football/nfl';
+                case 'nhl': return 'hockey/nhl';
+                case 'ncaam': return 'basketball/mens-college-basketball';
+                case 'ncaaw': return 'basketball/womens-college-basketball';
+                case 'ncaaf': return 'football/college-football';
+                default: return `baseball/${v}`;
+              }
+            };
+            const pathLeague = toPathLeague(eventLeague);
+            const localUrl = `/api/scores?league=${eventLeague}&event=${espnGameID}`;
+            const espnSummary = `https://site.api.espn.com/apis/site/v2/sports/${pathLeague}/summary?event=${espnGameID}`;
+            // eslint-disable-next-line no-console
+            console.log(`[packURL] getting the espn id: ${espnGameID} (${eventLeague})`);
+            // eslint-disable-next-line no-console
+            console.log(`[packURL]  ↳ local: ${localUrl}`);
+            // eslint-disable-next-line no-console
+            console.log(`[packURL]  ↳ espn:  ${espnSummary}`);
+          }
+        } catch {}
         // surface PG event fields in a consistent shape used elsewhere
         if (!ev.eventTitle && ev.title) ev.eventTitle = ev.title;
         if (!ev.eventCover && ev.eventCoverURL) ev.eventCover = [{ url: ev.eventCoverURL }];

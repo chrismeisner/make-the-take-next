@@ -76,7 +76,7 @@ export default function AdminEventDetail() {
       <div className="mt-4 flex items-center gap-3">
         {event?.espnGameID && event?.eventLeague && (
           <a
-            href={`https://www.espn.com/${event.eventLeague}/game/_/gameId/${event.espnGameID}`}
+            href={`https://www.espn.com/${String(event.eventLeague || '').toLowerCase()}/game/_/gameId/${event.espnGameID}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200"
@@ -127,6 +127,45 @@ export default function AdminEventDetail() {
         >
           Relink Event
         </button>
+      </div>
+
+      {/* ESPN details */}
+      <div className="mt-4 p-4 bg-white border rounded">
+        <h2 className="text-lg font-semibold mb-2">ESPN</h2>
+        <div className="text-sm text-gray-700 space-y-2">
+          <div>Game ID: <span className="font-mono">{event?.espnGameID || '—'}</span></div>
+          {event?.espnGameID && (
+            <div>
+              <a
+                href={`https://www.espn.com/${String(event.eventLeague || '').toLowerCase()}/game/_/gameId/${event.espnGameID}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                Open ESPN game page
+              </a>
+            </div>
+          )}
+          {(() => {
+            try {
+              const leagueLc = String(event?.eventLeague || '').toLowerCase();
+              const homeId = event?.homeTeamExternalId;
+              const awayId = event?.awayTeamExternalId;
+              const homeName = Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || 'Home') : (event?.homeTeam || 'Home');
+              const awayName = Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || 'Away') : (event?.awayTeam || 'Away');
+              const links = [];
+              if (homeId) {
+                const href = `https://www.espn.com/${leagueLc}/team/_/id/${encodeURIComponent(homeId)}`;
+                links.push(<div key="home-link"><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View {homeName} on ESPN</a></div>);
+              }
+              if (awayId) {
+                const href = `https://www.espn.com/${leagueLc}/team/_/id/${encodeURIComponent(awayId)}`;
+                links.push(<div key="away-link"><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View {awayName} on ESPN</a></div>);
+              }
+              return links.length ? <div className="space-y-1">{links}</div> : null;
+            } catch { return null; }
+          })()}
+        </div>
       </div>
 
       {/* Edit Event (cover url or file upload) */}

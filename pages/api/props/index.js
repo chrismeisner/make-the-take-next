@@ -320,6 +320,12 @@ export default async function handler(req, res) {
         }
         if (eventId !== undefined) {
           fields.event_id = eventId || null;
+          // If unlinking the event, defensively disable auto-grading and clear formula
+          if (eventId === null) {
+            fields.grading_mode = 'manual';
+            fields.formula_key = null;
+            fields.formula_params = null;
+          }
         }
         const normalizeSource = (s) => {
           const v = String(s || '').toLowerCase();

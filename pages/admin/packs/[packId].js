@@ -57,6 +57,10 @@ export default function AdminPackDetail() {
   if (!session) return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   if (!pack) return <div className="container mx-auto px-4 py-6">Pack not found</div>;
 
+  const coverUrl = Array.isArray(pack?.packCover)
+    ? (pack.packCover[0]?.url || null)
+    : (pack?.packCover || null);
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
@@ -125,6 +129,18 @@ export default function AdminPackDetail() {
           )}
         </div>
       </div>
+      {coverUrl && (
+        <div className="mb-6">
+          <div className="w-40 sm:w-48 md:w-56 lg:w-64 aspect-square relative rounded border border-gray-200 overflow-hidden bg-gray-100">
+            <img
+              src={coverUrl}
+              alt={`${pack.packTitle || 'Pack'} cover`}
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      )}
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <dt className="font-medium">ID</dt>

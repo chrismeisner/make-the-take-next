@@ -9,6 +9,19 @@ export default function EditPropPage() {
 
   // Open shared AddEventModal to link/change the event for this prop
   const openLinkEventModal = () => {
+    try {
+      console.log('🔗 [EditProp] Open Link Event Modal', {
+        propId,
+        currentEvent: event ? {
+          id: event?.airtableId || event?.id || null,
+          title: event?.eventTitle || null,
+          league: event?.eventLeague || null,
+          espnGameID: event?.espnGameID || null,
+          time: event?.eventTime || null,
+        } : null,
+        propType,
+      });
+    } catch {}
     openModal('addEvent', {
       allowMultiSelect: false,
       initialLeague: event?.eventLeague || propType || '',
@@ -21,31 +34,87 @@ export default function EditPropPage() {
         } catch {
           return '';
         }
+        // Keep local custom cover URL in sync when editing an existing prop
+        try {
+          if (p?.propCoverSource && String(p.propCoverSource).toLowerCase() === 'custom') {
+            const coverFromParams = (() => {
+              try { const obj = p.formulaParams ? JSON.parse(p.formulaParams) : {}; return obj?.propCover || null; } catch { return null; }
+            })();
+            setCustomCoverUrl(coverFromParams || '');
+          } else if (p?.event && Array.isArray(p.event?.eventCover) && p.event.eventCover[0]?.url) {
+            setCustomCoverUrl('');
+          }
+        } catch {}
       })(),
       onEventSelected: async (sel) => {
         try {
+          console.log('🆕 [EditProp] Event selected from modal', { raw: sel });
           const chosen = Array.isArray(sel) ? (sel[0] || null) : sel;
           const evtId = chosen?.id || chosen?.airtableId || null;
-          if (!evtId) { setError('Invalid event selection'); return; }
+          if (!evtId) {
+            console.error('🚫 [EditProp] Invalid event selection', { chosen });
+            setError('Invalid event selection');
+            return;
+          }
           const res = await fetch('/api/props', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ propId, eventId: evtId }),
           });
+          try { console.log('📨 [EditProp] Link event -> PATCH /api/props response', { ok: res.ok, status: res.status }); } catch {}
           const data = await res.json();
           if (!res.ok || !data.success) throw new Error(data.error || 'Failed to link event');
           const evRes = await fetch(`/api/admin/events/${encodeURIComponent(evtId)}`);
           const evJson = await evRes.json();
           const ev = (evRes.ok && evJson?.success) ? evJson.event : null;
+          try { console.log('📥 [EditProp] Loaded linked event details', { success: !!ev, id: evtId, event: ev || null }); } catch {}
           setEvent(ev || { airtableId: evtId, eventTitle: chosen.eventTitle, eventTime: chosen.eventTime, eventLeague: chosen.eventLeague });
           setEventReadout(null);
           setShowEventReadout(true);
-          if (!eventReadoutLoading) fetchEventApiReadout();
+          if (!eventReadoutLoading) fetchEventApiReadout(ev || { airtableId: evtId, eventTitle: chosen.eventTitle, eventTime: chosen.eventTime, eventLeague: chosen.eventLeague });
+          try { console.log('✅ [EditProp] Event linked to prop', { propId, eventId: evtId }); } catch {}
         } catch (e) {
+          try { console.error('❌ [EditProp] Failed to link event', { propId, error: e?.message }); } catch {}
           setError(e.message || 'Failed to link event');
         }
       },
     });
+  };
+
+  const handleUnlinkEvent = async () => {
+    try {
+      try { console.log('🧹 [EditProp] Attempt unlink event', { propId, currentEventId: event?.airtableId || event?.id || null }); } catch {}
+      const res = await fetch('/api/props', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propId,
+          eventId: null,
+          // Defensive: also clear grading on server if supported
+          gradingMode: 'manual',
+          formulaKey: '',
+          formulaParams: ''
+        }),
+      });
+      try { console.log('🗑️ [EditProp] Unlink event -> PATCH /api/props response', { ok: res.ok, status: res.status }); } catch {}
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to remove linked event');
+      }
+      // Reset local event + auto-grading state
+      setEvent(null);
+      setEventDetails(null);
+      setEventReadout(null);
+      setShowEventReadout(false);
+      setAutoGradeKey('');
+      setGradingMode('manual');
+      setFormulaKey('');
+      setFormulaParamsText('');
+      try { console.log('✅ [EditProp] Event unlinked and auto-grade reset', { propId }); } catch {}
+    } catch (e) {
+      try { console.error('❌ [EditProp] Failed to unlink event', { propId, error: e?.message }); } catch {}
+      setError(e?.message || 'Failed to remove linked event');
+    }
   };
 
   const [loading, setLoading] = useState(true);
@@ -282,6 +351,7 @@ export default function EditPropPage() {
   useEffect(() => {
     if (!autoGradeKey) return;
     try {
+      try { console.log('🧰 [EditProp] Auto-grade key changed', { propId, autoGradeKey, dataSource }); } catch {}
       const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
       const source = dataSource || 'major-mlb';
       const assign = (k, v) => { obj[k] = v; };
@@ -325,6 +395,7 @@ export default function EditPropPage() {
       }
       if (source) obj.dataSource = source;
       setFormulaParamsText(JSON.stringify(obj, null, 2));
+      try { console.log('🧪 [EditProp] Auto-grade params merged', { params: obj }); } catch {}
     } catch {}
   }, [autoGradeKey, dataSource, event?.espnGameID, event?.eventTime]);
   const addMetric = (m) => {
@@ -363,6 +434,8 @@ export default function EditPropPage() {
   // New state for team cover
   const [eventDetails, setEventDetails] = useState(null);
   const [teamCoverUrl, setTeamCoverUrl] = useState(null);
+  const [eventCoverUrl, setEventCoverUrl] = useState(null);
+  const [customCoverUrl, setCustomCoverUrl] = useState('');
 
   // Event API Readout (Major MLB)
   const [showEventReadout, setShowEventReadout] = useState(false);
@@ -393,6 +466,17 @@ export default function EditPropPage() {
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Failed to load prop');
         const p = data.prop;
+        try {
+          console.log('📦 [EditProp] Prop loaded', {
+            propId,
+            propStatus: p.propStatus,
+            propType: p.propType,
+            gradingMode: p.gradingMode,
+            formulaKey: p.formulaKey,
+            hasFormulaParams: Boolean(p.formulaParams),
+            linkedEventId: p.event?.airtableId || p.event?.id || null,
+          });
+        } catch {}
         setPropShort(p.propShort || '');
         setPropSummary(p.propSummary || '');
         setPropValueModel(p.propValueModel || 'vegas');
@@ -419,7 +503,7 @@ export default function EditPropPage() {
         setEvent(p.event || null);
         try {
           if (p?.event) {
-            console.log('[EditProp] Linked event loaded', {
+            console.log('🧩 [EditProp] Linked event loaded', {
               propId,
               eventId: p.event?.airtableId || p.event?.id,
               eventTitle: p.event?.eventTitle,
@@ -428,7 +512,7 @@ export default function EditPropPage() {
               eventTime: p.event?.eventTime,
             });
           } else {
-            console.log('[EditProp] No event linked to prop', { propId });
+            console.log('⭕ [EditProp] No event linked to prop', { propId });
           }
         } catch {}
         setGradingMode(p.gradingMode || 'manual');
@@ -438,10 +522,14 @@ export default function EditPropPage() {
         try {
           const obj = p.formulaParams ? JSON.parse(p.formulaParams) : {};
           const leagueLc = String(p?.event?.eventLeague || '').toLowerCase();
-          setDataSource(String(obj?.dataSource || (leagueLc === 'nfl' ? 'nfl' : 'major-mlb')));
+          const resolved = String(obj?.dataSource || (leagueLc === 'nfl' ? 'nfl' : 'major-mlb'));
+          setDataSource(resolved);
+          try { console.log('🧪 [EditProp] Data source resolved', { resolved, fromParams: Boolean(obj?.dataSource), league: p?.event?.eventLeague || null }); } catch {}
         } catch {
           const leagueLc = String(p?.event?.eventLeague || '').toLowerCase();
-          setDataSource(leagueLc === 'nfl' ? 'nfl' : 'major-mlb');
+          const resolved = leagueLc === 'nfl' ? 'nfl' : 'major-mlb';
+          setDataSource(resolved);
+          try { console.log('🧪 [EditProp] Data source inferred from league', { resolved, league: p?.event?.eventLeague || null }); } catch {}
         }
         // Initialize simple Auto Grade UI state from persisted prop
         try {
@@ -453,6 +541,7 @@ export default function EditPropPage() {
           const b = obj?.whoWins?.sideBMap;
           if (a) setSideAMap(String(a));
           if (b) setSideBMap(String(b));
+          try { console.log('⚙️ [EditProp] Auto-grade init', { mode, formulaKey: fk, whoWinsSideAMap: a || null, whoWinsSideBMap: b || null }); } catch {}
         } catch {}
         // Initialize gradingType and H2H states from params
         try {
@@ -520,10 +609,33 @@ export default function EditPropPage() {
     })();
   }, [eventDetails, propCoverSource]);
 
+  // Compute event cover URL when available
+  useEffect(() => {
+    if (!eventDetails) { setEventCoverUrl(null); return; }
+    try {
+      const url = Array.isArray(eventDetails.eventCover) && eventDetails.eventCover[0] && eventDetails.eventCover[0].url
+        ? eventDetails.eventCover[0].url
+        : (eventDetails.eventCoverURL || null);
+      setEventCoverUrl(url || null);
+    } catch {
+      setEventCoverUrl(null);
+    }
+  }, [eventDetails]);
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!propId) return;
     setSaving(true);
+    try {
+      console.log('💾 [EditProp] Save initiated', {
+        propId,
+        propStatus,
+        propType,
+        autoGradeEnabled: Boolean(autoGradeKey),
+        autoGradeKey,
+        gradingModeNext: autoGradeKey ? 'auto' : 'manual',
+      });
+    } catch {}
     setError(null);
     try {
       let finalFormulaParamsText = formulaParamsText;
@@ -582,6 +694,7 @@ export default function EditPropPage() {
         propValueModel,
         propCloseTime,
         propCoverSource,
+        ...(propCoverSource === 'custom' ? { propCover: customCoverUrl || null } : {}),
         gradingMode: autoGradeKey ? 'auto' : 'manual',
         formulaKey: autoGradeKey || undefined,
         formulaParams: finalFormulaParamsText || undefined,
@@ -591,11 +704,14 @@ export default function EditPropPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      try { console.log('📨 [EditProp] Save -> PATCH /api/props response', { ok: res.ok, status: res.status }); } catch {}
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to save');
+      try { console.log('✅ [EditProp] Save successful, navigating to list'); } catch {}
       // Go back to Admin Props list
       router.push('/admin/props');
     } catch (e) {
+      try { console.error('❌ [EditProp] Save failed', { propId, error: e?.message }); } catch {}
       setError(e.message);
     } finally {
       setSaving(false);
@@ -703,7 +819,8 @@ export default function EditPropPage() {
       setGradePreview(null);
       const airtableId = propId;
       const overrideFormulaParams = buildCurrentFormulaParams();
-      const request = { airtableId, dryRun: true, overrideFormulaParams };
+      try { console.log('🔍 [EditProp] Grade preview request', { airtableId, overrideFormulaParams }); } catch {}
+      const request = { airtableId, dryRun: true, overrideFormulaParams, overrideFormulaKey: String(autoGradeKey || formulaKey || '').toLowerCase() };
       setGradePreviewRequest(request);
       const res = await fetch('/api/admin/gradePropByFormula', {
         method: 'POST',
@@ -715,7 +832,9 @@ export default function EditPropPage() {
         setGradePreviewError(data?.error || 'Preview failed');
       }
       setGradePreview(data);
+      try { console.log('🧾 [EditProp] Grade preview response', { ok: res.ok, result: data }); } catch {}
     } catch (e) {
+      try { console.error('❌ [EditProp] Grade preview failed', { propId, error: e?.message }); } catch {}
       setGradePreviewError(e?.message || 'Preview failed');
     } finally {
       setGradePreviewLoading(false);
@@ -796,15 +915,16 @@ export default function EditPropPage() {
   const homeTeamName = Array.isArray(eventDetails?.homeTeam) ? (eventDetails?.homeTeam?.[0] || '') : (eventDetails?.homeTeam || '');
   const awayTeamName = Array.isArray(eventDetails?.awayTeam) ? (eventDetails?.awayTeam?.[0] || '') : (eventDetails?.awayTeam || '');
 
-  const fetchEventApiReadout = async () => {
-    if (!event?.eventTime) return;
+  const fetchEventApiReadout = async (evOverride) => {
+    const evLocal = evOverride || event;
+    if (!evLocal?.eventTime) return;
     setEventReadoutLoading(true);
     setEventReadoutError('');
     setEventReadout(null);
     try {
-      const d = new Date(event.eventTime);
+      const d = new Date(evLocal.eventTime);
       const gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-      const espnId = String(event?.espnGameID || '').trim();
+      const espnId = String(evLocal?.espnGameID || '').trim();
       const params = new URLSearchParams();
       // Use selected data source. For NFL, status endpoint requires year/week instead of gameDate.
       const src = dataSource || 'major-mlb';
@@ -818,11 +938,11 @@ export default function EditPropPage() {
       if (espnId) params.set('gameID', espnId);
       const url = `/api/admin/api-tester/status?${params.toString()}`;
       try {
-        console.log('[EditProp] Fetching Event API Readout', {
+        console.log('📡 [EditProp] Fetching Event API Readout', {
           propId,
-          eventId: event?.airtableId || event?.id,
-          eventTitle: event?.eventTitle,
-          eventLeague: event?.eventLeague,
+          eventId: evLocal?.airtableId || evLocal?.id,
+          eventTitle: evLocal?.eventTitle,
+          eventLeague: evLocal?.eventLeague,
           dataSource: src,
           gameDate,
           espnGameID: espnId || null,
@@ -833,15 +953,69 @@ export default function EditPropPage() {
       const json = await resp.json();
       if (!resp.ok || !json.success) throw new Error(json.error || 'Failed to fetch event readout');
       const games = Array.isArray(json.games) ? json.games : [];
-      const chosen = games[0] || null;
+      // Prefer exact ESPN ID match when present
+      let chosen = null;
+      if (espnId) {
+        chosen = games.find(g => String(g?.id || g?.gameID || g?.gameId || '').trim() === espnId) || null;
+      }
+      // If no espnId or not found, try to match by away/home abbreviations
+      if (!chosen) {
+        try {
+          const normalizeAbv = (val) => {
+            const v = String(val || '').toUpperCase();
+            const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+            return map[v] || v;
+          };
+          const homeAbv = normalizeAbv(evLocal?.homeTeamAbbreviation || eventDetails?.homeTeamAbbreviation || '');
+          const awayAbv = normalizeAbv(evLocal?.awayTeamAbbreviation || eventDetails?.awayTeamAbbreviation || '');
+          if (homeAbv && awayAbv) {
+            chosen = games.find(g => String(g?.home || g?.homeTeam || '').toUpperCase() === homeAbv && String(g?.away || g?.awayTeam || '').toUpperCase() === awayAbv) || null;
+          }
+          // Fallback: parse from title like "PHI @ LAD" when abbreviations are not on the event record
+          if (!chosen) {
+            try {
+              const title = String(evLocal?.eventTitle || '').toUpperCase();
+              const m = title.match(/([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/);
+              if (m && m[1] && m[2]) {
+                const tAway = normalizeAbv(m[1]);
+                const tHome = normalizeAbv(m[2]);
+                chosen = games.find(g => String(g?.home || g?.homeTeam || '').toUpperCase() === tHome && String(g?.away || g?.awayTeam || '').toUpperCase() === tAway) || null;
+                try { console.log('🧭 [EditProp] Matching via title tokens', { title, parsed: { away: tAway, home: tHome }, matched: Boolean(chosen) }); } catch {}
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+      // Fallback to first
+      if (!chosen) chosen = games[0] || null;
       try {
-        console.log('[EditProp] Event API Readout received', {
+        console.log('📥 [EditProp] Event API Readout received', {
           found: games.length,
           chosen: chosen ? { id: chosen.id, away: chosen.away, home: chosen.home, status: chosen.gameStatus } : null,
         });
       } catch {}
       setEventReadout(chosen);
+      // If we successfully matched a game and the linked Event lacks espnGameID, persist relink
+      try {
+        const linkedEventId = evLocal?.id || evLocal?.airtableId || null;
+        const chosenId = String(chosen?.id || chosen?.gameID || chosen?.gameId || '').trim();
+        if (linkedEventId && chosenId && !String(evLocal?.espnGameID || '').trim()) {
+          const relinkUrl = `/api/admin/events/${encodeURIComponent(linkedEventId)}/relink`;
+          const body = {
+            sourceEventId: chosenId,
+            title: evLocal?.eventTitle || undefined,
+            league: evLocal?.eventLeague || undefined,
+            eventTime: evLocal?.eventTime || undefined,
+          };
+          const up = await fetch(relinkUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const upJson = await up.json().catch(() => ({}));
+          if (up.ok && upJson?.success && upJson?.event) {
+            setEvent((prev) => ({ ...(prev || {}), ...upJson.event }));
+          }
+        }
+      } catch {}
     } catch (e) {
+      try { console.error('❌ [EditProp] Event API Readout failed', { propId, error: e?.message }); } catch {}
       setEventReadoutError(e.message || 'Failed to fetch event readout');
     } finally {
       setEventReadoutLoading(false);
@@ -860,7 +1034,7 @@ export default function EditPropPage() {
       const gidReadout = String(eventReadout?.id || '').trim();
       const mismatch = Boolean(title && readoutLabel && title !== readoutLabel);
       const idMismatch = Boolean(gidEvent && gidReadout && gidEvent !== gidReadout);
-      console.log('[EditProp] Event vs Readout comparison', {
+      console.log('🧮 [EditProp] Event vs Readout comparison', {
         propId,
         event: { title, league: event?.eventLeague || null, espnGameID: gidEvent },
         readout: { id: gidReadout || null, label: readoutLabel || null, status: eventReadout?.gameStatus || null },
@@ -1173,6 +1347,20 @@ export default function EditPropPage() {
   return (
     <div className="p-4 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Edit Prop</h1>
+      {!event && (
+        <div className="mb-4 p-3 bg-gray-50 rounded border">
+          <div className="text-sm font-medium text-gray-700">No event linked</div>
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={openLinkEventModal}
+              className="px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              Link Event
+            </button>
+          </div>
+        </div>
+      )}
       {event && (
         <>
         {/* consolidated below */}
@@ -1186,6 +1374,13 @@ export default function EditPropPage() {
               className="mt-1 px-2 py-1 bg-gray-200 rounded"
             >
               Change Event
+            </button>
+            <button
+              type="button"
+              onClick={handleUnlinkEvent}
+              className="mt-1 px-2 py-1 bg-red-100 text-red-700 rounded"
+            >
+              Remove Event
             </button>
           </div>
           <div className="mt-2 text-sm">
@@ -2423,17 +2618,36 @@ export default function EditPropPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Cover Source</label>
-          <select className="mt-1 block w-full border rounded px-2 py-1" value={propCoverSource} onChange={(e) => setPropCoverSource(e.target.value)}>
-            <option value="event">Event</option>
-            <option value="homeTeam" disabled={!eventDetails}>{homeTeamName ? `${homeTeamName} (Home)` : 'Home Team'}</option>
-            <option value="awayTeam" disabled={!eventDetails}>{awayTeamName ? `${awayTeamName} (Away)` : 'Away Team'}</option>
-            <option value="custom">Custom</option>
-          </select>
+          <div className="mt-1 flex items-end gap-3">
+            <select className="flex-1 block border rounded px-2 py-1" value={propCoverSource} onChange={(e) => setPropCoverSource(e.target.value)}>
+              <option value="event">Event</option>
+              <option value="homeTeam" disabled={!eventDetails}>{homeTeamName ? `${homeTeamName} (Home)` : 'Home Team'}</option>
+              <option value="awayTeam" disabled={!eventDetails}>{awayTeamName ? `${awayTeamName} (Away)` : 'Away Team'}</option>
+              <option value="custom">Custom</option>
+            </select>
+            <div className="relative w-16 h-16 border rounded bg-gray-50">
+              {(() => {
+                let url = null;
+                if (propCoverSource === 'event') url = eventCoverUrl;
+                else if (propCoverSource === 'homeTeam' || propCoverSource === 'awayTeam') url = teamCoverUrl;
+                else if (propCoverSource === 'custom') url = customCoverUrl;
+                if (!url) return (<div className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-400">No cover</div>);
+                const fit = (propCoverSource === 'homeTeam' || propCoverSource === 'awayTeam') ? 'object-contain p-1 bg-white' : 'object-cover';
+                return (<img src={url} alt="Cover Preview" className={`absolute inset-0 h-full w-full ${fit} rounded`} />);
+              })()}
+            </div>
+          </div>
         </div>
-        {(propCoverSource === 'homeTeam' || propCoverSource === 'awayTeam') && teamCoverUrl && (
+        {propCoverSource === 'custom' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Team Logo Preview</label>
-            <img src={teamCoverUrl} alt="Team Logo" className="mt-2 h-32 object-contain" />
+            <label className="block text-sm font-medium text-gray-700">Custom Cover URL</label>
+            <input
+              type="url"
+              className="mt-1 block w-full border rounded px-2 py-1"
+              value={customCoverUrl}
+              onChange={(e) => setCustomCoverUrl(e.target.value)}
+              placeholder="https://..."
+            />
           </div>
         )}
         {error && <p className="text-red-600 text-sm">{error}</p>}

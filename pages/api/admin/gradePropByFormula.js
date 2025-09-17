@@ -156,6 +156,7 @@ export default async function handler(req, res) {
   const airtableId = body?.airtableId || null;
   const dryRun = Boolean(body?.dryRun);
   const overrideParams = body?.overrideFormulaParams || {};
+  const overrideFormulaKey = String(body?.overrideFormulaKey || body?.formulaKey || '').toLowerCase();
   console.log('[gradePropByFormula] Incoming request', {
     method,
     airtableId,
@@ -185,7 +186,7 @@ export default async function handler(req, res) {
       }
       const r = rows[0];
       const gradingMode = String(r.grading_mode || '').toLowerCase();
-      const formulaKey = String(r.formula_key || '').toLowerCase();
+      const formulaKey = overrideFormulaKey || String(r.formula_key || '').toLowerCase();
       let params = {};
       try {
         const raw = r.formula_params;
@@ -194,7 +195,13 @@ export default async function handler(req, res) {
       params = { ...(params || {}), ...(overrideParams || {}) };
 
       if (gradingMode !== 'auto') {
-        return res.status(400).json({ success: false, error: 'Prop is not set to auto grading' });
+        if (!dryRun) {
+          return res.status(400).json({ success: false, error: 'Prop is not set to auto grading' });
+        }
+        // Allow dryRun previews when an overrideFormulaKey is provided
+        if (!overrideFormulaKey) {
+          return res.status(400).json({ success: false, error: 'Prop is not set to auto grading (provide overrideFormulaKey for preview)' });
+        }
       }
 
       // Helpers shared with AT path

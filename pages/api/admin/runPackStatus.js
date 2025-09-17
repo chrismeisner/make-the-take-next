@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
-  const backend = String(process.env.DATA_BACKEND || 'airtable').toLowerCase();
+  const backend = String(process.env.DATA_BACKEND || 'postgres').toLowerCase();
   if (backend !== 'postgres') {
     return res.status(400).json({ success: false, error: 'DATA_BACKEND must be postgres to run this job' });
   }
@@ -50,31 +50,31 @@ export default async function handler(req, res) {
 
     const closeSql = `
       UPDATE packs
-         SET pack_status = 'closed'
+         SET pack_status = 'live'
        WHERE (pack_close_time IS NOT NULL AND LENGTH(TRIM(pack_close_time::text)) > 0)
          AND NOW() >= (pack_close_time::timestamptz)
-         AND COALESCE(LOWER(pack_status), '') NOT IN ('closed','graded','completed')
+         AND COALESCE(LOWER(pack_status), '') NOT IN ('live','graded','completed')
       RETURNING id, pack_url`;
     const closeStart = Date.now();
     const { rows: closed } = await query(closeSql);
     const closeMs = Date.now() - closeStart;
     try {
-      console.log('[runPackStatus] CLOSE phase complete', {
+      console.log('[runPackStatus] LIVE phase complete', {
         durationMs: closeMs,
-        closedCount: closed.length,
-        closedPreview: closed.slice(0, 10).map((r) => r.pack_url)
+        liveCount: closed.length,
+        livePreview: closed.slice(0, 10).map((r) => r.pack_url)
       });
     } catch {}
 
     try {
       console.log('[runPackStatus] DONE', {
         opened: opened.length,
-        closed: closed.length,
+        live: closed.length,
         totalDurationMs: undefined
       });
     } catch {}
 
-    return res.status(200).json({ success: true, openedCount: opened.length, closedCount: closed.length });
+    return res.status(200).json({ success: true, openedCount: opened.length, liveCount: closed.length });
   } catch (error) {
     try {
       console.error('[runPackStatus] ERROR', { message: error?.message, stack: error?.stack });

@@ -35,18 +35,18 @@ export default async function handler(req, res) {
     // Close packs when: NOW >= pack_close_time
     const closeSql = `
       UPDATE packs
-         SET pack_status = 'closed'
+         SET pack_status = 'live'
        WHERE pack_close_time IS NOT NULL
          AND NOW() >= (pack_close_time::timestamptz)
-         AND COALESCE(LOWER(pack_status), '') NOT IN ('closed','graded','completed')
+         AND COALESCE(LOWER(pack_status), '') NOT IN ('live','graded','completed')
       RETURNING id, pack_url`;
     const { rows: closed } = await query(closeSql);
 
     try {
-      console.log('[autoOpenClosePacks] DONE', { opened: opened.length, closed: closed.length });
+    console.log('[autoOpenClosePacks] DONE', { opened: opened.length, live: closed.length });
     } catch {}
 
-    return res.status(200).json({ success: true, openedCount: opened.length, closedCount: closed.length });
+    return res.status(200).json({ success: true, openedCount: opened.length, liveCount: closed.length });
   } catch (error) {
     try {
       console.error('[autoOpenClosePacks] ERROR', { message: error?.message });

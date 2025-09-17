@@ -10,11 +10,23 @@ export default function AdminPacksPage() {
   const [visibleStatuses, setVisibleStatuses] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hideGraded, setHideGraded] = useState(false);
+  const [selectedLeague, setSelectedLeague] = useState('');
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
+  const [updatingStatusById, setUpdatingStatusById] = useState({});
 
   // Build status filter options from fetched packs
-  const statusOptions = Array.from(new Set(packs.map(p => p.packStatus).filter(Boolean))).sort();
+  const statusOptions = Array.from(new Set([...packs.map(p => p.packStatus).filter(Boolean), 'live'])).sort();
+  const defaultStatuses = ['active','live','draft','closed','coming-soon','archived','graded','completed'];
+  const allStatusOptions = Array.from(new Set([...defaultStatuses, ...statusOptions])).filter(Boolean);
+  // Build league options from fetched packs (lowercased)
+  const leagueOptions = Array.from(
+    new Set(
+      packs
+        .map(p => String(p.packLeague || '').trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ).sort();
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -48,7 +60,8 @@ export default function AdminPacksPage() {
       if (!res.ok || !data.success) {
         setRunResult({ ok: false, message: data.error || 'Failed to run' });
       } else {
-        setRunResult({ ok: true, message: `Opened ${data.openedCount}, closed ${data.closedCount}` });
+        const liveCount = (typeof data.liveCount === 'number') ? data.liveCount : (data.closedCount || 0);
+        setRunResult({ ok: true, message: `Opened ${data.openedCount}, went live ${liveCount}` });
         await refetchPacks();
       }
     } catch (e) {
@@ -73,10 +86,14 @@ export default function AdminPacksPage() {
   const visibilityFilteredPacks = hideGraded
     ? filteredPacks.filter(p => String(p.packStatus || '').toLowerCase() !== 'graded')
     : filteredPacks;
+  // Apply league filter if a league is selected
+  const leagueFilteredPacks = selectedLeague
+    ? visibilityFilteredPacks.filter(p => String(p.packLeague || '').toLowerCase() === selectedLeague)
+    : visibilityFilteredPacks;
   // Apply search filtering (title, url, or event title)
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchedPacks = normalizedQuery
-    ? visibilityFilteredPacks.filter(p => {
+    ? leagueFilteredPacks.filter(p => {
         const title = String(p.packTitle || '').toLowerCase();
         const url = String(p.packURL || '').toLowerCase();
         const eventTitle = String(p.eventTitle || '').toLowerCase();
@@ -86,7 +103,7 @@ export default function AdminPacksPage() {
           eventTitle.includes(normalizedQuery)
         );
       })
-    : visibilityFilteredPacks;
+    : leagueFilteredPacks;
   // Determine active sort from header (if any) or fallback to createdAt
   const activeSortField = headerSort?.field || 'createdAt';
   const activeSortOrder = headerSort?.order || sortOrder;
@@ -203,6 +220,19 @@ export default function AdminPacksPage() {
           placeholder="Search by title, URL, or event"
           className="mt-1 block w-80 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
+        <div className="flex items-center gap-2">
+          <label className="block text-sm font-medium text-gray-700">League</label>
+          <select
+            value={selectedLeague}
+            onChange={e => setSelectedLeague(e.target.value)}
+            className="mt-1 block rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">All Leagues</option>
+            {leagueOptions.map((lg) => (
+              <option key={lg} value={lg}>{lg.toUpperCase()}</option>
+            ))}
+          </select>
+        </div>
         <label className="inline-flex items-center gap-2 text-sm text-gray-700 ml-4">
           <input
             type="checkbox"
@@ -249,7 +279,52 @@ export default function AdminPacksPage() {
                 <td className="px-4 py-2 border">{pack.eventTitle || '-'}</td>
                 <td className="px-4 py-2 border">{pack.packOpenTime ? new Date(pack.packOpenTime).toLocaleString() : '-'}</td>
                 <td className="px-4 py-2 border">{pack.packCloseTime ? new Date(pack.packCloseTime).toLocaleString() : '-'}</td>
-                <td className="px-4 py-2 border">{pack.packStatus}</td>
+                <td className="px-4 py-2 border">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={pack.packStatus || ''}
+                      disabled={!!updatingStatusById[pack.airtableId]}
+                      onChange={async (e) => {
+                        const next = e.target.value;
+                        const id = pack.airtableId;
+                        const prev = pack.packStatus;
+                        setUpdatingStatusById((u) => ({ ...u, [id]: true }));
+                        // Optimistic update
+                        setPacks((list) => list.map((p) => p.airtableId === id ? { ...p, packStatus: next } : p));
+                        try {
+                          const res = await fetch('/api/packs', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ packURL: pack.packURL, packStatus: next })
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data?.success) {
+                            throw new Error(data?.error || 'Failed to update');
+                          }
+                        } catch (err) {
+                          // Revert on failure
+                          setPacks((list) => list.map((p) => p.airtableId === id ? { ...p, packStatus: prev } : p));
+                          console.error('Failed updating pack status:', err?.message || err);
+                          alert(err?.message || 'Failed to update status');
+                        } finally {
+                          setUpdatingStatusById((u) => {
+                            const copy = { ...u };
+                            delete copy[id];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className="px-2 py-1 border rounded"
+                    >
+                      {allStatusOptions.map((opt) => (
+                        <option key={opt} value={opt}>{String(opt).replace(/-/g, ' ')}</option>
+                      ))}
+                    </select>
+                    {updatingStatusById[pack.airtableId] && (
+                      <span className="text-xs text-gray-500">Updating…</span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-2 border">{pack.propsCount}</td>
                 <td className="px-4 py-2 border">
                   <Link href={`/admin/packs/${pack.airtableId}`}>

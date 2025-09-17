@@ -55,6 +55,8 @@ export default function AdminCreatePackPage() {
         if (!statuses.includes('active')) statuses.unshift('active');
         if (!statuses.includes('draft')) statuses.unshift('draft');
         if (!statuses.includes('coming-soon')) statuses.push('coming-soon');
+        if (!statuses.includes('live')) statuses.push('live');
+        if (!statuses.includes('archived')) statuses.push('archived');
         setStatusOptions(Array.from(new Set(statuses)).sort());
       } catch (e) {
         console.error(e);

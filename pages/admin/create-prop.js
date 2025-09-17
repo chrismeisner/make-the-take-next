@@ -18,6 +18,7 @@ export default function CreatePropUnifiedPage() {
   const [propSideBShort, setPropSideBShort] = useState('');
   const [propSideBTake, setPropSideBTake] = useState('');
   const [propSideBMoneyline, setPropSideBMoneyline] = useState('');
+  const [propStatus, setPropStatus] = useState('draft');
   
   // Profit/payout from moneyline with default stake 250
   const profitFromMoneyline = (moneyline, stake = 250) => {
@@ -1026,6 +1027,7 @@ export default function CreatePropUnifiedPage() {
         PropSideBMoneyline: propSideBMoneyline,
         propValueModel,
         propType,
+          propStatus,
         propOpenTime,
         propCloseTime,
         propCoverSource,
@@ -1084,7 +1086,28 @@ export default function CreatePropUnifiedPage() {
         try {
           const normalizeTeamAbv = (val) => {
             const v = String(val || '').toUpperCase();
-            const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
+            const map = {
+              CWS: 'CHW',
+              CHA: 'CHW',
+              SDP: 'SD',
+              SFG: 'SF',
+              TBR: 'TB',
+              TAM: 'TB',
+              KCR: 'KC',
+              ARZ: 'ARI',
+              WSN: 'WSH',
+              WAS: 'WSH',
+              NYA: 'NYY',
+              NYY: 'NYY',
+              NYN: 'NYM',
+              NYM: 'NYM',
+              LAN: 'LAD',
+              LAD: 'LAD',
+              ANA: 'LAA',
+              LAA: 'LAA',
+              FLA: 'MIA',
+              MIA: 'MIA',
+            };
             return map[v] || v;
           };
           const d = new Date(event.eventTime);
@@ -1097,7 +1120,11 @@ export default function CreatePropUnifiedPage() {
           const games = Array.isArray(j?.games) ? j.games : [];
           const homeAbv = normalizeTeamAbv(event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam));
           const awayAbv = normalizeTeamAbv(event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam));
-          const match = games.find(g => String(g?.home || g?.homeTeam || '').toUpperCase() === homeAbv && String(g?.away || g?.awayTeam || '').toUpperCase() === awayAbv);
+          const homeName = String(Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam || '').toUpperCase();
+          const awayName = String(Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam || '').toUpperCase();
+          const byAbv = (g) => (String(g?.home || g?.homeTeam || '').toUpperCase() === homeAbv && String(g?.away || g?.awayTeam || '').toUpperCase() === awayAbv);
+          const byName = (g) => (String(g?.homeName || '').toUpperCase().includes(homeName) && String(g?.awayName || '').toUpperCase().includes(awayName));
+          const match = games.find(g => byAbv(g) || byName(g));
           if (match && (match.id || match.gameID || match.gameId)) {
             eventIdToUse = String(match.id || match.gameID || match.gameId);
             console.log('[OddsFetch] MLB fallback: derived ESPN game ID', { eventIdToUse, homeAbv, awayAbv });
@@ -2667,6 +2694,19 @@ export default function CreatePropUnifiedPage() {
           </div>
         )}
         {error && <p className="text-red-600">{error}</p>}
+        <div>
+          <label htmlFor="propStatus" className="block text-sm font-medium text-gray-700">Status</label>
+          <select
+            id="propStatus"
+            value={propStatus}
+            onChange={(e) => setPropStatus(e.target.value)}
+            className="mt-1 block w-full border rounded px-2 py-1"
+          >
+            <option value="draft">Draft</option>
+            <option value="live">Live</option>
+            <option value="coming soon">Coming Soon</option>
+          </select>
+        </div>
         <button type="submit" disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">{loading ? 'Creating…' : 'Create Prop'}</button>
       </form>
     </div>

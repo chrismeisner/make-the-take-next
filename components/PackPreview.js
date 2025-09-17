@@ -17,7 +17,11 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const [userTakesCount, setUserTakesCount] = useState(pack.userTakesCount || 0);
   // Winner: prefer lookup winnerProfileID, fallback to first packWinner linked record id (if your UI uses it)
   const winnerID = pack.winnerProfileID || null;
+  const winnerPoints = typeof pack.winnerPoints === 'number' ? pack.winnerPoints : null;
   const { openModal } = useModal();
+
+  const [eventScores, setEventScores] = useState({});
+  const [scoresLoading, setScoresLoading] = useState(false);
 
   // Derive sorted, de-duplicated event times (ms) from rollup or single string
   function parseEventTimesToMs(input) {
@@ -68,27 +72,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
     } catch { return NaN; }
   }
 
-  function formatDropDate(ms) {
-    if (!Number.isFinite(ms)) return 'TBD';
-    const d = new Date(ms);
-    const weekday = d.toLocaleDateString(undefined, { weekday: 'long' });
-    const monthIndex = d.getMonth();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-    const month = months[monthIndex] || '';
-    const day = d.getDate();
-    const ordinal = (n) => {
-      const s = ['th', 'st', 'nd', 'rd'];
-      const v = n % 100;
-      return s[(v - 20) % 10] || s[v] || s[0];
-    };
-    const timeStr = d.toLocaleTimeString(undefined, {
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
-      hour12: true,
-    });
-    return `${weekday}, ${month} ${day}${ordinal(day)} at ${timeStr}`;
-  }
+  // Removed formatted date display for coming soon countdown
 
   // Determine which time to count down to on the preview pill
   const statusNorm = String(pack.packStatus || '').toLowerCase();
@@ -113,6 +97,9 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
     }
     if (s === 'closed') {
       return { label: 'Closed', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
+    }
+    if (s === 'live') {
+      return { label: 'Live', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
     }
     if (s === 'completed') {
       return { label: 'Completed', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
@@ -161,6 +148,47 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
       controller.abort();
     };
   }, [session, packID]);
+
+  useEffect(() => {
+    const events = Array.isArray(pack?.events) ? pack.events : [];
+    const targets = events
+      .filter((e) => e && e.espnGameID)
+      .slice(0, 2);
+    if (targets.length === 0) return;
+    let isActive = true;
+    const controller = new AbortController();
+    async function loadScores() {
+      try {
+        setScoresLoading(true);
+        const results = await Promise.all(
+          targets.map(async (evt) => {
+            const league = (evt.league || pack.packLeague || '').toString();
+            if (!league) return [evt.espnGameID, null];
+            const url = `/api/scores?league=${encodeURIComponent(league)}&event=${encodeURIComponent(evt.espnGameID)}`;
+            const res = await fetch(url, { signal: controller.signal });
+            if (!res.ok) return [evt.espnGameID, null];
+            const json = await res.json();
+            if (!json?.success) return [evt.espnGameID, null];
+            return [evt.espnGameID, json];
+          })
+        );
+        if (!isActive) return;
+        const map = {};
+        for (const [id, data] of results) {
+          map[id] = data;
+        }
+        setEventScores(map);
+      } catch (_) {
+      } finally {
+        if (isActive) setScoresLoading(false);
+      }
+    }
+    loadScores();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [pack?.events, pack?.packLeague]);
 
   // Determine target href safely
   const hasValidSuperProp = Boolean(
@@ -212,6 +240,33 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					<span>{pack.packPrize}</span>
 				</div>
 			)}
+			{(() => {
+				const displayEvents = (Array.isArray(pack?.events) ? pack.events.filter(e => e && e.espnGameID) : []).slice(0, 2);
+				if (displayEvents.length === 0) return null;
+				return (
+					<div className="mt-2 text-xs md:text-sm text-gray-800">
+						{displayEvents.map((evt, idx) => {
+							const data = evt?.espnGameID ? eventScores[evt.espnGameID] : null;
+							const home = data?.home; const away = data?.away; const st = data?.status;
+							return (
+								<div key={`${evt.id || evt.espnGameID || idx}`} className="flex items-center gap-2">
+									<span className="text-gray-600">{(evt.league || '').toUpperCase()}</span>
+									{home && away ? (
+										<span>
+											{away.abbreviation || away.name} {away.score}
+											<span className="mx-1">@</span>
+											{home.abbreviation || home.name} {home.score}
+											{st?.shortDetail ? <span className="ml-2 text-gray-600">{st.shortDetail}</span> : null}
+										</span>
+									) : (
+										<span className="text-gray-600">Fetching score…</span>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				);
+			})()}
 			{isOpenLike && propsCount > 0 && (
 				<div className="mt-1 text-xs md:text-sm text-gray-700">
 					{propsCount} {propsCount === 1 ? 'Prop Available' : 'Props Available'}
@@ -225,13 +280,15 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			{!isOpenLike && isComingSoon && (
 				<div className="mt-1 text-sm text-gray-700">
 					{(() => {
-						const dropMs = Number.isFinite(earliestEventMs)
-							? earliestEventMs
-							: (pack.packOpenTime ? new Date(pack.packOpenTime).getTime() : NaN);
+						const closeMs = Number.isFinite(packCloseMs) ? packCloseMs : NaN;
+						const dropMs = Number.isFinite(closeMs)
+							? closeMs
+							: (Number.isFinite(earliestEventMs)
+								? earliestEventMs
+								: (pack.packOpenTime ? new Date(pack.packOpenTime).getTime() : NaN));
 						return (
 							<>
-								<div><span>⏳ </span><Countdown targetTime={dropMs} prefix="Starts in" /></div>
-								<div>{`🗓️ ${formatDropDate(dropMs)}`}</div>
+								<div><span>⏰ </span><Countdown targetTime={dropMs} /></div>
 							</>
 						);
 					})()}
@@ -261,7 +318,12 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 				</div>
 			)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">
-				{pack.packStatus === "graded" && winnerID && (<p>Winner: @{winnerID}</p>)}
+				{pack.packStatus === "graded" && winnerID && (
+					<p>
+						Winner: @{winnerID}
+						{Number.isFinite(winnerPoints) ? ` • ${winnerPoints} pts` : ''}
+					</p>
+				)}
 			</div>
 		</div>
 	  </div>

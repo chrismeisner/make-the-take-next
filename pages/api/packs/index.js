@@ -39,11 +39,36 @@ async function handler(req, res) {
                   p.event_id,
                   e.event_time,
                   e.title AS event_title
-             FROM packs p
-             LEFT JOIN events e ON e.id = p.event_id
-            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','graded','coming-soon','draft') OR p.pack_status IS NULL
+           FROM packs p
+           LEFT JOIN events e ON e.id = p.event_id
+            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','graded','coming-soon','draft','live') OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT CASE WHEN $2::boolean = TRUE THEN 500 ELSE 80 END
+         ),
+         events_for_pack AS (
+           SELECT sp.id AS pack_id,
+                  json_agg(
+                    json_build_object(
+                      'id', e.id::text,
+                      'espnGameID', e.espn_game_id,
+                      'league', e.league,
+                      'title', e.title,
+                      'eventTime', COALESCE(e.event_time::text, NULL)
+                    )
+                    ORDER BY e.event_time ASC NULLS LAST
+                  ) AS events
+             FROM selected_packs sp
+             LEFT JOIN (
+               SELECT DISTINCT pe.pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+                 FROM packs_events pe
+                 JOIN events e ON e.id = pe.event_id
+               UNION
+               SELECT DISTINCT p.id AS pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+                 FROM packs p
+                 JOIN events e ON e.id = p.event_id
+             ) ev ON ev.pack_id = sp.id
+             LEFT JOIN events e ON e.id = ev.id
+            GROUP BY sp.id
          ),
          takes_agg AS (
            SELECT t.pack_id,
@@ -61,6 +86,39 @@ async function handler(req, res) {
              FROM props p
              JOIN selected_packs sp ON sp.id = p.pack_id
             GROUP BY p.pack_id
+         ),
+         -- Compute top taker (by points) for each graded pack
+         latest_takes AS (
+           SELECT t.*
+             FROM takes t
+             JOIN selected_packs sp ON sp.id = t.pack_id
+            WHERE t.take_status = 'latest'
+         ),
+         take_points AS (
+           SELECT lt.pack_id,
+                  lt.take_mobile,
+                  SUM(
+                    CASE
+                      WHEN pr.prop_status IN ('gradedA','gradedB') THEN
+                        CASE
+                          WHEN pr.prop_status = 'gradedA' AND lt.prop_side = 'A' THEN COALESCE(pr.prop_side_a_value, 1)
+                          WHEN pr.prop_status = 'gradedB' AND lt.prop_side = 'B' THEN COALESCE(pr.prop_side_b_value, 1)
+                          ELSE 0
+                        END
+                      WHEN pr.prop_status = 'push' THEN 100
+                      ELSE 0
+                    END
+                  )::int AS points
+             FROM latest_takes lt
+             JOIN props pr ON pr.id = lt.prop_id
+            GROUP BY lt.pack_id, lt.take_mobile
+         ),
+         top_taker AS (
+           SELECT tp.pack_id,
+                  tp.take_mobile,
+                  tp.points,
+                  ROW_NUMBER() OVER (PARTITION BY tp.pack_id ORDER BY tp.points DESC NULLS LAST) AS rn
+             FROM take_points tp
          )
          SELECT sp.id,
                 sp.pack_id,
@@ -77,12 +135,19 @@ async function handler(req, res) {
                 sp.event_id,
                 sp.event_time::text AS event_time,
                 sp.event_title,
+               efp.events AS events,
                 COALESCE(pa.props_count, 0) AS props_count,
                 COALESCE(ta.total_count, 0) AS total_take_count,
-                COALESCE(ta.user_count, 0) AS user_take_count
+                COALESCE(ta.user_count, 0) AS user_take_count,
+                CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN tp.points ELSE NULL END AS winner_points,
+                CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN prf.profile_id ELSE NULL END AS winner_profile_id
            FROM selected_packs sp
            LEFT JOIN props_agg pa ON pa.pack_id = sp.id
-           LEFT JOIN takes_agg ta ON ta.pack_id = sp.id`,
+           LEFT JOIN takes_agg ta ON ta.pack_id = sp.id
+           LEFT JOIN top_taker tt ON tt.pack_id = sp.id AND tt.rn = 1
+           LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
+           LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
+           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id`,
         [userPhone, includeAll]
       );
 
@@ -107,10 +172,20 @@ async function handler(req, res) {
         firstPlace: "",
         createdAt: toIso(r.created_at) || null,
         propsCount: Number(r.props_count || 0),
-        winnerProfileID: null,
+        winnerProfileID: r.winner_profile_id || null,
+        winnerPoints: (r.winner_points == null ? null : Number(r.winner_points)),
         packWinnerRecordIds: [],
         takeCount: Number(r.total_take_count || 0),
         userTakesCount: Number(r.user_take_count || 0),
+        events: Array.isArray(r.events)
+          ? r.events.map((e) => ({
+              id: e.id || null,
+              espnGameID: e.espnGameID || null,
+              league: e.league || null,
+              title: e.title || null,
+              eventTime: toIso(e.eventTime) || null,
+            }))
+          : [],
       }));
 
       // Readable, emoji-enhanced summary for terminal
@@ -120,6 +195,7 @@ async function handler(req, res) {
           if (v === 'open' || v === 'active') return '🟢 open';
           if (v === 'coming-soon' || v === 'coming-up') return '🟠 coming-soon';
           if (v === 'closed') return '🔴 closed';
+          if (v === 'live') return '🟣 live';
           if (v === 'completed') return '⚫ completed';
           if (v === 'graded') return '🔵 graded';
           return '⚪ unknown';
@@ -140,6 +216,39 @@ async function handler(req, res) {
           console.log(`  👥 takes: ${p.takeCount ?? 0} total, ${p.userTakesCount ?? 0} you`);
           console.log(`  🕒 window: ${fmt(p.packOpenTime)} → ${fmt(p.packCloseTime)}`);
           console.log(`  🖼️ cover: ${yesNo(!!coverUrl)}`);
+          try {
+            const toPathLeague = (lg) => {
+              const v = String(lg || '').toLowerCase();
+              switch (v) {
+                case 'mlb': return 'baseball/mlb';
+                case 'nba': return 'basketball/nba';
+                case 'nfl': return 'football/nfl';
+                case 'nhl': return 'hockey/nhl';
+                case 'ncaam': return 'basketball/mens-college-basketball';
+                case 'ncaaw': return 'basketball/womens-college-basketball';
+                case 'ncaaf': return 'football/college-football';
+                default: return `baseball/${v}`;
+              }
+            };
+            const events = Array.isArray(p?.events) ? p.events : [];
+            if (events.length > 0) {
+              console.log('  🎯 events:');
+              events.forEach((ev) => {
+                const espnId = ev?.espnGameID || ev?.espn || ev?.id || '';
+                const league = ev?.league || p?.packLeague || '';
+                if (!espnId || !league) {
+                  console.log('    - (missing league or espn id)');
+                  return;
+                }
+                const pathLeague = toPathLeague(league);
+                const localUrl = `/api/scores?league=${league}&event=${espnId}`;
+                const espnSummary = `https://site.api.espn.com/apis/site/v2/sports/${pathLeague}/summary?event=${espnId}`;
+                console.log(`    - getting the espn id: ${espnId} (${league})`);
+                console.log(`      ↳ local: ${localUrl}`);
+                console.log(`      ↳ espn:  ${espnSummary}`);
+              });
+            }
+          } catch {}
         });
       } catch (logErr) {
         console.warn('[api/packs PG] pretty log failed =>', logErr?.message || logErr);
@@ -153,7 +262,54 @@ async function handler(req, res) {
   }
  
   if (req.method === "DELETE") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
+    try {
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+      if (!token) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+      const ident = String(
+        req.query.packId ||
+          req.query.packURL ||
+          (req.body && (req.body.packId || req.body.packURL)) ||
+          ""
+      ).trim();
+      if (!ident) {
+        return res.status(400).json({ success: false, error: "Missing packId or packURL" });
+      }
+
+      // Resolve to canonical UUID id
+      const { rows: pRows } = await query(
+        `SELECT id FROM packs WHERE id::text = $1 OR pack_id = $1 OR pack_url = $1 LIMIT 1`,
+        [ident]
+      );
+      if (!pRows || pRows.length === 0) {
+        return res.status(404).json({ success: false, error: "Pack not found" });
+      }
+      const packUUID = pRows[0].id;
+
+      // Perform deletions in a transaction to avoid FK violations
+      await query('BEGIN');
+      try {
+        // Delete takes tied to this pack or any props in this pack
+        await query(
+          `DELETE FROM takes WHERE pack_id = $1 OR prop_id IN (SELECT id FROM props WHERE pack_id = $1)`,
+          [packUUID]
+        );
+        // Delete props belonging to this pack
+        await query(`DELETE FROM props WHERE pack_id = $1`, [packUUID]);
+        // packs_events and contests_packs have ON DELETE CASCADE on pack_id
+        await query(`DELETE FROM packs WHERE id = $1`, [packUUID]);
+        await query('COMMIT');
+      } catch (txErr) {
+        await query('ROLLBACK').catch(() => {});
+        throw txErr;
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("[api/packs DELETE PG] Error =>", error);
+      return res.status(500).json({ success: false, error: "Failed to delete pack" });
+    }
   }
   if (req.method === "PATCH") {
     // Update pack fields

@@ -66,6 +66,8 @@ export default async function handler(req, res) {
 
       const homeAbbrev = String(game?.home || '').toUpperCase();
       const awayAbbrev = String(game?.away || '').toUpperCase();
+      const homeTeamIdUpstream = game?.homeTeamId ? String(game.homeTeamId) : null;
+      const awayTeamIdUpstream = game?.awayTeamId ? String(game.awayTeamId) : null;
       if (!eventTitle || eventTitle === '@') {
         if (awayAbbrev && homeAbbrev) eventTitle = `${awayAbbrev} @ ${homeAbbrev}`;
       }
@@ -73,11 +75,20 @@ export default async function handler(req, res) {
       let homeTeamIdPg = null;
       let awayTeamIdPg = null;
       try {
-        if (homeAbbrev) {
+        // Prefer ESPN team_id match first, then fallback to slug
+        if (homeTeamIdUpstream) {
+          const { rows } = await query('SELECT id FROM teams WHERE team_id = $1 AND UPPER(league) = UPPER($2) LIMIT 1', [homeTeamIdUpstream, eventLeague]);
+          homeTeamIdPg = rows?.[0]?.id || null;
+        }
+        if (!homeTeamIdPg && homeAbbrev) {
           const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [homeAbbrev, eventLeague]);
           homeTeamIdPg = rows?.[0]?.id || null;
         }
-        if (awayAbbrev) {
+        if (awayTeamIdUpstream) {
+          const { rows } = await query('SELECT id FROM teams WHERE team_id = $1 AND UPPER(league) = UPPER($2) LIMIT 1', [awayTeamIdUpstream, eventLeague]);
+          awayTeamIdPg = rows?.[0]?.id || null;
+        }
+        if (!awayTeamIdPg && awayAbbrev) {
           const { rows } = await query('SELECT id FROM teams WHERE UPPER(team_slug) = UPPER($1) AND UPPER(league) = UPPER($2) LIMIT 1', [awayAbbrev, eventLeague]);
           awayTeamIdPg = rows?.[0]?.id || null;
         }
@@ -95,8 +106,9 @@ export default async function handler(req, res) {
                 home_team = COALESCE($5, home_team),
                 away_team = COALESCE($6, away_team),
                 home_team_id = COALESCE($7, home_team_id),
-                away_team_id = COALESCE($8, away_team_id)
-          WHERE event_id = $1`,
+                away_team_id = COALESCE($8, away_team_id),
+                espn_game_id = COALESCE($9, espn_game_id)
+          WHERE event_id = $1 OR espn_game_id = $9`,
         [
           String(eventIdStable),
           eventTitle || null,
@@ -106,6 +118,7 @@ export default async function handler(req, res) {
           awayAbbrev || null,
           homeTeamIdPg,
           awayTeamIdPg,
+          externalId || null,
         ]
       );
       if (!updateRes || updateRes.rowCount === 0) {
@@ -114,7 +127,7 @@ export default async function handler(req, res) {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [
             String(eventIdStable),
-            null,
+            externalId || null,
             eventTitle || null,
             eventLeague,
             eventTime ? new Date(eventTime) : null,

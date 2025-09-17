@@ -137,10 +137,35 @@ export async function getServerSideProps(context) {
                   e.title AS event_title
              FROM packs p
              LEFT JOIN events e ON e.id = p.event_id
-            WHERE p.pack_status IN ('active','graded','coming-soon','draft')
+          WHERE p.pack_status IN ('active','coming-soon','draft','live','closed')
                OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT 80
+         ),
+         events_for_pack AS (
+           SELECT sp.id AS pack_id,
+                  json_agg(
+                    json_build_object(
+                      'id', e.id::text,
+                      'espnGameID', e.espn_game_id,
+                      'league', e.league,
+                      'title', e.title,
+                      'eventTime', COALESCE(e.event_time::text, NULL)
+                    )
+                    ORDER BY e.event_time ASC NULLS LAST
+                  ) AS events
+             FROM selected_packs sp
+             LEFT JOIN (
+               SELECT DISTINCT pe.pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+                 FROM packs_events pe
+                 JOIN events e ON e.id = pe.event_id
+               UNION
+               SELECT DISTINCT p.id AS pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+                 FROM packs p
+                 JOIN events e ON e.id = p.event_id
+             ) ev ON ev.pack_id = sp.id
+             LEFT JOIN events e ON e.id = ev.id
+            GROUP BY sp.id
          ),
          takes_agg AS (
            SELECT t.pack_id,
@@ -158,6 +183,38 @@ export async function getServerSideProps(context) {
              FROM props p
              JOIN selected_packs sp ON sp.id = p.pack_id
             GROUP BY p.pack_id
+         ),
+         latest_takes AS (
+           SELECT t.*
+             FROM takes t
+             JOIN selected_packs sp ON sp.id = t.pack_id
+            WHERE t.take_status = 'latest'
+         ),
+         take_points AS (
+           SELECT lt.pack_id,
+                  lt.take_mobile,
+                  SUM(
+                    CASE
+                      WHEN pr.prop_status IN ('gradedA','gradedB') THEN
+                        CASE
+                          WHEN pr.prop_status = 'gradedA' AND lt.prop_side = 'A' THEN COALESCE(pr.prop_side_a_value, 1)
+                          WHEN pr.prop_status = 'gradedB' AND lt.prop_side = 'B' THEN COALESCE(pr.prop_side_b_value, 1)
+                          ELSE 0
+                        END
+                      WHEN pr.prop_status = 'push' THEN 100
+                      ELSE 0
+                    END
+                  )::int AS points
+             FROM latest_takes lt
+             JOIN props pr ON pr.id = lt.prop_id
+            GROUP BY lt.pack_id, lt.take_mobile
+         ),
+         top_taker AS (
+           SELECT tp.pack_id,
+                  tp.take_mobile,
+                  tp.points,
+                  ROW_NUMBER() OVER (PARTITION BY tp.pack_id ORDER BY tp.points DESC NULLS LAST) AS rn
+             FROM take_points tp
          )
          SELECT sp.id,
                 sp.pack_id,
@@ -174,12 +231,19 @@ export async function getServerSideProps(context) {
                 sp.event_id,
                 sp.event_time::text AS event_time,
                 sp.event_title,
+               efp.events AS events,
                 COALESCE(pa.props_count, 0) AS props_count,
                 COALESCE(ta.total_count, 0) AS total_take_count,
-                COALESCE(ta.user_count, 0) AS user_take_count
+                COALESCE(ta.user_count, 0) AS user_take_count,
+                CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN tp.points ELSE NULL END AS winner_points,
+                CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN prf.profile_id ELSE NULL END AS winner_profile_id
            FROM selected_packs sp
            LEFT JOIN props_agg pa ON pa.pack_id = sp.id
-           LEFT JOIN takes_agg ta ON ta.pack_id = sp.id`,
+           LEFT JOIN takes_agg ta ON ta.pack_id = sp.id
+           LEFT JOIN top_taker tt ON tt.pack_id = sp.id AND tt.rn = 1
+           LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
+           LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
+           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id`,
         [userPhone]
       );
       const toIso = (t) => (t ? new Date(t).toISOString() : null);
@@ -204,10 +268,20 @@ export async function getServerSideProps(context) {
         firstPlace: "",
         createdAt: toIso(r.created_at) || null,
         propsCount: Number(r.props_count || 0),
-        winnerProfileID: null,
+        winnerProfileID: r.winner_profile_id || null,
+        winnerPoints: (r.winner_points == null ? null : Number(r.winner_points)),
         packWinnerRecordIds: [],
         takeCount: Number(r.total_take_count || 0),
         userTakesCount: Number(r.user_count || 0),
+        events: Array.isArray(r.events)
+          ? r.events.map((e) => ({
+              id: e.id || null,
+              espnGameID: e.espnGameID || null,
+              league: e.league || null,
+              title: e.title || null,
+              eventTime: toIso(e.eventTime) || null,
+            }))
+          : [],
       }));
     } else {
       // Fallback to API fetch (Airtable mode)
@@ -222,13 +296,14 @@ export async function getServerSideProps(context) {
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to load packs");
       allPacks = Array.isArray(data.packs) ? data.packs : [];
     }
-    // Include active, coming soon, closed, graded on homepage
+    // Include active, live, coming soon, closed on homepage (hide graded)
     try {
       const statusEmoji = (s) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '-');
         if (v === 'open' || v === 'active') return '🟢 open';
         if (v === 'coming-soon' || v === 'coming-up') return '🟠 coming-soon';
         if (v === 'closed') return '🔴 closed';
+        if (v === 'live') return '🟣 live';
         if (v === 'completed') return '⚫ completed';
         if (v === 'graded') return '🔵 graded';
         return '⚪ unknown';
@@ -250,6 +325,39 @@ export async function getServerSideProps(context) {
         console.log(`  👥 takes: ${p.takeCount ?? 0} total, ${p.userTakesCount ?? 0} you`);
         console.log(`  🕒 window: ${fmtTime(p.packOpenTime)} → ${fmtTime(p.packCloseTime)}`);
         console.log(`  🖼️ cover: ${yesNo(!!coverUrl)}`);
+        try {
+          const toPathLeague = (lg) => {
+            const v = String(lg || '').toLowerCase();
+            switch (v) {
+              case 'mlb': return 'baseball/mlb';
+              case 'nba': return 'basketball/nba';
+              case 'nfl': return 'football/nfl';
+              case 'nhl': return 'hockey/nhl';
+              case 'ncaam': return 'basketball/mens-college-basketball';
+              case 'ncaaw': return 'basketball/womens-college-basketball';
+              case 'ncaaf': return 'football/college-football';
+              default: return `baseball/${v}`;
+            }
+          };
+          const events = Array.isArray(p?.events) ? p.events : [];
+          if (events.length > 0) {
+            console.log('  🎯 events:');
+            events.forEach((ev) => {
+              const espnId = ev?.espnGameID || ev?.espn || ev?.id || '';
+              const league = ev?.league || p?.packLeague || '';
+              if (!espnId || !league) {
+                console.log('    - (missing league or espn id)');
+                return;
+              }
+              const pathLeague = toPathLeague(league);
+              const localUrl = `/api/scores?league=${league}&event=${espnId}`;
+              const espnSummary = `https://site.api.espn.com/apis/site/v2/sports/${pathLeague}/summary?event=${espnId}`;
+              console.log(`    - getting the espn id: ${espnId} (${league})`);
+              console.log(`      ↳ local: ${localUrl}`);
+              console.log(`      ↳ espn:  ${espnSummary}`);
+            });
+          }
+        } catch {}
       });
     } catch (e) {
       console.warn('[HomePage GSSP] summarize packs failed =>', e?.message || e);
@@ -260,10 +368,10 @@ export async function getServerSideProps(context) {
       return (
         s === 'active' ||
         s === 'open' ||
+        s === 'live' ||
         s === 'coming-soon' ||
         s === 'coming-up' ||
         s === 'closed' ||
-        s === 'graded' ||
         s === ''
       );
     });
@@ -274,7 +382,7 @@ export async function getServerSideProps(context) {
       const s = sRaw.replace(/\s+/g, '-');
       if (s === 'open' || s === 'active') return 0;
       if (s === 'coming-soon' || s === 'coming-up') return 1;
-      if (s === 'closed') return 2;
+      if (s === 'closed' || s === 'live') return 2;
       if (s === 'completed') return 3;
       if (s === 'graded') return 4;
       return 5;
@@ -332,6 +440,39 @@ export async function getServerSideProps(context) {
         console.log(`  👥 takes: ${p.takeCount ?? 0} total, ${p.userTakesCount ?? 0} you`);
         console.log(`  🕒 window: ${fmtTime(p.packOpenTime)} → ${fmtTime(p.packCloseTime)}`);
         console.log(`  🖼️ cover: ${yesNo(!!coverUrl)}`);
+        try {
+          const toPathLeague = (lg) => {
+            const v = String(lg || '').toLowerCase();
+            switch (v) {
+              case 'mlb': return 'baseball/mlb';
+              case 'nba': return 'basketball/nba';
+              case 'nfl': return 'football/nfl';
+              case 'nhl': return 'hockey/nhl';
+              case 'ncaam': return 'basketball/mens-college-basketball';
+              case 'ncaaw': return 'basketball/womens-college-basketball';
+              case 'ncaaf': return 'football/college-football';
+              default: return `baseball/${v}`;
+            }
+          };
+          const events = Array.isArray(p?.events) ? p.events : [];
+          if (events.length > 0) {
+            console.log('  🎯 events:');
+            events.forEach((ev) => {
+              const espnId = ev?.espnGameID || ev?.espn || ev?.id || '';
+              const league = ev?.league || p?.packLeague || '';
+              if (!espnId || !league) {
+                console.log('    - (missing league or espn id)');
+                return;
+              }
+              const pathLeague = toPathLeague(league);
+              const localUrl = `/api/scores?league=${league}&event=${espnId}`;
+              const espnSummary = `https://site.api.espn.com/apis/site/v2/sports/${pathLeague}/summary?event=${espnId}`;
+              console.log(`    - getting the espn id: ${espnId} (${league})`);
+              console.log(`      ↳ local: ${localUrl}`);
+              console.log(`      ↳ espn:  ${espnSummary}`);
+            });
+          }
+        } catch {}
       });
     } catch {}
     return { props: { packsData: sorted } };
