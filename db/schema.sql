@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS props_teams (
   team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
   PRIMARY KEY (prop_id, team_id)
 );
+CREATE INDEX IF NOT EXISTS idx_props_teams_team_prop ON props_teams (team_id, prop_id);
 
 -- Takes
 CREATE TABLE IF NOT EXISTS takes (
@@ -221,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_takes_profile ON takes (profile_id);
 ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_result TEXT;
 -- Store points earned per take (mirrors Airtable takePTS)
 ALTER TABLE takes ADD COLUMN IF NOT EXISTS take_pts NUMERIC;
--- Store tokens earned per take (derived as 20% of take_pts)
+-- Store tokens earned per take (derived as 5% of take_pts)
 ALTER TABLE takes ADD COLUMN IF NOT EXISTS tokens NUMERIC;
 
 -- Contests

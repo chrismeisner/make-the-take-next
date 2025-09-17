@@ -119,7 +119,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Compute user's available token balance based on takes (20% of takePTS) minus exchanges
+    // 2) Compute user's available token balance based on takes (5% of takePTS) minus exchanges
     const profs = await base("Profiles")
       .select({
         filterByFormula: `{profileID} = "${token.profileID}"`,
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
         const formula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
         const takes = await base('Takes').select({ filterByFormula: formula, maxRecords: 5000 }).all();
         const totalPoints = sumTakePoints(takes);
-        tokensEarned = Math.floor(totalPoints * 0.2);
+        tokensEarned = Math.floor(totalPoints * 0.05);
       }
     } catch (_) {
       tokensEarned = 0;

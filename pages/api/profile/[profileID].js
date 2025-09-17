@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
 		  const takes = await base('Takes').select({ filterByFormula, maxRecords: 5000 }).all();
 		  const totalPoints = sumTakePoints(takes);
-		  tokensEarned = Math.floor(totalPoints * 0.2);
+		  tokensEarned = Math.floor(totalPoints * 0.05);
 		}
 		const exchFilter = `{profileID}="${profileID}"`;
 		const exchRecs = await base('Exchanges').select({ filterByFormula: exchFilter, maxRecords: 5000 }).all();
@@ -191,16 +191,32 @@ export default async function handler(req, res) {
 			   t.take_pts,
 			   t.tokens AS take_tokens,
 			   t.pack_id AS take_pack_uuid,
+			   p.prop_short,
 			   p.prop_summary,
 			   p.prop_status,
 			   e.title AS event_title,
 			   e.league AS event_league,
 			   e.espn_game_id,
+			   ht.team_slug AS home_team_slug,
+			   at.team_slug AS away_team_slug,
+			   ht.name AS home_team_name,
+			   at.name AS away_team_name,
+			   pts.prop_team_slugs,
+			   pts.prop_team_names,
 			   pk.pack_id AS pack_id_text,
 			   pk.id AS pack_uuid
 			 FROM takes t
 			 LEFT JOIN props p ON t.prop_id = p.id
 			 LEFT JOIN events e ON p.event_id = e.id
+			 LEFT JOIN teams ht ON e.home_team_id = ht.id
+			 LEFT JOIN teams at ON e.away_team_id = at.id
+			 LEFT JOIN LATERAL (
+			   SELECT ARRAY_AGG(DISTINCT tm.team_slug) AS prop_team_slugs,
+			          ARRAY_AGG(DISTINCT tm.name) AS prop_team_names
+			     FROM props_teams pt
+			     JOIN teams tm ON tm.id = pt.team_id
+			    WHERE pt.prop_id = p.id
+			 ) pts ON TRUE
 			 LEFT JOIN packs pk ON t.pack_id = pk.id
 			 WHERE t.take_mobile = $1 AND t.take_status != 'overwritten'
 			 ORDER BY t.created_at DESC LIMIT 5000`,
@@ -210,11 +226,20 @@ export default async function handler(req, res) {
 		  for (const r of rows) {
 			const packIdForDisplay = r.pack_id_text || r.pack_uuid || null;
 			if (r.pack_uuid) userPackIDs.push(r.pack_uuid);
+			// Build team tags for filtering: prefer explicit prop↔team links, else event home/away
+			const eventTeamSlugs = [r.home_team_slug, r.away_team_slug].filter(Boolean);
+			const eventTeamNames = [r.home_team_name, r.away_team_name].filter(Boolean);
+			const propTeamSlugs = Array.isArray(r.prop_team_slugs) ? r.prop_team_slugs.filter(Boolean) : [];
+			const propTeamNames = Array.isArray(r.prop_team_names) ? r.prop_team_names.filter(Boolean) : [];
+			const chosenSlugs = (propTeamSlugs.length ? propTeamSlugs : eventTeamSlugs).filter(Boolean);
+			const chosenNames = (propTeamNames.length ? propTeamNames : eventTeamNames).filter(Boolean);
 			userTakes.push({
 			  takeID: r.take_id,
 			  propID: r.prop_id_text || '',
 			  propSide: r.prop_side || null,
 			  propTitle: r.prop_summary || '',
+			  propShort: r.prop_short || '',
+			  propSummary: r.prop_summary || '',
 			  subjectTitle: '',
 			  takePopularity: 0,
 			  createdTime: r.created_at ? new Date(r.created_at).toISOString() : null,
@@ -226,11 +251,13 @@ export default async function handler(req, res) {
 			  propStatus: r.prop_status || '',
 			  takeResult: r.take_result || '',
 			  takePTS: Number(r.take_pts) || 0,
-			  takeTokens: (Number(r.take_tokens) || (Number(r.take_pts) || 0) * 0.2),
+			  takeTokens: (Number(r.take_tokens) || (Number(r.take_pts) || 0) * 0.05),
 			  takeHide: false,
 			  takeTitle: r.prop_summary || '',
 			  takeContentImageUrls: [],
 			  packIDs: packIdForDisplay ? [packIdForDisplay] : [],
+			  teamSlugs: Array.from(new Set(chosenSlugs)),
+			  teamNames: Array.from(new Set(chosenNames)),
 			});
 		  }
 		}
@@ -361,7 +388,7 @@ export default async function handler(req, res) {
 		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
 		  const takes = await base('Takes').select({ filterByFormula, maxRecords: 5000 }).all();
 		  const totalPoints = sumTakePoints(takes);
-		  tokensEarned = Math.floor(totalPoints * 0.2);
+		  tokensEarned = Math.floor(totalPoints * 0.05);
 		}
 	  } catch (err) {
 		tokensEarned = 0;

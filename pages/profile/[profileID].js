@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [tokensEarned, setTokensEarned] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
 
   // Fetch the profile data
   useEffect(() => {
@@ -98,6 +99,45 @@ export default function ProfilePage() {
   const packMap = userPacks.reduce((map, pack) => { map[pack.packID] = pack; return map; }, {});
   const totalDecisions = (userStats?.wins || 0) + (userStats?.losses || 0);
   const winningPer = totalDecisions > 0 ? ((userStats.wins / totalDecisions) * 100) : 0;
+
+  // Build team filter options from takes (PG: teamSlugs/teamNames; fallback: parse matchup)
+  const normalizeKey = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const extractMatchupTeams = (matchup) => {
+    if (!matchup || typeof matchup !== 'string') return [];
+    const parts = matchup.split(/\s+vs\.?\s+|\s+@\s+|\s+v\s+/i).map(s => s.trim()).filter(Boolean);
+    return parts.length === 2 ? parts : [];
+  };
+  const teamOptionsMap = new Map();
+  for (const t of userTakes) {
+    const fromSlugs = Array.isArray(t.teamSlugs) ? t.teamSlugs.filter(Boolean) : [];
+    const fromNames = Array.isArray(t.teamNames) ? t.teamNames.filter(Boolean) : [];
+    if (fromSlugs.length || fromNames.length) {
+      for (let i = 0; i < Math.max(fromSlugs.length, fromNames.length); i++) {
+        const slug = fromSlugs[i] || null;
+        const name = fromNames[i] || null;
+        const key = slug ? normalizeKey(slug) : (name ? normalizeKey(name) : null);
+        const label = name || slug || null;
+        if (key && label && !teamOptionsMap.has(key)) teamOptionsMap.set(key, label);
+      }
+    } else if (t.propEventMatchup) {
+      const names = extractMatchupTeams(t.propEventMatchup);
+      for (const name of names) {
+        const key = normalizeKey(name);
+        if (key && name && !teamOptionsMap.has(key)) teamOptionsMap.set(key, name);
+      }
+    }
+  }
+  const teamOptions = Array.from(teamOptionsMap.entries()).map(([key, label]) => ({ key, label }));
+  const filteredTakes = userTakes.filter((t) => {
+    if (!teamFilter) return true;
+    const keys = new Set();
+    if (Array.isArray(t.teamSlugs)) t.teamSlugs.forEach((s) => { if (s) keys.add(normalizeKey(s)); });
+    if (Array.isArray(t.teamNames)) t.teamNames.forEach((n) => { if (n) keys.add(normalizeKey(n)); });
+    if (keys.size === 0 && t.propEventMatchup) {
+      extractMatchupTeams(t.propEventMatchup).forEach((n) => keys.add(normalizeKey(n)));
+    }
+    return keys.has(teamFilter);
+  });
 
   return (
     <PageContainer>
@@ -271,7 +311,24 @@ export default function ProfilePage() {
       
 
       {/* Takes Table */}
-      <h3 className="text-xl font-bold mt-6 mb-2">Your Takes</h3>
+      <div className="mt-6 mb-2 flex items-center justify-between">
+        <h3 className="text-xl font-bold">Your Takes</h3>
+        {teamOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Team</label>
+            <select
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              className="border rounded px-2 py-1 text-sm bg-white"
+            >
+              <option value="">All Teams</option>
+              {teamOptions.map((opt) => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
       {userTakes.length === 0 ? (
         <p>No takes yet.</p>
       ) : (
@@ -289,9 +346,9 @@ export default function ProfilePage() {
               </tr>
             </thead>
             <tbody>
-              {userTakes.map((take) => (
+              {filteredTakes.map((take) => (
                 <tr key={take.takeID}>
-                  <td className="border px-4 py-2">{take.takeTitle || take.propTitle}</td>
+                  <td className="border px-4 py-2">{take.propShort || take.takeTitle || take.propTitle || take.propID}</td>
                   <td className="border px-4 py-2">
                     {take.propLeague && take.propESPN ? (
                       <a
@@ -330,7 +387,7 @@ export default function ProfilePage() {
                     ) : 'N/A'}
                   </td>
                   <td className="border px-4 py-2">{Math.round(take.takePTS)}</td>
-                  <td className="border px-4 py-2">{Math.round(take.takeTokens || (take.takePTS ? take.takePTS * 0.2 : 0))}</td>
+                  <td className="border px-4 py-2">{Math.round(take.takeTokens || (take.takePTS ? take.takePTS * 0.05 : 0))}</td>
                   <td className="border px-4 py-2">
                     {(() => {
                       const result = take.propStatus === 'closed' ? 'Pending' : take.takeResult;

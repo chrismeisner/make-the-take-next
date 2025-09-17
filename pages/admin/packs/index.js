@@ -6,7 +6,7 @@ export default function AdminPacksPage() {
   const { data: session, status } = useSession();
   const [packs, setPacks] = useState([]);
   const [sortOrder, setSortOrder] = useState('desc');
-  const [headerSort, setHeaderSort] = useState(null);
+  const [headerSort, setHeaderSort] = useState({ field: 'packOpenTime', order: 'asc' });
   const [visibleStatuses, setVisibleStatuses] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hideGraded, setHideGraded] = useState(false);
@@ -42,6 +42,19 @@ export default function AdminPacksPage() {
     };
     fetchPacks();
   }, [status]);
+
+  // Initialize default visible statuses once real statuses are loaded
+  // Default: exclude archived and graded from initial selection
+  useEffect(() => {
+    if (visibleStatuses != null) return;
+    const hasRealStatuses = statusOptions.some((s) => String(s).toLowerCase() !== 'live');
+    if (!hasRealStatuses) return;
+    const initial = statusOptions.filter((s) => {
+      const lower = String(s).toLowerCase();
+      return lower !== 'archived' && lower !== 'graded';
+    });
+    setVisibleStatuses(initial);
+  }, [statusOptions, visibleStatuses]);
 
   const refetchPacks = async () => {
     try {

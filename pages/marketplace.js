@@ -136,9 +136,9 @@ export default function MarketplacePage() {
               <div key={item.itemID} className="border rounded shadow-sm bg-white p-4">
                 <h2 className="text-lg font-semibold mb-2">{item.itemName}</h2>
                 <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
-                <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} diamonds</p>
+                <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
                 <p className="text-sm text-gray-700">{item.itemDescription}</p>
-                <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} diamonds</p>
+                <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
                 <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
                 </div>
@@ -166,9 +166,9 @@ export default function MarketplacePage() {
                 <div className="border rounded shadow-sm bg-white p-4">
                   <h2 className="text-lg font-semibold mb-2">{item.itemName}</h2>
                   <p className="text-sm text-gray-600 mb-1"><strong>Brand:</strong> {item.itemBrand}</p>
-                  <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} diamonds</p>
+                  <p className="text-sm text-gray-600 mb-1"><strong>Cost:</strong> {item.itemTokens} tokens</p>
                   <p className="text-sm text-gray-700">{item.itemDescription}</p>
-                  <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} diamonds</p>
+                  <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                     <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
                   </div>

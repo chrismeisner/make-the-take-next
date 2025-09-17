@@ -17,7 +17,7 @@ export default function AdminMarketplacePage() {
     if (status !== 'authenticated') return;
     (async () => {
       try {
-        const res = await fetch('/api/items');
+        const res = await fetch('/api/admin/items');
         const data = await res.json();
         if (data.success) {
           setItems(Array.isArray(data.items) ? data.items : []);
@@ -70,7 +70,7 @@ export default function AdminMarketplacePage() {
     });
   };
 
-  const statusOptions = Array.from(new Set(items.map((i) => i.itemStatus).filter(Boolean))).sort();
+  const statusOptions = Array.from(new Set(items.map((i) => i.itemStatus || 'Hidden').filter(Boolean))).sort();
   const filterOptions = ['all', ...statusOptions];
 
   async function handleDeleteItem(itemID) {
@@ -97,7 +97,10 @@ export default function AdminMarketplacePage() {
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Marketplace Items</h1>
-        <Link href="/marketplace" className="text-blue-600 underline">View Marketplace</Link>
+        <div className="flex items-center gap-3">
+          <Link href="/admin/marketplace/new" className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">New Item</Link>
+          <Link href="/marketplace" className="text-blue-600 underline">View Marketplace</Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-4 mb-4">

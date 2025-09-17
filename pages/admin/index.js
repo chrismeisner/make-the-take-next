@@ -660,6 +660,7 @@ export default function AdminPage({ superAdminSecret }) {
             >
               {closingProps ? "Closing..." : "Close Props"}
             </button>
+            <AwardTokensButton />
           </div>
           {closePropsResult && <p className="mt-2 text-sm">{closePropsResult}</p>}
 
@@ -681,6 +682,59 @@ export default function AdminPage({ superAdminSecret }) {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function AwardTokensButton() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [latestOnly, setLatestOnly] = useState(true);
+  const [dryRun, setDryRun] = useState(true);
+
+  const run = async () => {
+    try { console.log('[Admin] Button pressed: Award Tokens'); } catch {}
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/admin/awardTokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latestOnly, dryRun }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setResult({ success: false, error: e.message });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={run}
+        disabled={running}
+        className="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"
+      >
+        {running ? 'Running…' : (dryRun ? 'Preview Award Tokens' : 'Award Tokens')}
+      </button>
+      <label className="inline-flex items-center gap-1 text-sm text-gray-700">
+        <input type="checkbox" checked={latestOnly} onChange={(e) => setLatestOnly(e.target.checked)} /> Latest only
+      </label>
+      <label className="inline-flex items-center gap-1 text-sm text-gray-700">
+        <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Dry run
+      </label>
+      {result && (
+        <span className="text-sm ml-2">
+          {result.success ? (
+            dryRun ? `Would update ${result.toUpdate} rows.` : `Updated ${result.updatedCount} rows.`
+          ) : (
+            `Error: ${result.error}`
+          )}
+        </span>
+      )}
     </div>
   );
 }

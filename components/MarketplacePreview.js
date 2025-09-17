@@ -1,8 +1,9 @@
 // File: components/MarketplacePreview.js
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
+import { useModal } from '../contexts/ModalContext';
 
 export default function MarketplacePreview({ limit = 6, title = 'Marketplace', variant = 'default', preferFeatured = false }) {
   const [items, setItems] = useState([]);
@@ -10,6 +11,8 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
   const [error, setError] = useState('');
   const { data: session, status } = useSession();
   const [tokenBalance, setTokenBalance] = useState(0);
+  const router = useRouter();
+  const { openModal } = useModal();
 
   useEffect(() => {
     let isMounted = true;
@@ -95,19 +98,36 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
   const Header = () => (
     <div className={isSidebar ? "flex items-center justify-between mb-3" : "flex items-center justify-between mb-4"}>
       <h2 className={isSidebar ? "text-lg font-bold" : "text-xl sm:text-2xl font-bold"}>{title}</h2>
-      <Link href="/marketplace" className="text-sm text-blue-600 underline">View all</Link>
     </div>
   );
 
   function renderCard(item) {
+    const canRedeem = Number(tokenBalance) >= Number(item.itemTokens || 0);
+    const openInfo = () => {
+      const itemPayload = { ...item };
+      openModal('marketplaceInfo', {
+        item: itemPayload,
+        tokenBalance,
+        onGo: () => router.push('/marketplace'),
+      });
+    };
+    const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInfo(); } };
     return (
-      <div key={item.itemID} className="w-full bg-white border rounded shadow-sm p-4 h-full">
+      <div
+        key={item.itemID}
+        className="w-full bg-white border rounded shadow-sm p-4 h-full cursor-pointer hover:shadow"
+        role="button"
+        tabIndex={0}
+        onClick={openInfo}
+        onKeyDown={onKey}
+        aria-label={`View ${item.itemName || 'item'} details`}
+      >
         {item.itemImage ? (
-          <div className="mb-3 w-full aspect-square overflow-hidden rounded border border-gray-200 bg-gray-100">
+          <div className="mb-3 w-full overflow-hidden rounded border border-gray-200 bg-gray-100">
             <img
               src={item.itemImage}
               alt={item.itemName || 'Item image'}
-              className="w-full h-full object-cover"
+              className="w-full h-auto object-contain block"
               loading="lazy"
             />
           </div>
@@ -117,15 +137,22 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
         {item.itemDescription ? (
           <p className="text-sm text-gray-600 mt-1 line-clamp-3">{item.itemDescription}</p>
         ) : null}
-        <div className="mt-3 text-sm text-gray-700"><strong>Cost:</strong> {item.itemTokens} diamonds</div>
-        {session?.user ? (
-          <div className="mt-2">
-            <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} diamonds</p>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
-            </div>
+        <div className="mt-3 text-sm text-gray-700"><strong>Cost:</strong> {item.itemTokens} tokens</div>
+        <div className="mt-2">
+          <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
           </div>
-        ) : null}
+        </div>
+        <div className="mt-3">
+          <div
+            className={`w-full px-3 py-2 rounded text-center text-white ${canRedeem ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300'}`}
+            role="button"
+            aria-disabled={!canRedeem}
+          >
+            Redeem
+          </div>
+        </div>
       </div>
     );
   }

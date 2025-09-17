@@ -29,9 +29,14 @@ export default function LandingPage({ packsData = [] }) {
 
   useEffect(() => {
     try {
-      openModal("welcome", { contestHref: "/" });
+      const profileID = session?.user?.profileID || 'guest';
+      const key = `welcomeShown:${profileID}`;
+      if (typeof window !== 'undefined' && !sessionStorage.getItem(key)) {
+        openModal("welcome", { contestHref: "/" });
+        sessionStorage.setItem(key, '1');
+      }
     } catch (_) {}
-  }, [openModal]);
+  }, [openModal, session?.user?.profileID]);
 
   return (
     <div className="bg-white text-gray-900">
@@ -167,6 +172,38 @@ export async function getServerSideProps(context) {
              LEFT JOIN events e ON e.id = ev.id
             GROUP BY sp.id
          ),
+        teams_for_pack AS (
+          SELECT sp.id AS pack_id,
+                 json_agg(DISTINCT jsonb_build_object(
+                   'slug', t.team_slug,
+                   'name', t.name,
+                   'logoUrl', t.logo_url
+                 )) FILTER (WHERE t.team_slug IS NOT NULL) AS teams
+            FROM selected_packs sp
+            LEFT JOIN (
+              SELECT p.id AS pack_id, e.home_team_id AS team_id
+                FROM packs p
+                JOIN events e ON e.id = p.event_id
+              UNION ALL
+              SELECT p.id AS pack_id, e.away_team_id AS team_id
+                FROM packs p
+                JOIN events e ON e.id = p.event_id
+              UNION ALL
+              SELECT pe.pack_id AS pack_id, e.home_team_id AS team_id
+                FROM packs_events pe
+                JOIN events e ON e.id = pe.event_id
+              UNION ALL
+              SELECT pe.pack_id AS pack_id, e.away_team_id AS team_id
+                FROM packs_events pe
+                JOIN events e ON e.id = pe.event_id
+              UNION ALL
+              SELECT pr.pack_id AS pack_id, pt.team_id
+                FROM props pr
+                JOIN props_teams pt ON pt.prop_id = pr.id
+            ) links ON links.pack_id = sp.id
+            LEFT JOIN teams t ON t.id = links.team_id
+           GROUP BY sp.id
+        ),
          takes_agg AS (
            SELECT t.pack_id,
                   COUNT(*) FILTER (WHERE t.take_status = 'latest')::int AS total_count,
@@ -232,6 +269,7 @@ export async function getServerSideProps(context) {
                 sp.event_time::text AS event_time,
                 sp.event_title,
                efp.events AS events,
+               tfp.teams AS linked_teams,
                 COALESCE(pa.props_count, 0) AS props_count,
                 COALESCE(ta.total_count, 0) AS total_take_count,
                 COALESCE(ta.user_count, 0) AS user_take_count,
@@ -243,7 +281,8 @@ export async function getServerSideProps(context) {
            LEFT JOIN top_taker tt ON tt.pack_id = sp.id AND tt.rn = 1
            LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
            LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
-           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id`,
+           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id
+           LEFT JOIN teams_for_pack tfp ON tfp.pack_id = sp.id`,
         [userPhone]
       );
       const toIso = (t) => (t ? new Date(t).toISOString() : null);
@@ -281,6 +320,13 @@ export async function getServerSideProps(context) {
               title: e.title || null,
               eventTime: toIso(e.eventTime) || null,
             }))
+          : [],
+        linkedTeams: Array.isArray(r.linked_teams)
+          ? r.linked_teams.map((t) => ({
+              slug: t.slug || null,
+              name: t.name || null,
+              logoUrl: t.logoUrl || null,
+            })).filter((t) => t.slug)
           : [],
       }));
     } else {

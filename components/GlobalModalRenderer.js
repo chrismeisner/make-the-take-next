@@ -21,6 +21,7 @@ import GetPackWinnersModal from "./modals/GetPackWinnersModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import ChallengeShareModal from "./modals/ChallengeShareModal";
 import ExchangeConfirmModal from "./modals/ExchangeConfirmModal";
+import MarketplaceInfoModal from "./modals/MarketplaceInfoModal";
 import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
@@ -142,6 +143,19 @@ export default function GlobalModalRenderer() {
           onClose={closeModal}
           item={item}
           onConfirm={onConfirm}
+        />
+      );
+    }
+    case "marketplaceInfo": {
+      const { item, tokenBalance, onGo, onRedeem } = modalConfig.modalProps;
+      return (
+        <MarketplaceInfoModal
+          isOpen={true}
+          onClose={closeModal}
+          item={item}
+          tokenBalance={tokenBalance}
+          onGo={onGo}
+          onRedeem={onRedeem}
         />
       );
     }

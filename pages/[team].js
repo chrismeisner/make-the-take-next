@@ -106,6 +106,61 @@ export async function getServerSideProps({ params }) {
     awayTeamName: r.away_team_name || null,
   }));
 
+  // Apply same visibility and sorting rules as homepage/teamSlug pages
+  const filteredPacks = packsData.filter((p) => {
+    const sRaw = String(p?.packStatus || '').toLowerCase();
+    const s = sRaw.replace(/\s+/g, '-');
+    return (
+      s === 'active' ||
+      s === 'open' ||
+      s === 'live' ||
+      s === 'coming-soon' ||
+      s === 'coming-up' ||
+      s === 'closed' ||
+      s === ''
+    );
+  });
+
+  const statusRank = (p) => {
+    const sRaw = String(p?.packStatus || '').toLowerCase();
+    const s = sRaw.replace(/\s+/g, '-');
+    if (s === 'open' || s === 'active') return 0;
+    if (s === 'coming-soon' || s === 'coming-up') return 1;
+    if (s === 'closed' || s === 'live') return 2;
+    if (s === 'completed') return 3;
+    if (s === 'graded') return 4;
+    return 5;
+  };
+
+  const parseToMs = (val) => {
+    if (val == null) return NaN;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^\d{11,}$/.test(trimmed)) {
+        const n = Number(trimmed);
+        return Number.isFinite(n) ? n : NaN;
+      }
+      const ms = new Date(trimmed).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    }
+    try {
+      const ms = new Date(val).getTime();
+      return Number.isFinite(ms) ? ms : NaN;
+    } catch { return NaN; }
+  };
+
+  const getCloseMs = (p) => {
+    const ms = parseToMs(p?.packCloseTime);
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+  };
+
+  const sortedTeamPacks = filteredPacks.slice().sort((a, b) => {
+    const sr = statusRank(a) - statusRank(b);
+    if (sr !== 0) return sr;
+    return getCloseMs(a) - getCloseMs(b);
+  });
+
   // Build team leaderboard aggregated from takes linked to this team's packs/events/props
   const { rows: lbRows } = await query(
     `WITH filtered_takes AS (
@@ -118,19 +173,9 @@ export async function getServerSideProps({ params }) {
          LEFT JOIN events ev_pk ON ev_pk.id = pk.event_id
          LEFT JOIN events ev_pr ON ev_pr.id = pr.event_id
         WHERE t.take_status = 'latest'
-          AND (
-            (ev_pk.home_team_id = $1 OR ev_pk.away_team_id = $1)
-            OR (ev_pr.home_team_id = $1 OR ev_pr.away_team_id = $1)
-            OR EXISTS (
-              SELECT 1 FROM props_teams pt
-               WHERE pt.prop_id = pr.id AND pt.team_id = $1
-            )
-            OR EXISTS (
-              SELECT 1
-                FROM packs_events pe
-                JOIN events e2 ON e2.id = pe.event_id
-               WHERE pe.pack_id = pk.id AND (e2.home_team_id = $1 OR e2.away_team_id = $1)
-            )
+          AND EXISTS (
+            SELECT 1 FROM props_teams pt
+             WHERE pt.prop_id = pr.id AND pt.team_id = $1
           )
      ),
      agg AS (
@@ -167,32 +212,11 @@ export async function getServerSideProps({ params }) {
     profileID: r.profile_id || null,
   }));
 
-  return { props: { team: teamData, packsData, leaderboard } };
+  return { props: { team: teamData, packsData: sortedTeamPacks, leaderboard } };
 }
 
 export default function TeamRootPage({ team, packsData, leaderboard }) {
   const { openModal } = useModal();
-
-  useEffect(() => {
-    if (!Array.isArray(packsData) || packsData.length === 0) return;
-    const now = Date.now();
-    const active = packsData.find((p) => {
-      const status = (p.packStatus || '').toLowerCase();
-      const openOk = p.packOpenTime ? new Date(p.packOpenTime).getTime() <= now : true;
-      const closeOk = p.packCloseTime ? new Date(p.packCloseTime).getTime() > now : true;
-      const timeWindowActive = openOk && closeOk;
-      const hasProps = (p.propsCount || 0) > 0;
-      return hasProps && (status === 'active' || status === 'open' || timeWindowActive);
-    });
-    if (active) {
-      openModal('packActive', {
-        packTitle: active.packTitle,
-        packURL: active.packURL,
-        coverUrl: Array.isArray(active.packCover) ? active.packCover[0]?.url : (typeof active.packCover === 'string' ? active.packCover : null),
-        packCloseTime: active.packCloseTime || active.eventTime || null,
-      });
-    }
-  }, [packsData, openModal]);
 
   return (
     <div className="bg-white text-gray-900">

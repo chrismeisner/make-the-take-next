@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Countdown from "./Countdown";
@@ -7,6 +8,7 @@ import { useModal } from "../contexts/ModalContext";
 
 export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const { data: session } = useSession();
+  const router = useRouter();
   // Determine a common pack identifier
   const packID = pack.packID || pack.id || pack.airtableId;
 
@@ -226,6 +228,28 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
+			{Array.isArray(pack.linkedTeams) && pack.linkedTeams.length > 0 && (
+				<div className="mt-1 flex flex-wrap gap-1">
+				{Array.from(new Map(pack.linkedTeams.filter(t => t && t.slug).map(t => [t.slug, t])).values())
+						.slice(0, 4)
+						.map((t) => (
+							<span
+								key={t.slug}
+								role="link"
+								tabIndex={0}
+							onClick={(e) => { e.stopPropagation(); router.push(`/${t.slug}`); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); router.push(`/${t.slug}`); } }}
+								className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-gray-300 text-xs text-gray-800 bg-gray-100 hover:bg-gray-200"
+								aria-label={`View team ${t.name || t.slug}`}
+							>
+								{t.logoUrl ? (
+									<img src={t.logoUrl} alt="" className="w-4 h-4 rounded-sm" loading="lazy" />
+								) : null}
+								<span>{(t.name || t.slug).toString()}</span>
+							</span>
+						))}
+					</div>
+				)}
 			<div className="mt-1" />
 			{statusInfo.label && (
 				<div className="mt-1">
@@ -303,18 +327,20 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 
 			{/* Date and status labels removed on request */}
 
-			{isOpenLike && (
+				{isOpenLike && (
 				<div className="mt-3 flex items-center gap-2">
 					<div className={`${primaryBtnBase} ${primaryBtnColor}`}>
 						Play this pack
 					</div>
-					<button
-						type="button"
-						onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); }}
-						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
-					>
-						Share
-					</button>
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); } }}
+							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+						>
+							Share
+						</span>
 				</div>
 			)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">

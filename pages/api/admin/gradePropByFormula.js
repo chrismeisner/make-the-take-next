@@ -237,7 +237,7 @@ export default async function handler(req, res) {
                   WHEN $1 = 'gradedB' THEN CASE WHEN t.prop_side = 'B' THEN COALESCE(p.prop_side_b_value, 1) ELSE 0 END
                   WHEN $1 = 'push' THEN 100
                   ELSE 0
-                END) * 0.2
+                END) * 0.05
              FROM props p
             WHERE t.prop_id = p.id
               AND (p.id::text = $2 OR p.prop_id = $2)
