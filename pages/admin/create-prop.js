@@ -18,7 +18,7 @@ export default function CreatePropUnifiedPage() {
   const [propSideBShort, setPropSideBShort] = useState('');
   const [propSideBTake, setPropSideBTake] = useState('');
   const [propSideBMoneyline, setPropSideBMoneyline] = useState('');
-  const [propStatus, setPropStatus] = useState('draft');
+  const [propStatus, setPropStatus] = useState('open');
   
   // Profit/payout from moneyline with default stake 250
   const profitFromMoneyline = (moneyline, stake = 250) => {
@@ -2702,6 +2702,8 @@ export default function CreatePropUnifiedPage() {
             onChange={(e) => setPropStatus(e.target.value)}
             className="mt-1 block w-full border rounded px-2 py-1"
           >
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
             <option value="draft">Draft</option>
             <option value="live">Live</option>
             <option value="coming soon">Coming Soon</option>

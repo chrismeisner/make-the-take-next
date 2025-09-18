@@ -14,6 +14,8 @@ export default function AdminPackDetail() {
   const [smsDraftRows, setSmsDraftRows] = useState([]);
   const [smsOptions, setSmsOptions] = useState({ includeWinner: true, includeLink: true });
   const [smsTotals, setSmsTotals] = useState({ recipients: 0, segments: 0 });
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (status !== 'authenticated' || !packId) return;
@@ -77,6 +79,36 @@ export default function AdminPackDetail() {
             onClick={() => router.push(`/admin/packs/${pack.airtableId}/edit`)}
           >
             Edit
+          </button>
+          <button
+            className={`px-3 py-2 text-white rounded ${confirmingDelete ? 'bg-red-700 hover:bg-red-700' : 'bg-red-600 hover:bg-red-700'} ${deleting ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={deleting}
+            onClick={async () => {
+              if (!confirmingDelete) {
+                setConfirmingDelete(true);
+                return;
+              }
+              if (deleting) return;
+              setDeleting(true);
+              try {
+                const res = await fetch(`/api/packs?packId=${encodeURIComponent(pack.airtableId)}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data?.success) {
+                  router.push('/admin/packs');
+                } else {
+                  alert(`Delete failed: ${data?.error || res.status}`);
+                  setDeleting(false);
+                  setConfirmingDelete(false);
+                }
+              } catch (e) {
+                console.error('Delete failed:', e);
+                alert('Delete failed. Check console.');
+                setDeleting(false);
+                setConfirmingDelete(false);
+              }
+            }}
+          >
+            {deleting ? 'Deleting...' : (confirmingDelete ? 'Delete?' : 'Delete Pack')}
           </button>
           {String(pack.packStatus || '').toLowerCase() === 'graded' && (
             <button

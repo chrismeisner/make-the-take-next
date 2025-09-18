@@ -58,11 +58,58 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     return isNaN(idx) || idx < 0 ? 0 : idx;
   })();
   const [isClient, setIsClient] = useState(false);
+  // Activity feed local state
+  const [activity, setActivity] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(null);
+  const [activityCursor, setActivityCursor] = useState(null);
   // Total slides include 1 cover + N props
   const totalSlides = 1 + props.length;
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Load activity when the Activity tab is opened first time
+  useEffect(() => {
+    const loadInitial = async () => {
+      if (activeTab !== 'activity') return;
+      if (activity.length > 0 || activityLoading) return;
+      try {
+        setActivityLoading(true);
+        setActivityError(null);
+        const res = await fetch(`/api/packs/${encodeURIComponent(packData.packURL)}/activity?limit=25`);
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load activity');
+        setActivity(Array.isArray(data.items) ? data.items : []);
+        setActivityCursor(data.nextCursor || null);
+      } catch (e) {
+        setActivityError(e.message || 'Failed to load activity');
+      } finally {
+        setActivityLoading(false);
+      }
+    };
+    loadInitial();
+  }, [activeTab, packData.packURL, activity.length, activityLoading]);
+
+  const loadMoreActivity = async () => {
+    if (activityLoading) return;
+    try {
+      setActivityLoading(true);
+      setActivityError(null);
+      const qs = new URLSearchParams();
+      qs.set('limit', '25');
+      if (activityCursor) qs.set('cursor', activityCursor);
+      const res = await fetch(`/api/packs/${encodeURIComponent(packData.packURL)}/activity?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load activity');
+      setActivity(prev => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+      setActivityCursor(data.nextCursor || null);
+    } catch (e) {
+      setActivityError(e.message || 'Failed to load activity');
+    } finally {
+      setActivityLoading(false);
+    }
+  };
   // Challenges UI temporarily removed
   // Add keyboard navigation for desktop: left/right arrows to switch cards
   useEffect(() => {
@@ -349,6 +396,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   >
                     Content
                   </button>
+                  <button
+                    onClick={() => setActiveTab('activity')}
+                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                  >
+                    Activity
+                  </button>
                 </nav>
               </div>
               <div className="pt-4">
@@ -392,6 +445,51 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   ) : (
                     <p className="text-sm text-gray-600">No content yet.</p>
                   )
+                ) : activeTab === 'activity' ? (
+                  <div>
+                    {activityError && (
+                      <div className="text-sm text-red-600 mb-2">{activityError}</div>
+                    )}
+                    {activity.length === 0 && !activityLoading && !activityError && (
+                      <p className="text-sm text-gray-600">No activity yet.</p>
+                    )}
+                    <ul className="space-y-2">
+                      {activity.map((item) => (
+                        <li key={item.takeID} className="text-sm flex items-start justify-between gap-3 border rounded-md bg-white p-3">
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">
+                              {item.profileID || item.phoneMasked || 'Anonymous'}
+                            </div>
+                            <div className="text-gray-700">
+                              took <span className="font-semibold">{item.takeText || `Side ${item.side}`}</span> on <span className="font-semibold">{item.propLabel}</span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(item.createdAt).toLocaleString()}
+                              {item.status === 'overwritten' ? <span className="ml-2 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">updated</span> : null}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {item.result ? (
+                              <span className={`px-2 py-0.5 rounded-full text-xs ${item.result === 'won' ? 'bg-green-100 text-green-800' : item.result === 'lost' ? 'bg-red-100 text-red-800' : item.result === 'pushed' ? 'bg-gray-100 text-gray-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {item.result.charAt(0).toUpperCase() + item.result.slice(1)}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-800">Pending</span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3">
+                      {activityCursor ? (
+                        <button type="button" onClick={loadMoreActivity} className="px-3 py-1.5 rounded bg-gray-200 text-gray-900 text-sm hover:bg-gray-300" disabled={activityLoading}>
+                          {activityLoading ? 'Loading…' : 'Load more'}
+                        </button>
+                      ) : activityLoading ? (
+                        <div className="text-sm text-gray-600">Loading…</div>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : null}
               </div>
             </div>
