@@ -288,7 +288,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 								key={t.slug}
 								role="link"
 								tabIndex={0}
-							onClick={(e) => { e.stopPropagation(); router.push(`/${t.slug}`); }}
+									onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/${t.slug}`); }}
 							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); router.push(`/${t.slug}`); } }}
 								className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-gray-300 text-xs text-gray-800 bg-gray-100 hover:bg-gray-200"
 								aria-label={`View team ${t.name || t.slug}`}
