@@ -320,9 +320,9 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					</div>
 				);
 			})()}
-			{isOpenLike && propsCount > 0 && (
+			{propsCount > 0 && (
 				<div className="mt-1 text-xs md:text-sm text-gray-700">
-					{propsCount} {propsCount === 1 ? 'Prop Available' : 'Props Available'}
+					{propsCount} {propsCount === 1 ? 'Prop' : 'Props'}
 				</div>
 			)}
 				{isOpenLike && (

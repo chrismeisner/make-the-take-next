@@ -9,6 +9,7 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const router = useRouter();
   const profileID = session?.user?.profileID;
   const [challengeUrl, setChallengeUrl] = useState("");
+  const [receiptUrl, setReceiptUrl] = useState("");
 
   // Prepare picks text for sharing
   const picksText = packProps.map((p) => {
@@ -22,6 +23,7 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   useEffect(() => {
     if (receiptId && router.query.packURL) {
       setChallengeUrl(`${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`);
+      setReceiptUrl(`${window.location.origin}/packs/${router.query.packURL}/${receiptId}`);
     }
   }, [receiptId, router.query.packURL]);
 
@@ -88,6 +90,17 @@ const handleShare = async () => {
 		  >
 			Close
 		  </button>
+        {receiptUrl && (
+          <button
+            onClick={() => {
+              onClose();
+              router.push(receiptUrl);
+            }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            View Receipt
+          </button>
+        )}
 		  {profileID && (
 			<button
 			  onClick={handleProfileNavigation}

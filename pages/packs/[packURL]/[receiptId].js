@@ -63,6 +63,7 @@ export async function getServerSideProps(context) {
 export default function PackReceiptPage({ packData, takes, receiptId, origin, profileData }) {
   // build share URL and setup copy state/handlers
   const shareUrl = `${origin}/packs/${packData.packURL}?ref=${receiptId}`;
+  const receiptPageUrl = `${origin}/packs/${packData.packURL}/${receiptId}`;
   
   // Prepare picks text for copying
   const picksText = takes.map((take) => {
@@ -101,6 +102,20 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
       : shareUrl;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try { 
+        await navigator.clipboard.writeText(content);
+      } catch {
+        fallbackCopyTextToClipboard(content);
+      }
+    } else {
+      fallbackCopyTextToClipboard(content);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  const handleCopyReceipt = async () => {
+    const content = receiptPageUrl;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
         await navigator.clipboard.writeText(content);
       } catch {
         fallbackCopyTextToClipboard(content);
@@ -157,8 +172,8 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
         </div>
       )}
       <h1 className="text-2xl font-bold mb-4">Receipt for {packData.packTitle}</h1>
-      <div className="mb-4 break-all flex items-center">
-        <span className="mr-2">Shareable URL:</span>
+      <div className="mb-2 break-all flex items-center flex-wrap gap-2">
+        <span className="mr-2">Challenge URL:</span>
         <a
           href={shareUrl}
           target="_blank"
@@ -189,25 +204,65 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
           Generate QR
         </button>
       </div>
-      <ul className="space-y-4">
-        {takes.map((take) => {
-          const prop = packData.props.find((p) => p.propID === take.propID);
-          return (
-            <li key={take.id} className="border p-2 rounded">
-              <div className="font-semibold">
-                {prop?.propShort || prop?.propTitle || take.propID}
-              </div>
-              <div>
-                Your answer:{' '}
-                <strong>{take.propSide}</strong>
-              </div>
-              <div className="text-sm text-gray-500">
-                {new Date(take.takeTime).toLocaleString()}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="mb-4 break-all flex items-center flex-wrap gap-2">
+        <span className="mr-2">Receipt URL:</span>
+        <a
+          href={receiptPageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline break-all"
+        >{receiptPageUrl}</a>
+        <button
+          type="button"
+          onClick={handleCopyReceipt}
+          className="ml-2 px-3 py-1 bg-blue-600 text-white text-sm rounded"
+        >
+          {copied ? 'Copied!' : 'Copy Link'}
+        </button>
+        <button
+          type="button"
+          onClick={() => openModal('qrCode', { url: receiptPageUrl })}
+          className="ml-2 px-3 py-1 bg-gray-700 text-white text-sm rounded"
+        >
+          Generate QR
+        </button>
+      </div>
+      {takes.length === 0 ? (
+        <div className="border rounded p-4 bg-yellow-50 text-yellow-900">No takes found for this receipt.</div>
+      ) : (
+        <ul className="space-y-4">
+          {takes.map((take) => {
+            const prop = packData.props.find((p) => p.propID === take.propID);
+            const sideLabel = take.propSide === 'A'
+              ? (prop?.PropSideAShort || 'A')
+              : (prop?.PropSideBShort || 'B');
+            const status = prop?.propStatus || '';
+            const result = prop?.propResult || '';
+            return (
+              <li key={take.id} className="border p-2 rounded">
+                <div className="font-semibold">
+                  {prop?.propShort || prop?.propTitle || take.propID}
+                </div>
+                <div>
+                  Your answer: <strong>{sideLabel}</strong>
+                  {take.propSide && sideLabel && sideLabel !== take.propSide ? (
+                    <span className="ml-1 text-xs text-gray-500">({take.propSide})</span>
+                  ) : null}
+                </div>
+                <div className="text-sm text-gray-500">
+                  {new Date(take.takeTime).toLocaleString()}
+                </div>
+                {(status || result) && (
+                  <div className="text-sm text-gray-700 mt-1">
+                    Status: <span className="font-medium">{status || '—'}</span>
+                    {result ? <span className="ml-2 text-gray-600">• {result}</span> : null}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </PageContainer>
   );
 } 

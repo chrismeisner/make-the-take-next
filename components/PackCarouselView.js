@@ -63,6 +63,8 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(null);
   const [activityCursor, setActivityCursor] = useState(null);
+  const [resolvingReceiptFor, setResolvingReceiptFor] = useState(null);
+  const [receiptError, setReceiptError] = useState(null);
   // Total slides include 1 cover + N props
   const totalSlides = 1 + props.length;
   useEffect(() => {
@@ -108,6 +110,26 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       setActivityError(e.message || 'Failed to load activity');
     } finally {
       setActivityLoading(false);
+    }
+  };
+
+  const handleViewReceipt = async (profileID) => {
+    if (!profileID) return;
+    try {
+      setReceiptError(null);
+      setResolvingReceiptFor(profileID);
+      const qs = new URLSearchParams({ packURL: packData.packURL, profileID });
+      const res = await fetch(`/api/receipts/resolve?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.receiptId) {
+        throw new Error(data?.error || 'Could not resolve receipt');
+      }
+      const href = `/packs/${encodeURIComponent(packData.packURL)}/${encodeURIComponent(data.receiptId)}`;
+      window.location.href = href;
+    } catch (e) {
+      setReceiptError(e.message || 'Failed to open receipt');
+    } finally {
+      setResolvingReceiptFor(null);
     }
   };
   // Challenges UI temporarily removed
@@ -466,9 +488,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                             <div className="text-xs text-gray-500">
                               {new Date(item.createdAt).toLocaleString()}
                               {item.status === 'overwritten' ? <span className="ml-2 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">updated</span> : null}
+                              {receiptError && resolvingReceiptFor === null ? (
+                                <span className="ml-2 text-red-600">{receiptError}</span>
+                              ) : null}
                             </div>
                           </div>
-                          <div className="flex-shrink-0">
+                          <div className="flex-shrink-0 flex flex-col items-end gap-2">
                             {item.result ? (
                               <span className={`px-2 py-0.5 rounded-full text-xs ${item.result === 'won' ? 'bg-green-100 text-green-800' : item.result === 'lost' ? 'bg-red-100 text-red-800' : item.result === 'pushed' ? 'bg-gray-100 text-gray-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                 {item.result.charAt(0).toUpperCase() + item.result.slice(1)}
@@ -476,6 +501,16 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-800">Pending</span>
                             )}
+                            {item.profileID ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewReceipt(item.profileID)}
+                                disabled={resolvingReceiptFor === item.profileID}
+                                className={`text-xs underline ${resolvingReceiptFor === item.profileID ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800'}`}
+                              >
+                                {resolvingReceiptFor === item.profileID ? 'Opening…' : 'View receipt'}
+                              </button>
+                            ) : null}
                           </div>
                         </li>
                       ))}

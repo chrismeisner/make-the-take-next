@@ -136,7 +136,7 @@ async function run() {
       }
     }
 
-    async function promoteLivePacksToPendingGrade() {
+    async function findLivePacksReadyForGrading() {
       // Find packs that are live and have one or more linked events with espn ids
       const sql = `
         WITH live_packs AS (
@@ -168,7 +168,7 @@ async function run() {
       `;
       const { rows } = await query(sql);
       if (!rows || rows.length === 0) {
-        return { updated: [], checkedPacks: 0 };
+        return { readyPackIds: [], byPackSize: 0 };
       }
 
       // Group events by pack
@@ -185,7 +185,6 @@ async function run() {
       // Fetch ESPN status for each pack's events
       const packsReady = [];
       const entries = Array.from(byPack.entries());
-      // Concurrency control
       const concurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
       let idx = 0;
       async function worker() {
@@ -197,34 +196,128 @@ async function run() {
             info.events.map(ev => fetchEspnGameCompleted(ev.league, ev.espn_game_id))
           );
           const allKnown = checks.filter(Boolean);
-          // If we couldn't fetch any statuses, skip this pack for now
           if (allKnown.length === 0) continue;
           const allCompleted = allKnown.length === info.events.length && allKnown.every(s => s.completed === true);
-          if (allCompleted) packsReady.push(packId);
+          if (allCompleted) packsReady.push({ id: packId, packUrl: info.packUrl });
         }
       }
       const workers = [];
       for (let i = 0; i < concurrency; i++) workers.push(worker());
       await Promise.all(workers);
 
-      // Update all ready packs in a single statement
-      const uniqueIds = Array.from(new Set(packsReady));
-      if (uniqueIds.length === 0) return { updated: [], checkedPacks: byPack.size };
-      const { rows: updated } = await query(
-        `UPDATE packs
-            SET pack_status = 'pending-grade'
-          WHERE id = ANY($1::uuid[])
-            AND LOWER(COALESCE(pack_status, '')) = 'live'
-        RETURNING id, pack_url`,
-        [uniqueIds]
-      );
-      return { updated, checkedPacks: byPack.size };
+      const unique = [];
+      const seen = new Set();
+      for (const p of packsReady) {
+        if (seen.has(p.id)) continue; seen.add(p.id); unique.push(p);
+      }
+      return { readyPackIds: unique, byPackSize: byPack.size };
     }
 
-    const liveToPendingStart = Date.now();
-    const { updated: pendingRows, checkedPacks } = await promoteLivePacksToPendingGrade();
-    const liveToPendingMs = Date.now() - liveToPendingStart;
-    console.log('🟠 [pack-status] PENDING-GRADE (from live)', { durationMs: liveToPendingMs, checkedPacks, promotedCount: (pendingRows || []).length, sample: (pendingRows || []).slice(0, 10).map(r => r.pack_url) });
+    async function gradeAutoPropsForPack(pack) {
+      const baseUrl = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const httpConcurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
+      const packId = typeof pack === 'string' ? pack : pack.id;
+      const packUrl = typeof pack === 'string' ? undefined : pack.packUrl;
+
+      // Load props for this pack
+      const { rows: props } = await query(
+        `SELECT id::text AS id, prop_status, grading_mode, formula_key
+           FROM props
+          WHERE pack_id = $1`,
+        [packId]
+      );
+      const targets = (props || []).filter((p) => {
+        const mode = String(p.grading_mode || '').toLowerCase();
+        const status = String(p.prop_status || '').toLowerCase();
+        const isTerminal = status === 'gradeda' || status === 'gradedb' || status === 'push';
+        return mode === 'auto' && !isTerminal;
+      });
+
+      let propsGraded = 0;
+      let idx = 0;
+      async function worker() {
+        while (true) {
+          const current = idx++;
+          if (current >= targets.length) break;
+          const prop = targets[current];
+          try {
+            const resp = await fetch(`${baseUrl}/api/admin/gradePropByFormula`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({ airtableId: prop.id, dryRun: false }),
+            });
+            let json = null; try { json = await resp.json(); } catch {}
+            if (resp.ok && json && json.success) propsGraded++;
+          } catch {}
+        }
+      }
+      const workers = []; for (let i = 0; i < httpConcurrency; i++) workers.push(worker());
+      await Promise.all(workers);
+
+      // Check remaining ungraded props
+      const { rows: counts } = await query(
+        `SELECT COUNT(*) FILTER (WHERE LOWER(COALESCE(prop_status,'')) NOT IN ('gradeda','gradedb','push'))::int AS ungraded
+           FROM props
+          WHERE pack_id = $1`,
+        [packId]
+      );
+      const ungraded = counts && counts[0] ? Number(counts[0].ungraded) : NaN;
+      return { packId, packUrl, propsConsidered: targets.length, propsGraded, ungraded: Number.isFinite(ungraded) ? ungraded : null };
+    }
+
+    async function processLiveReadyPacks() {
+      const started = Date.now();
+      const { readyPackIds, byPackSize } = await findLivePacksReadyForGrading();
+      if (!readyPackIds || readyPackIds.length === 0) {
+        console.log('🟠 [pack-status] LIVE→GRADE scan (none ready)', { checkedPacks: byPackSize });
+        return { checkedPacks: byPackSize, immediateGraded: [], immediatePending: [], propsGraded: 0 };
+      }
+
+      // Concurrency control for packs
+      const packConcurrency = Math.max(2, Math.min(4, Number.parseInt(process.env.CRON_PACK_CONCURRENCY || '3', 10)));
+      let idx = 0;
+      const results = [];
+      async function worker() {
+        while (true) {
+          const current = idx++;
+          if (current >= readyPackIds.length) break;
+          const pack = readyPackIds[current];
+          const res = await gradeAutoPropsForPack(pack);
+          results.push(res);
+        }
+      }
+      const workers = []; for (let i = 0; i < packConcurrency; i++) workers.push(worker());
+      await Promise.all(workers);
+
+      // Split by final state and update in batches
+      const toGraded = results.filter(r => (r.ungraded === 0)).map(r => r.packId);
+      const toPending = results.filter(r => (r.ungraded > 0)).map(r => r.packId);
+      if (toGraded.length > 0) {
+        await query(`UPDATE packs SET pack_status = 'graded' WHERE id = ANY($1::uuid[]) AND LOWER(COALESCE(pack_status,'')) IN ('live','pending-grade')`, [toGraded]);
+      }
+      if (toPending.length > 0) {
+        await query(`UPDATE packs SET pack_status = 'pending-grade' WHERE id = ANY($1::uuid[]) AND LOWER(COALESCE(pack_status,'')) = 'live'`, [toPending]);
+      }
+
+      const elapsed = Date.now() - started;
+      const propsGraded = results.reduce((acc, r) => acc + (r.propsGraded || 0), 0);
+      console.log('🧪 [pack-status] LIVE ready → graded/pending', {
+        durationMs: elapsed,
+        checkedPacks: byPackSize,
+        readyCount: readyPackIds.length,
+        immediateGradedCount: toGraded.length,
+        immediatePendingCount: toPending.length,
+        propsGraded,
+        sampleGraded: results.filter(r => r.ungraded === 0).slice(0, 5).map(r => r.packUrl).filter(Boolean),
+        samplePending: results.filter(r => r.ungraded > 0).slice(0, 5).map(r => r.packUrl).filter(Boolean),
+      });
+      return { checkedPacks: byPackSize, immediateGraded: toGraded, immediatePending: toPending, propsGraded };
+    }
+
+    const liveProcessStart = Date.now();
+    const liveAgg = await processLiveReadyPacks();
+    const liveProcessMs = Date.now() - liveProcessStart;
+    console.log('🟠 [pack-status] LIVE processed for immediate grading', { durationMs: liveProcessMs, ...liveAgg });
 
     // Step 4: For packs in pending-grade, auto-grade their auto props via API
     async function gradePropsForPendingPacks() {
@@ -339,7 +432,17 @@ async function run() {
     const gradeMs = Date.now() - gradeStart;
     console.log('🟣 [pack-status] GRADED (from closed)', { durationMs: gradeMs, gradedCount: graded.length, sample: graded.slice(0, 10).map(r => r.pack_url) });
 
-    console.log('✅ [pack-status] DONE', { propsClosed: (propsClosed || []).length, openedToOpen: opened.length, openToLive: closed.length, liveToPending: (pendingRows || []).length, closedToGraded: graded.length, totalDurationMs: propCloseMs + openMs + closeMs + liveToPendingMs + gradeMs });
+    console.log('✅ [pack-status] DONE', {
+      propsClosed: (propsClosed || []).length,
+      openedToOpen: opened.length,
+      openToLive: closed.length,
+      liveImmediateGraded: (liveAgg?.immediateGraded || []).length,
+      liveImmediatePending: (liveAgg?.immediatePending || []).length,
+      pendingPacksScanned: agg?.packsScanned || 0,
+      pendingPropsGraded: agg?.propsGraded || 0,
+      closedToGraded: graded.length,
+      totalDurationMs: propCloseMs + openMs + closeMs + liveProcessMs + gradeMs
+    });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;
