@@ -92,7 +92,24 @@ async function run() {
     const closeMs = Date.now() - closeStart;
     console.log('🔴 [pack-status] LIVE (from open)', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
 
-    console.log('✅ [pack-status] DONE', { openedToOpen: opened.length, openToLive: closed.length, totalDurationMs: openMs + closeMs });
+    // Step 3: closed → graded when no props remain open for the pack
+    const gradeSql = `
+      UPDATE packs p
+         SET pack_status = 'graded'
+       WHERE LOWER(COALESCE(p.pack_status, '')) = 'closed'
+         AND NOT EXISTS (
+               SELECT 1 FROM props pr
+                WHERE pr.pack_id = p.id
+                  AND LOWER(COALESCE(pr.prop_status, '')) = 'open'
+             )
+      RETURNING p.id, p.pack_url`;
+
+    const gradeStart = Date.now();
+    const { rows: graded } = await query(gradeSql);
+    const gradeMs = Date.now() - gradeStart;
+    console.log('🟣 [pack-status] GRADED (from closed)', { durationMs: gradeMs, gradedCount: graded.length, sample: graded.slice(0, 10).map(r => r.pack_url) });
+
+    console.log('✅ [pack-status] DONE', { openedToOpen: opened.length, openToLive: closed.length, closedToGraded: graded.length, totalDurationMs: openMs + closeMs + gradeMs });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;
