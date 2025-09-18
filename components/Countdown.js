@@ -16,8 +16,16 @@ export default function Countdown({ targetTime, prefix = '', showSeconds = true 
     return <span suppressHydrationWarning />;
   }
 
-  const parts = [`${days}d`, `${hours}h`, `${minutes}m`];
-  if (showSeconds) parts.push(`${seconds}s`);
+  // If more than a day away, show days, hours, minutes (no seconds)
+  // If less than a day, show hours, minutes, seconds (omit the day part when 0)
+  const showOnlyDhM = days > 0;
+  const parts = [];
+  if (showOnlyDhM) {
+    parts.push(`${days}d`, `${hours}h`, `${minutes}m`);
+  } else {
+    parts.push(`${hours}h`, `${minutes}m`);
+    if (showSeconds) parts.push(`${seconds}s`);
+  }
   const timeText = parts.join(' ');
   return (
     <span suppressHydrationWarning>

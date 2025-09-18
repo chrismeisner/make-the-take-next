@@ -26,7 +26,6 @@ import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
 import WelcomeModal from "./modals/WelcomeModal";
-import NotifyMeModal from "./modals/NotifyMeModal";
 import SharePackModal from "./modals/SharePackModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
@@ -87,17 +86,7 @@ export default function GlobalModalRenderer() {
         />
       );
     }
-    case "notifyMe": {
-      const { packTitle, packURL } = modalConfig.modalProps;
-      return (
-        <NotifyMeModal
-          isOpen={true}
-          onClose={closeModal}
-          packTitle={packTitle}
-          packURL={packURL}
-        />
-      );
-    }
+    // case "notifyMe": removed — individual pack notifications deprecated
     case "welcome": {
       const { contestHref } = modalConfig.modalProps;
       return (

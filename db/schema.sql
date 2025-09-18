@@ -164,20 +164,13 @@ ALTER TABLE props ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAU
 -- Track last update time for props
 ALTER TABLE props ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- Ensure updated_at is set on every UPDATE
-DO $$
+-- Create or replace the trigger function (idempotent)
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc WHERE proname = 'set_updated_at'
-  ) THEN
-    CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
-    BEGIN
-      NEW.updated_at := NOW();
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  END IF;
-END $$;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN
@@ -336,19 +329,13 @@ CREATE INDEX IF NOT EXISTS idx_promo_links_active ON promo_links (active);
 CREATE INDEX IF NOT EXISTS idx_promo_links_key ON promo_links (key);
 CREATE INDEX IF NOT EXISTS idx_promo_links_priority ON promo_links (priority DESC);
 
-DO $$
+-- Create or replace promo_links updated_at trigger function
+CREATE OR REPLACE FUNCTION set_promo_links_updated_at() RETURNS trigger AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc WHERE proname = 'set_promo_links_updated_at'
-  ) THEN
-    CREATE OR REPLACE FUNCTION set_promo_links_updated_at() RETURNS trigger AS $$
-    BEGIN
-      NEW.updated_at := NOW();
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  END IF;
-END $$;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN

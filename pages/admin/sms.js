@@ -11,6 +11,8 @@ export default function AdminSmsPage() {
   const [form, setForm] = useState({ trigger_type: 'pack_open', league: '', title: '', template: 'Pack {packTitle} is open! {packUrl}', active: true });
   const [packInput, setPackInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [outbox, setOutbox] = useState([]);
+  const [outboxLoading, setOutboxLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -24,8 +26,24 @@ export default function AdminSmsPage() {
         if (rData?.success) setRules(rData.rules || []);
         if (lData?.success) setLeagues(lData.leagues || []);
       } catch {}
+      try {
+        await fetchOutbox();
+      } catch {}
     })();
   }, []);
+
+  async function fetchOutbox() {
+    setOutboxLoading(true);
+    try {
+      const res = await fetch('/api/outbox');
+      const data = await res.json();
+      if (data?.success) setOutbox(data.outbox || []);
+    } catch {
+      // noop
+    } finally {
+      setOutboxLoading(false);
+    }
+  }
 
   async function saveRule(e) {
     e.preventDefault();
@@ -77,6 +95,7 @@ export default function AdminSmsPage() {
       const data = await res.json();
       // optional: toast
       console.log('queue result', data);
+      try { await fetchOutbox(); } catch {}
     } catch {} finally { setBusy(false); }
   }
 
@@ -86,6 +105,7 @@ export default function AdminSmsPage() {
       const res = await fetch('/api/admin/sms/sendQueued', { method: 'POST' });
       const data = await res.json();
       console.log('send result', data);
+      try { await fetchOutbox(); } catch {}
     } catch {} finally { setBusy(false); }
   }
 
@@ -182,7 +202,50 @@ export default function AdminSmsPage() {
               <div className="flex items-center gap-2">
                 <button type="button" onClick={queuePack} disabled={busy || !packInput} className="px-3 py-1 bg-gray-800 hover:bg-black text-white rounded">{busy ? 'Queueing…' : 'Queue Pack Open'}</button>
                 <button type="button" onClick={sendQueued} disabled={busy} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded">{busy ? 'Sending…' : 'Send Queued'}</button>
+                <button type="button" onClick={fetchOutbox} disabled={outboxLoading} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded">{outboxLoading ? 'Refreshing…' : 'Refresh Outbox'}</button>
               </div>
+            </div>
+          </div>
+
+          <div className="border rounded p-4 bg-white md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">Outbox</h3>
+              <button type="button" onClick={fetchOutbox} disabled={outboxLoading} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded">{outboxLoading ? 'Refreshing…' : 'Refresh'}</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600">
+                    <th className="px-2 py-1">Created</th>
+                    <th className="px-2 py-1">Status</th>
+                    <th className="px-2 py-1">Recipients</th>
+                    <th className="px-2 py-1">Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outbox.map((ob) => {
+                    const recCount = Array.isArray(ob.profile_ids) ? ob.profile_ids.length : 0;
+                    const created = ob.created_at ? new Date(ob.created_at).toLocaleString() : '';
+                    const status = String(ob.status || '').toLowerCase();
+                    const badge = status === 'sent' ? 'bg-green-100 text-green-800' : (status === 'ready' ? 'bg-yellow-100 text-yellow-800' : (status === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'));
+                    return (
+                      <tr key={ob.id} className="border-t">
+                        <td className="px-2 py-1 whitespace-nowrap">{created}</td>
+                        <td className="px-2 py-1 whitespace-nowrap"><span className={`text-xs px-2 py-0.5 rounded ${badge}`}>{status || 'unknown'}</span></td>
+                        <td className="px-2 py-1 whitespace-nowrap">{recCount}</td>
+                        <td className="px-2 py-1">
+                          <div className="max-w-xl truncate" title={ob.message || ''}>{ob.message || ''}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!outbox || outbox.length === 0) && (
+                    <tr>
+                      <td className="px-2 py-2 text-gray-500" colSpan={4}>{outboxLoading ? 'Loading…' : 'No outbox messages yet.'}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

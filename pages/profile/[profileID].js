@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
 import PageContainer from "../../components/PageContainer";
+import Toast from "../../components/Toast";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function ProfilePage() {
   const [availableLeagues, setAvailableLeagues] = useState([]);
   const [smsOptOutAll, setSmsOptOutAll] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
 
   // Fetch the profile data
   useEffect(() => {
@@ -269,8 +271,10 @@ export default function ProfilePage() {
                   });
                   const data = await res.json();
                   if (!data?.success) throw new Error(data?.error || 'Save failed');
+                  setToastMessage('Preferences saved');
                 } catch (e) {
                   try { console.error('Save preferences error', e); } catch {}
+                  setToastMessage('Failed to save preferences');
                 } finally {
                   setSavingPrefs(false);
                 }
@@ -524,6 +528,7 @@ export default function ProfilePage() {
 		  Back to Home
 		</Link>
 	  </p>
+      <Toast message={toastMessage} onClose={() => setToastMessage("")} />
     </PageContainer>
   );
 }
