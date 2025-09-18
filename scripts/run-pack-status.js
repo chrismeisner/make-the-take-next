@@ -212,7 +212,103 @@ async function run() {
     const liveToPendingMs = Date.now() - liveToPendingStart;
     console.log('🟠 [pack-status] PENDING-GRADE (from live)', { durationMs: liveToPendingMs, checkedPacks, promotedCount: (pendingRows || []).length, sample: (pendingRows || []).slice(0, 10).map(r => r.pack_url) });
 
-    // Step 4: closed → graded when no props remain open for the pack
+    // Step 4: For packs in pending-grade, auto-grade their auto props via API
+    async function gradePropsForPendingPacks() {
+      const baseUrl = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const httpConcurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
+      const logSample = (arr, mapFn) => (arr || []).slice(0, 10).map(mapFn);
+
+      // Fetch all packs in pending-grade
+      const { rows: packs } = await query(
+        `SELECT id, pack_url
+           FROM packs
+          WHERE LOWER(COALESCE(pack_status,'')) = 'pending-grade'`
+      );
+      if (!packs || packs.length === 0) {
+        return { packsScanned: 0, propsConsidered: 0, propsGraded: 0, gradedPacks: [] };
+      }
+
+      let propsConsidered = 0;
+      let propsGraded = 0;
+      const gradedPacks = [];
+
+      for (const pack of packs) {
+        // Get props for this pack
+        const { rows: props } = await query(
+          `SELECT id::text AS id, prop_status, grading_mode, formula_key
+             FROM props
+            WHERE pack_id = $1`,
+          [pack.id]
+        );
+        const targets = (props || []).filter((p) => {
+          const mode = String(p.grading_mode || '').toLowerCase();
+          const status = String(p.prop_status || '').toLowerCase();
+          const isTerminal = status === 'gradeda' || status === 'gradedb' || status === 'push';
+          return mode === 'auto' && !isTerminal; // only auto-grade non-terminal props
+        });
+        propsConsidered += targets.length;
+
+        // Concurrency-limited grading via API
+        let idx = 0;
+        async function worker() {
+          while (true) {
+            const current = idx++;
+            if (current >= targets.length) break;
+            const prop = targets[current];
+            try {
+              const resp = await fetch(`${baseUrl}/api/admin/gradePropByFormula`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ airtableId: prop.id, dryRun: false }),
+              });
+              let json = null;
+              try { json = await resp.json(); } catch {}
+              // 409/404 are acceptable (not ready or not found) → skip and retry next run
+              if (resp.ok && json && json.success) {
+                propsGraded++;
+              }
+            } catch (e) {
+              // swallow and continue; will retry on next run
+            }
+          }
+        }
+        const workers = [];
+        for (let i = 0; i < httpConcurrency; i++) workers.push(worker());
+        await Promise.all(workers);
+
+        // If all props are now terminal, mark pack graded
+        try {
+          const { rows: counts } = await query(
+            `SELECT
+               COUNT(*) FILTER (WHERE LOWER(COALESCE(prop_status,'')) NOT IN ('gradeda','gradedb','push'))::int AS ungraded
+               , COUNT(*)::int AS total
+             FROM props
+            WHERE pack_id = $1`,
+            [pack.id]
+          );
+          const ungraded = counts && counts[0] ? Number(counts[0].ungraded) : NaN;
+          if (Number.isFinite(ungraded) && ungraded === 0) {
+            await query(`UPDATE packs SET pack_status = 'graded' WHERE id = $1`, [pack.id]);
+            gradedPacks.push(pack.pack_url);
+          }
+        } catch {}
+      }
+
+      console.log('🧪 [pack-status] AUTO-GRADE pending packs', {
+        packsScanned: packs.length,
+        propsConsidered,
+        propsGraded,
+        gradedPacksSample: logSample(gradedPacks, (u) => u),
+      });
+      return { packsScanned: packs.length, propsConsidered, propsGraded, gradedPacks };
+    }
+
+    const pendingGradeStart = Date.now();
+    const agg = await gradePropsForPendingPacks();
+    const pendingGradeMs = Date.now() - pendingGradeStart;
+    console.log('🧮 [pack-status] PENDING-GRADE processed', { durationMs: pendingGradeMs, ...agg });
+
+    // Step 5: closed → graded when no props remain open for the pack
     const gradeSql = `
       UPDATE packs p
          SET pack_status = 'graded'

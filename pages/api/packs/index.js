@@ -41,7 +41,7 @@ async function handler(req, res) {
                   e.title AS event_title
            FROM packs p
            LEFT JOIN events e ON e.id = p.event_id
-            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','graded','coming-soon','draft','live') OR p.pack_status IS NULL
+            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','graded','coming-soon','draft','live','pending-grade') OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT CASE WHEN $2::boolean = TRUE THEN 500 ELSE 80 END
          ),
