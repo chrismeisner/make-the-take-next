@@ -84,13 +84,13 @@ async function run() {
          SET pack_status = 'live'
        WHERE (pack_close_time IS NOT NULL AND LENGTH(TRIM(pack_close_time::text)) > 0)
          AND NOW() >= (pack_close_time::timestamptz)
-         AND LOWER(COALESCE(pack_status, '')) = 'open'
+         AND LOWER(COALESCE(pack_status, '')) IN ('open','active')
       RETURNING id, pack_url`;
 
     const closeStart = Date.now();
     const { rows: closed } = await query(closeSql);
     const closeMs = Date.now() - closeStart;
-    console.log('🔴 [pack-status] LIVE (from open)', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
+    console.log('🔴 [pack-status] LIVE (from open/active)', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
 
     // Step 3: closed → graded when no props remain open for the pack
     const gradeSql = `

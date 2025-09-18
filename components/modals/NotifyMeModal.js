@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import GlobalModal from "./GlobalModal";
+import { useModal } from "../../contexts/ModalContext";
 
 export default function NotifyMeModal({ isOpen, onClose, packTitle, packURL }) {
   const { data: session } = useSession();
+  const { openModal, closeModal } = useModal();
   const [status, setStatus] = useState("idle"); // idle | submitting | success | already
   const [error, setError] = useState("");
 
@@ -49,12 +51,41 @@ export default function NotifyMeModal({ isOpen, onClose, packTitle, packURL }) {
         <div>
           <p className="text-sm text-gray-800">Log in to be added to the notification list for this pack.</p>
           <div className="mt-4 flex gap-2">
-            <a
-              href={`/login?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`}
+            <button
+              type="button"
+              onClick={() => {
+                openModal("login", {
+                  title: "Log In",
+                  ctaLabel: "Verify & Continue",
+                  onSuccess: async () => {
+                    try {
+                      // After login, auto-subscribe then show success state.
+                      if (!packURL) return;
+                      setStatus("submitting");
+                      const resp = await fetch("/api/packs/notify", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ packURL }),
+                      });
+                      const data = await resp.json().catch(() => ({}));
+                      if (!resp.ok || !data.success) {
+                        throw new Error(data.error || "Failed to subscribe");
+                      }
+                      setStatus(data.alreadySubscribed ? "already" : "success");
+                    } catch (e) {
+                      setError(e?.message || "Failed to subscribe");
+                      setStatus("idle");
+                    } finally {
+                      // Close the login modal and keep this modal open to show result
+                      try { closeModal(); } catch {}
+                    }
+                  },
+                });
+              }}
               className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
             >
               Log in
-            </a>
+            </button>
             <button
               type="button"
               onClick={onClose}

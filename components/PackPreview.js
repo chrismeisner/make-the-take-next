@@ -216,8 +216,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
       // Debug log: button click
       try { console.log('[PackPreview] Notify click', { packURL: pack?.packURL, profileID: session?.user?.profileID }); } catch {}
       if (!session?.user) {
-        const redirect = typeof window !== 'undefined' ? window.location.pathname : '/';
-        router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+        openModal('notifyMe', { packTitle: pack.packTitle, packURL: pack.packURL });
         return;
       }
       if (!pack?.packURL || notifyState === 'loading' || notifyState === 'done') return;

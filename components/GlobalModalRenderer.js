@@ -31,6 +31,7 @@ import SharePackModal from "./modals/SharePackModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
 import PackActiveModal from "./modals/PackActiveModal";
+import LoginModal from "./modals/LoginModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 
 export default function GlobalModalRenderer() {
@@ -41,6 +42,18 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "login": {
+      const { title, ctaLabel, onSuccess } = modalConfig.modalProps;
+      return (
+        <LoginModal
+          isOpen={true}
+          onClose={closeModal}
+          title={title}
+          ctaLabel={ctaLabel}
+          onSuccess={onSuccess}
+        />
+      );
+    }
     case "fetchTeams": {
       const { onFetched } = modalConfig.modalProps;
       return (
@@ -75,12 +88,13 @@ export default function GlobalModalRenderer() {
       );
     }
     case "notifyMe": {
-      const { packTitle } = modalConfig.modalProps;
+      const { packTitle, packURL } = modalConfig.modalProps;
       return (
         <NotifyMeModal
           isOpen={true}
           onClose={closeModal}
           packTitle={packTitle}
+          packURL={packURL}
         />
       );
     }
