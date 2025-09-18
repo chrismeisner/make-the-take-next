@@ -63,7 +63,7 @@ async function run() {
 
     const openSql = `
       UPDATE packs
-         SET pack_status = 'active'
+         SET pack_status = 'live'
        WHERE (pack_open_time IS NOT NULL AND LENGTH(TRIM(pack_open_time::text)) > 0)
          AND NOW() >= (pack_open_time::timestamptz)
          AND (
@@ -71,28 +71,28 @@ async function run() {
             OR LENGTH(TRIM(pack_close_time::text)) = 0
             OR NOW() < (pack_close_time::timestamptz)
          )
-         AND COALESCE(LOWER(pack_status), '') NOT IN ('active','closed','graded','completed')
+         AND LOWER(COALESCE(pack_status, '')) = 'coming-soon'
       RETURNING id, pack_url`;
 
     const openStart = Date.now();
     const { rows: opened } = await query(openSql);
     const openMs = Date.now() - openStart;
-    console.log('🟢 [pack-status] OPEN', { durationMs: openMs, openedCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
+    console.log('🟢 [pack-status] LIVE (from coming-soon)', { durationMs: openMs, liveCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
 
     const closeSql = `
       UPDATE packs
-         SET pack_status = 'live'
+         SET pack_status = 'closed'
        WHERE (pack_close_time IS NOT NULL AND LENGTH(TRIM(pack_close_time::text)) > 0)
          AND NOW() >= (pack_close_time::timestamptz)
-         AND COALESCE(LOWER(pack_status), '') NOT IN ('live','graded','completed')
+         AND LOWER(COALESCE(pack_status, '')) = 'live'
       RETURNING id, pack_url`;
 
     const closeStart = Date.now();
     const { rows: closed } = await query(closeSql);
     const closeMs = Date.now() - closeStart;
-    console.log('🔴 [pack-status] LIVE', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
+    console.log('🔴 [pack-status] CLOSED (from live)', { durationMs: closeMs, closedCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
 
-    console.log('✅ [pack-status] DONE', { opened: opened.length, live: closed.length, totalDurationMs: openMs + closeMs });
+    console.log('✅ [pack-status] DONE', { live: opened.length, closed: closed.length, totalDurationMs: openMs + closeMs });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;

@@ -21,6 +21,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const winnerID = pack.winnerProfileID || null;
   const winnerPoints = typeof pack.winnerPoints === 'number' ? pack.winnerPoints : null;
   const { openModal } = useModal();
+  const [notifyState, setNotifyState] = useState('idle'); // idle | loading | done | error
 
   const [eventScores, setEventScores] = useState({});
   const [scoresLoading, setScoresLoading] = useState(false);
@@ -208,6 +209,35 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const primaryBtnBase = "inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded text-white text-xs md:text-sm font-medium";
   const primaryBtnColor = accent === 'green' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700';
 
+  async function handleNotifyClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      // Debug log: button click
+      try { console.log('[PackPreview] Notify click', { packURL: pack?.packURL, profileID: session?.user?.profileID }); } catch {}
+      if (!session?.user) {
+        const redirect = typeof window !== 'undefined' ? window.location.pathname : '/';
+        router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+        return;
+      }
+      if (!pack?.packURL || notifyState === 'loading' || notifyState === 'done') return;
+      setNotifyState('loading');
+      const resp = await fetch('/api/packs/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packURL: pack.packURL }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data?.success) throw new Error(data?.error || 'Failed to subscribe');
+      try { console.log('[PackPreview] Notify success', { packURL: pack?.packURL, alreadySubscribed: Boolean(data?.alreadySubscribed) }); } catch {}
+      setNotifyState('done');
+    } catch (_) {
+      try { console.error('[PackPreview] Notify error', _); } catch {}
+      setNotifyState('error');
+      setTimeout(() => setNotifyState('idle'), 2000);
+    }
+  }
+
   const content = (
 	  <div className="flex flex-col md:flex-row items-stretch md:items-start gap-2 md:gap-3">
 		<div className="order-1 md:order-2 w-full md:basis-1/3 md:max-w-xs aspect-square relative bg-gray-100">
@@ -341,8 +371,20 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 						>
 							Share
 						</span>
-				</div>
-			)}
+					</div>
+				)}
+				{!isOpenLike && isComingSoon && (
+					<div className="mt-3">
+						<button
+							type="button"
+							onClick={handleNotifyClick}
+							disabled={notifyState === 'loading' || notifyState === 'done'}
+							className={`${primaryBtnBase} ${notifyState === 'done' ? 'bg-gray-400 cursor-default' : 'bg-orange-600 hover:bg-orange-700'}`}
+						>
+							{notifyState === 'loading' ? 'Adding…' : (notifyState === 'done' ? "We'll notify you" : 'Notify me')}
+						</button>
+					</div>
+				)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">
 				{pack.packStatus === "graded" && winnerID && (
 					<p>

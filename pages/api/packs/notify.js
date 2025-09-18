@@ -19,6 +19,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: "Missing packURL" });
     }
 
+    try { console.log('[api/packs/notify] request', { packURL, phone: user.phone, profileID: user.profileID }); } catch {}
+
     // Resolve pack UUID from packURL
     const { rows: packRows } = await query(
       `SELECT id FROM packs WHERE pack_url = $1 LIMIT 1`,
@@ -49,6 +51,7 @@ export default async function handler(req, res) {
     );
 
     const alreadySubscribed = inserted.length === 0;
+    try { console.log('[api/packs/notify] result', { packId, profileId, alreadySubscribed }); } catch {}
 
     return res.status(200).json({ success: true, alreadySubscribed });
   } catch (err) {
