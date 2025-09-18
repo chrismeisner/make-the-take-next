@@ -114,6 +114,25 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   })();
 
 
+  // Derive a game status chip (for ESPN game status)
+  function getGameStatusChip(status) {
+    if (!status || !status.state) return null;
+    const state = String(status.state).toLowerCase();
+    if (state === 'in') {
+      return { label: 'LIVE', classes: 'bg-red-100 text-red-800 border border-red-200' };
+    }
+    if (state === 'post') {
+      return { label: 'FINAL', classes: 'bg-gray-200 text-gray-800 border border-gray-300' };
+    }
+    if (state === 'pre') {
+      return { label: 'SCHEDULED', classes: 'bg-blue-100 text-blue-800 border border-blue-200' };
+    }
+    if (state === 'delayed') {
+      return { label: 'DELAYED', classes: 'bg-orange-100 text-orange-800 border border-orange-200' };
+    }
+    return null;
+  }
+
   // Determine the cover URL.
   // If pack.packCover is an array, use the first attachment's URL.
   // Otherwise, if it's a string, use that value.
@@ -304,7 +323,12 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 							return (
 								<div key={`${evt.id || evt.espnGameID || idx}`} className="flex items-center gap-2">
 									<span className="text-gray-600">{(evt.league || '').toUpperCase()}</span>
-									{home && away ? (
+							{(() => { const chip = getGameStatusChip(st); return chip ? (
+								<span className={`${chip.classes} inline-flex items-center rounded-full px-2 py-0.5 text-[10px] md:text-xs font-medium`}>
+									{chip.label}
+								</span>
+							) : null; })()}
+							{home && away ? (
 										<span>
 											{away.abbreviation || away.name} {away.score}
 											<span className="mx-1">@</span>

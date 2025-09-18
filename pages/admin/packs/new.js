@@ -20,7 +20,7 @@ export default function AdminCreatePackPage() {
   const [packCoverUrl, setPackCoverUrl] = useState('');
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [coverUploading, setCoverUploading] = useState(false);
-  const [packStatus, setPackStatus] = useState('active');
+  const [packStatus, setPackStatus] = useState('coming-soon');
   const [statusOptions, setStatusOptions] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [propsList, setPropsList] = useState([]);
