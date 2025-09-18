@@ -61,6 +61,20 @@ async function run() {
   try {
     console.log('🚀 [pack-status] START', { when: new Date().toISOString(), backend: 'postgres' });
 
+    // Step 0: Close Props whose close_time has passed
+    const propCloseSql = `
+      UPDATE props
+         SET prop_status = 'closed', updated_at = NOW()
+       WHERE LOWER(COALESCE(prop_status, '')) = 'open'
+         AND close_time IS NOT NULL
+         AND NOW() > close_time
+      RETURNING id::text, pack_id::text`;
+
+    const propCloseStart = Date.now();
+    const { rows: propsClosed } = await query(propCloseSql);
+    const propCloseMs = Date.now() - propCloseStart;
+    console.log('🔒 [prop-status] CLOSED (from open)', { durationMs: propCloseMs, closedCount: (propsClosed || []).length });
+
     const openSql = `
       UPDATE packs
          SET pack_status = 'open'
@@ -325,7 +339,7 @@ async function run() {
     const gradeMs = Date.now() - gradeStart;
     console.log('🟣 [pack-status] GRADED (from closed)', { durationMs: gradeMs, gradedCount: graded.length, sample: graded.slice(0, 10).map(r => r.pack_url) });
 
-    console.log('✅ [pack-status] DONE', { openedToOpen: opened.length, openToLive: closed.length, liveToPending: (pendingRows || []).length, closedToGraded: graded.length, totalDurationMs: openMs + closeMs + liveToPendingMs + gradeMs });
+    console.log('✅ [pack-status] DONE', { propsClosed: (propsClosed || []).length, openedToOpen: opened.length, openToLive: closed.length, liveToPending: (pendingRows || []).length, closedToGraded: graded.length, totalDurationMs: propCloseMs + openMs + closeMs + liveToPendingMs + gradeMs });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;

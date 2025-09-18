@@ -22,6 +22,11 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
+  // Notification preferences state (own profile only)
+  const [notifLeagues, setNotifLeagues] = useState([]);
+  const [availableLeagues, setAvailableLeagues] = useState([]);
+  const [smsOptOutAll, setSmsOptOutAll] = useState(false);
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   // Fetch the profile data
   useEffect(() => {
@@ -90,6 +95,43 @@ export default function ProfilePage() {
     })();
     return () => { aborted = true; };
   }, [profile?.profileID, profile?.profileMobile]);
+
+  // Load available leagues (from events) when viewing own profile
+  useEffect(() => {
+    if (!profileID || !session?.user || session.user.profileID !== profileID) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/eventLeagues');
+        const data = await res.json();
+        if (!aborted && data?.success && Array.isArray(data.leagues)) {
+          setAvailableLeagues(data.leagues);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => { aborted = true; };
+  }, [profileID, session?.user?.profileID]);
+
+  // Load current user's notification preferences
+  useEffect(() => {
+    if (!profileID || !session?.user || session.user.profileID !== profileID) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/notifications/preferences');
+        const data = await res.json();
+        if (!aborted && data?.success) {
+          setNotifLeagues(Array.isArray(data.leagues) ? data.leagues : []);
+          setSmsOptOutAll(Boolean(data.smsOptOutAll));
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => { aborted = true; };
+  }, [profileID, session?.user?.profileID]);
 
   // calculateUserStats is no longer needed; stats computed inline after fetch
   if (loading) return <div className="p-4">Loading profile...</div>;
@@ -175,6 +217,71 @@ export default function ProfilePage() {
 	  ) : (
 		<p className="mb-4 text-sm text-gray-700">No favorite team selected.</p>
 	  )}
+
+      {/* Subscriptions (own profile only) */}
+      {isOwnProfile && (
+        <div className="mt-6 border rounded p-4 bg-white">
+          <h3 className="text-xl font-bold mb-2">Subscriptions</h3>
+          <p className="text-sm text-gray-600 mb-3">Get SMS when packs open by league.</p>
+          <div className="mb-3 flex items-center gap-2">
+            <input
+              id="sms-pause-all"
+              type="checkbox"
+              className="w-4 h-4"
+              checked={smsOptOutAll}
+              onChange={(e) => setSmsOptOutAll(e.target.checked)}
+            />
+            <label htmlFor="sms-pause-all" className="text-sm">Pause all SMS</label>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {availableLeagues.map((lg) => {
+              const id = `lg-${lg}`;
+              const checked = notifLeagues.includes(lg);
+              return (
+                <label key={lg} htmlFor={id} className={`flex items-center gap-2 border rounded px-2 py-1 text-sm ${smsOptOutAll ? 'opacity-50' : ''}`}>
+                  <input
+                    id={id}
+                    type="checkbox"
+                    className="w-4 h-4"
+                    disabled={smsOptOutAll}
+                    checked={checked}
+                    onChange={(e) => {
+                      if (e.target.checked) setNotifLeagues((prev) => Array.from(new Set([...prev, lg])));
+                      else setNotifLeagues((prev) => prev.filter((x) => x !== lg));
+                    }}
+                  />
+                  <span className="uppercase">{lg}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled={savingPrefs}
+              onClick={async () => {
+                try {
+                  setSavingPrefs(true);
+                  const res = await fetch('/api/notifications/preferences', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: 'pack_open', leagues: notifLeagues, smsOptOutAll }),
+                  });
+                  const data = await res.json();
+                  if (!data?.success) throw new Error(data?.error || 'Save failed');
+                } catch (e) {
+                  try { console.error('Save preferences error', e); } catch {}
+                } finally {
+                  setSavingPrefs(false);
+                }
+              }}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            >
+              {savingPrefs ? 'Saving…' : 'Save Preferences'}
+            </button>
+          </div>
+        </div>
+      )}
 
 	  {/* Profile Avatar */}
 	  {profile.profileAvatar && profile.profileAvatar[0]?.url && (

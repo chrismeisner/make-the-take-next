@@ -38,6 +38,39 @@ export default function LandingPage({ packsData = [] }) {
     } catch (_) {}
   }, [openModal, session?.user?.profileID]);
 
+  // Show Pack Active modal if any pack is currently open/active
+  useEffect(() => {
+    if (!Array.isArray(packsData) || packsData.length === 0) return;
+    try {
+      const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, '-');
+      const isOpenish = (p) => {
+        const s = normalize(p?.packStatus);
+        return s === 'active' || s === 'open';
+      };
+      // Prefer 'active' over 'open'
+      const activePack = packsData.find((p) => normalize(p?.packStatus) === 'active')
+        || packsData.find((p) => normalize(p?.packStatus) === 'open');
+      if (!activePack || !isOpenish(activePack)) return;
+
+      const idKey = activePack.packURL || activePack.packID || activePack.airtableId || 'unknown';
+      const seenKey = `packActiveShown:${idKey}`;
+      if (typeof window !== 'undefined' && sessionStorage.getItem(seenKey)) return;
+
+      const coverUrl = Array.isArray(activePack?.packCover) && activePack.packCover.length > 0
+        ? (activePack.packCover[0]?.url || null)
+        : (typeof activePack?.packCover === 'string' ? activePack.packCover : null);
+
+      openModal('packActive', {
+        packTitle: activePack.packTitle || '',
+        packURL: activePack.packURL || '',
+        coverUrl,
+        packCloseTime: activePack.packCloseTime || null,
+      });
+
+      if (typeof window !== 'undefined') sessionStorage.setItem(seenKey, '1');
+    } catch {}
+  }, [packsData, openModal]);
+
   return (
     <div className="bg-white text-gray-900">
       <Head>

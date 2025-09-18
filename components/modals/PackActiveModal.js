@@ -10,8 +10,8 @@ export default function PackActiveModal({ isOpen, onClose, packTitle, packURL, c
   return (
     <GlobalModal isOpen={isOpen} onClose={onClose} className="p-6 sm:p-8 max-w-lg w-[92%] sm:w-full">
       <div className="text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold mb-2">Pack active</h2>
-        <p className="text-gray-700 text-sm sm:text-base mb-4">Play now!</p>
+        <h2 className="text-2xl sm:text-3xl font-bold mb-2">Pack active now!</h2>
+        <p className="text-gray-700 text-sm sm:text-base mb-4">Make your take on this open pack now.</p>
         {renderCountdown ? (
           <div className="inline-flex items-center justify-center gap-2 text-sm sm:text-base mb-4 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
             <span>Closes in</span>

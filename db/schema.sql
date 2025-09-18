@@ -371,3 +371,33 @@ CREATE TABLE IF NOT EXISTS pack_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_pack_notifications_pack ON pack_notifications (pack_id);
 CREATE INDEX IF NOT EXISTS idx_pack_notifications_profile ON pack_notifications (profile_id);
+
+-- Notification preferences: per-user opt-ins by category/league
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,  -- e.g. 'pack_open'
+  league TEXT,             -- e.g. 'nfl', 'mlb'; NULL for global categories
+  opted_in BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (profile_id, category, league)
+);
+CREATE INDEX IF NOT EXISTS idx_notif_prefs_category_league_optin
+  ON notification_preferences (category, league, opted_in);
+
+-- SMS rules: simple templates per trigger/league
+CREATE TABLE IF NOT EXISTS sms_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rule_key TEXT UNIQUE,
+  title TEXT,
+  trigger_type TEXT NOT NULL, -- e.g. 'pack_open'
+  league TEXT,                -- nullable if global
+  template TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Global SMS opt-out flag on profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS sms_opt_out_all BOOLEAN NOT NULL DEFAULT FALSE;

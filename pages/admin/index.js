@@ -679,6 +679,11 @@ export default function AdminPage({ superAdminSecret }) {
               {sendingHello ? "Sending..." : "Send Hello Text"}
             </button>
             {helloResult && <p className="text-sm">{helloResult}</p>}
+            <Link href="/admin/sms">
+              <button className="px-3 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+                SMS Console
+              </button>
+            </Link>
           </div>
         </section>
       </div>
