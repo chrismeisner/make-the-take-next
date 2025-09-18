@@ -63,7 +63,7 @@ async function run() {
 
     const openSql = `
       UPDATE packs
-         SET pack_status = 'live'
+         SET pack_status = 'open'
        WHERE (pack_open_time IS NOT NULL AND LENGTH(TRIM(pack_open_time::text)) > 0)
          AND NOW() >= (pack_open_time::timestamptz)
          AND (
@@ -77,22 +77,22 @@ async function run() {
     const openStart = Date.now();
     const { rows: opened } = await query(openSql);
     const openMs = Date.now() - openStart;
-    console.log('🟢 [pack-status] LIVE (from coming-soon)', { durationMs: openMs, liveCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
+    console.log('🟢 [pack-status] OPEN (from coming-soon)', { durationMs: openMs, openCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
 
     const closeSql = `
       UPDATE packs
-         SET pack_status = 'closed'
+         SET pack_status = 'live'
        WHERE (pack_close_time IS NOT NULL AND LENGTH(TRIM(pack_close_time::text)) > 0)
          AND NOW() >= (pack_close_time::timestamptz)
-         AND LOWER(COALESCE(pack_status, '')) = 'live'
+         AND LOWER(COALESCE(pack_status, '')) = 'open'
       RETURNING id, pack_url`;
 
     const closeStart = Date.now();
     const { rows: closed } = await query(closeSql);
     const closeMs = Date.now() - closeStart;
-    console.log('🔴 [pack-status] CLOSED (from live)', { durationMs: closeMs, closedCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
+    console.log('🔴 [pack-status] LIVE (from open)', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
 
-    console.log('✅ [pack-status] DONE', { live: opened.length, closed: closed.length, totalDurationMs: openMs + closeMs });
+    console.log('✅ [pack-status] DONE', { openedToOpen: opened.length, openToLive: closed.length, totalDurationMs: openMs + closeMs });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
     process.exitCode = 1;
