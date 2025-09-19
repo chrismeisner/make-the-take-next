@@ -194,13 +194,10 @@ export default async function handler(req, res) {
       } catch {}
       params = { ...(params || {}), ...(overrideParams || {}) };
 
-      if (gradingMode !== 'auto') {
+      // Default behavior: allow grading if a formula key exists, regardless of grading_mode
+      if (!formulaKey) {
         if (!dryRun) {
-          return res.status(400).json({ success: false, error: 'Prop is not set to auto grading' });
-        }
-        // Allow dryRun previews when an overrideFormulaKey is provided
-        if (!overrideFormulaKey) {
-          return res.status(400).json({ success: false, error: 'Prop is not set to auto grading (provide overrideFormulaKey for preview)' });
+          return res.status(400).json({ success: false, error: 'Missing formulaKey for grading' });
         }
       }
 

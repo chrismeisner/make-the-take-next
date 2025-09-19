@@ -568,7 +568,15 @@ async function run() {
 
     // Step 4: For packs in pending-grade, auto-grade their auto props via API
     async function gradePropsForPendingPacks() {
-      const baseUrl = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+      // Prefer SITE_URL; fallback to VERCEL_URL; finally localhost
+      const resolvedBase = (() => {
+        const site = (process.env.SITE_URL || '').trim();
+        if (site) return site.replace(/\/$/, '');
+        const vercel = (process.env.VERCEL_URL || '').trim();
+        if (vercel) return (vercel.startsWith('http') ? vercel : `https://${vercel}`).replace(/\/$/, '');
+        return 'http://localhost:3000';
+      })();
+      const baseUrl = resolvedBase;
       const httpConcurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
       const logSample = (arr, mapFn) => (arr || []).slice(0, 10).map(mapFn);
 
@@ -595,10 +603,11 @@ async function run() {
           [pack.id]
         );
         const targets = (props || []).filter((p) => {
-          const mode = String(p.grading_mode || '').toLowerCase();
           const status = String(p.prop_status || '').toLowerCase();
+          const hasFormula = String(p.formula_key || '').trim().length > 0;
           const isTerminal = status === 'gradeda' || status === 'gradedb' || status === 'push';
-          return mode === 'auto' && !isTerminal; // only auto-grade non-terminal props
+          // Default: grade any non-terminal prop with a formula
+          return !isTerminal && hasFormula;
         });
         propsConsidered += targets.length;
 
