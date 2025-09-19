@@ -10,6 +10,7 @@ import { ModalProvider } from "../contexts/ModalContext";
 import { WireframeProvider } from "../contexts/WireframeContext";
 import GlobalModalRenderer from "../components/GlobalModalRenderer";
 import Head from "next/head";
+import GlobalQueryEffects from "../components/GlobalQueryEffects";
 
 export default function MyApp({ Component, pageProps: { session, ...pageProps } }) {
   console.log("[_app] Starting with session =>", session);
@@ -24,6 +25,7 @@ export default function MyApp({ Component, pageProps: { session, ...pageProps } 
           <WireframeProvider>
             <Layout>
               <Component {...pageProps} />
+              <GlobalQueryEffects />
               <GlobalModalRenderer />
             </Layout>
           </WireframeProvider>

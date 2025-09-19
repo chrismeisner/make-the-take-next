@@ -68,7 +68,17 @@ export default async function handler(req, res) {
         [token.profileID]
       );
       const tokensSpent = Number(spentRows[0]?.spent) || 0;
-      const availableBalance = tokensEarned - tokensSpent;
+      // Include awarded tokens
+      const { rows: awardRows } = await query(
+        `SELECT COALESCE(SUM(a.tokens),0) AS awarded
+           FROM award_redemptions ar
+           JOIN award_cards a ON a.id = ar.award_card_id
+           JOIN profiles p ON p.id = ar.profile_id
+          WHERE p.profile_id = $1`,
+        [token.profileID]
+      );
+      const tokensAwarded = Number(awardRows[0]?.awarded) || 0;
+      const availableBalance = tokensEarned + tokensAwarded - tokensSpent;
       if (availableBalance < itemTokens) {
         return res.status(400).json({ success: false, error: 'Insufficient tokens for this exchange', availableBalance, required: itemTokens });
       }

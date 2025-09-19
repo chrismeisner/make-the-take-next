@@ -409,6 +409,11 @@ export default function AdminPage({ superAdminSecret }) {
                 Marketplace
               </button>
             </Link>
+            <Link href="/admin/awards">
+              <button className="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
+                Awards
+              </button>
+            </Link>
             <Link href="/admin/redeem">
               <button className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
                 Redemptions

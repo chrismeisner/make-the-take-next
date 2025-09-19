@@ -388,3 +388,32 @@ CREATE TABLE IF NOT EXISTS sms_rules (
 
 -- Global SMS opt-out flag on profiles
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS sms_opt_out_all BOOLEAN NOT NULL DEFAULT FALSE;
+
+
+-- Award Cards: one-time codes that grant free marketplace tokens
+CREATE TABLE IF NOT EXISTS award_cards (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  tokens INT NOT NULL CHECK (tokens > 0),
+  status TEXT NOT NULL DEFAULT 'available', -- 'available' | 'redeemed' | 'disabled'
+  redeemed_by_profile_id UUID REFERENCES profiles(id),
+  redeemed_at TIMESTAMPTZ,
+  valid_from TIMESTAMPTZ,
+  valid_to TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_award_cards_status ON award_cards (status);
+-- Redirect target after successful claim (team slug)
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS redirect_team_slug TEXT;
+
+-- Per-user award redemptions (allow many users, one redemption each)
+CREATE TABLE IF NOT EXISTS award_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  award_card_id UUID REFERENCES award_cards(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  redeemed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (award_card_id, profile_id)
+);
+CREATE INDEX IF NOT EXISTS idx_award_redemptions_card ON award_redemptions (award_card_id);
+CREATE INDEX IF NOT EXISTS idx_award_redemptions_profile ON award_redemptions (profile_id);

@@ -31,6 +31,8 @@ import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
 import PackActiveModal from "./modals/PackActiveModal";
 import LoginModal from "./modals/LoginModal";
+import AwardClaimModal from "./modals/AwardClaimModal";
+import AwardSuccessModal from "./modals/AwardSuccessModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 
 export default function GlobalModalRenderer() {
@@ -41,6 +43,29 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "awardClaim": {
+      const { code } = modalConfig.modalProps;
+      return (
+        <AwardClaimModal
+          isOpen={true}
+          onClose={closeModal}
+          code={code}
+        />
+      );
+    }
+    case "awardSuccess": {
+      const { name, tokens, error, redirectTeamSlug } = modalConfig.modalProps;
+      return (
+        <AwardSuccessModal
+          isOpen={true}
+          onClose={closeModal}
+          name={name}
+          tokens={tokens}
+          error={error}
+          redirectTeamSlug={redirectTeamSlug}
+        />
+      );
+    }
     case "login": {
       const { title, ctaLabel, onSuccess } = modalConfig.modalProps;
       return (

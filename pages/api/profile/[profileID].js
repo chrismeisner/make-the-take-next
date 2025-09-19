@@ -27,9 +27,10 @@ export default async function handler(req, res) {
 	// Fast path: tokens-only
 	if (select === 'tokens') {
 	  const isPG = getDataBackend() === 'postgres';
-	  if (isPG) {
-		let tokensEarned = 0;
-		let tokensSpent = 0;
+      if (isPG) {
+        let tokensEarned = 0;
+        let tokensSpent = 0;
+        let tokensAwarded = 0;
 		try {
 		  const { rows } = await query(
 			`SELECT COALESCE(SUM(t.tokens),0) AS earned
@@ -50,12 +51,24 @@ export default async function handler(req, res) {
 		  );
 		  tokensSpent = Number(rows?.[0]?.spent) || 0;
 		} catch {}
-		const tokensBalance = tokensEarned - tokensSpent;
-		return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensBalance });
+        try {
+          const { rows } = await query(
+            `SELECT COALESCE(SUM(a.tokens),0) AS awarded
+               FROM award_redemptions ar
+               JOIN award_cards a ON a.id = ar.award_card_id
+               JOIN profiles p ON p.id = ar.profile_id
+              WHERE p.profile_id = $1`,
+            [profileID]
+          );
+          tokensAwarded = Number(rows?.[0]?.awarded) || 0;
+        } catch {}
+        const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
+        return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensAwarded, tokensBalance });
 	  }
 	  // Airtable fallback (less efficient but scoped)
 	  let tokensEarned = 0;
-	  let tokensSpent = 0;
+  let tokensSpent = 0;
+  let tokensAwarded = 0;
 	  try {
 		const found = await base('Profiles')
 		  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
@@ -75,7 +88,20 @@ export default async function handler(req, res) {
 		const exchRecs = await base('Exchanges').select({ filterByFormula: exchFilter, maxRecords: 5000 }).all();
 		tokensSpent = exchRecs.reduce((sum, r) => sum + (Number(r.fields?.exchangeTokens) || 0), 0);
 	  } catch {}
-	  const tokensBalance = tokensEarned - tokensSpent;
+  if (isPG) {
+    try {
+      const { rows } = await query(
+        `SELECT COALESCE(SUM(a.tokens),0) AS awarded
+           FROM award_redemptions ar
+           JOIN award_cards a ON a.id = ar.award_card_id
+           JOIN profiles p ON p.id = ar.profile_id
+          WHERE p.profile_id = $1`,
+        [profileID]
+      );
+      tokensAwarded = Number(rows[0]?.awarded) || 0;
+    } catch {}
+  }
+  const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
 	  return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensBalance });
 	}
 
@@ -454,7 +480,7 @@ export default async function handler(req, res) {
 	} else {
 	  tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
 	}
-	const tokensBalance = tokensEarned - tokensSpent;
+  const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
 
 	// Creator packs/leaderboard (Airtable-only)
 	let creatorPacks = [];
@@ -545,7 +571,8 @@ export default async function handler(req, res) {
 	  achievements,
 	  tokensEarned,
 	  tokensSpent,
-	  tokensBalance,
+      tokensBalance,
+      tokensAwarded,
 	  creatorPacks,
 	  creatorLeaderboard,
 	  creatorLeaderboardUpdatedAt,

@@ -26,6 +26,7 @@ export default function LandingPage({ packsData = [] }) {
 
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_GLOBAL_MODALS__) return;
     try {
       const profileID = session?.user?.profileID || 'guest';
       const key = `welcomeShown:${profileID}`;
@@ -38,6 +39,7 @@ export default function LandingPage({ packsData = [] }) {
 
   // Show Pack Active modal if any pack is currently open/active
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_GLOBAL_MODALS__) return;
     if (!Array.isArray(packsData) || packsData.length === 0) return;
     try {
       const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, '-');

@@ -62,6 +62,7 @@ export default function PackFeedScaffold({
   // Update URL when day changes (clear explicit date) or when no day parameter is present
   useEffect(() => {
     if (!router.isReady) return;
+    if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_URL_SYNC__) return;
     const currentDay = (router.query.day || '').toString();
     
     // If no day parameter is present, or if day changed, or if there's a date parameter, update URL
