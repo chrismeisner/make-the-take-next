@@ -32,6 +32,8 @@ export default async function handler(req, res) {
                                    at.logo_url     AS "awayTeamLogo",
                                    ht.name         AS "homeTeamName",
                                    at.name         AS "awayTeamName",
+                                   ht.short_name   AS "homeTeamShortName",
+                                   at.short_name   AS "awayTeamShortName",
                                    ht.team_id      AS "homeTeamExternalID",
                                    at.team_id      AS "awayTeamExternalID",
                                    ht.team_slug    AS "homeTeamAbbreviation",
@@ -87,6 +89,8 @@ export default async function handler(req, res) {
           awayTeamExternalId: r.awayTeamExternalID || null,
           homeTeamAbbreviation: r.homeTeamAbbreviation || null,
           awayTeamAbbreviation: r.awayTeamAbbreviation || null,
+          homeTeamShortName: r.homeTeamShortName || null,
+          awayTeamShortName: r.awayTeamShortName || null,
         };
         return res.status(200).json({ success: true, event });
       }

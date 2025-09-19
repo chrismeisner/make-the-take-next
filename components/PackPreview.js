@@ -252,6 +252,13 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
+			{(() => {
+				const summary = (pack?.packSummary || "").toString().trim();
+				if (!summary) return null;
+				return (
+					<p className="mt-1 text-xs md:text-sm text-gray-600 line-clamp-3">{summary}</p>
+				);
+			})()}
 			{Array.isArray(pack.linkedTeams) && pack.linkedTeams.length > 0 && (
 				<div className="mt-1 flex flex-wrap gap-1">
 				{Array.from(new Map(pack.linkedTeams.filter(t => t && t.slug).map(t => [t.slug, t])).values())

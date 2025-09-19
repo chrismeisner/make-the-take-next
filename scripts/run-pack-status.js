@@ -242,9 +242,11 @@ async function run() {
             [league]
           );
           const template = ruleRows.length ? ruleRows[0].template : 'Pack {packTitle} is open! {packUrl}';
-          
-          // Render template with variables
-          const packUrl = `/packs/${packInfo.pack_url || packInfo.pack_id}`;
+
+          // Render template with variables (absolute URL)
+          const site = (process.env.SITE_URL || 'https://makethetake.com').replace(/\/$/, '');
+          const packPath = `/packs/${packInfo.pack_url || packInfo.pack_id}`;
+          const packUrl = `${site}${packPath}`;
           const message = template
             .replace(/{packTitle}/g, packInfo.title || 'New Pack')
             .replace(/{packUrl}/g, packUrl)

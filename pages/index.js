@@ -6,6 +6,7 @@ import Toast from "../components/Toast";
 import { useSession } from "next-auth/react";
 import { useModal } from "../contexts/ModalContext";
 import PackFeedScaffold from "../components/PackFeedScaffold";
+import MarketplacePreview from "../components/MarketplacePreview";
 import { getDataBackend } from "../lib/runtimeConfig";
 import { getToken } from "next-auth/jwt";
 import { query } from "../lib/db/postgres";
@@ -87,6 +88,7 @@ export default function LandingPage({ packsData = [] }) {
           forceTeamSlugFilter={(router.query.team || '').toString()}
           hideLeagueChips={true}
           initialDay='today'
+          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
         />
       </div>
     </div>

@@ -3,9 +3,7 @@ import { useEffect } from 'react';
 import { useModal } from '../contexts/ModalContext';
 import Head from 'next/head';
 import { query } from '../lib/db/postgres';
-import PageContainer from '../components/PageContainer';
-import PackExplorer from '../components/PackExplorer';
-import LeaderboardTable from '../components/LeaderboardTable';
+import PackFeedScaffold from '../components/PackFeedScaffold';
 import MarketplacePreview from '../components/MarketplacePreview';
 
 export async function getServerSideProps({ params }) {
@@ -235,41 +233,21 @@ export default function TeamRootPage({ team, packsData, leaderboard }) {
       <Head>
         <title>{team.teamNameFull || team.teamName} | Make the Take</title>
       </Head>
-      <div className="p-4 w-full">
-        <PageContainer>
-          <div className="mb-4 flex items-center gap-3">
-            {team.teamLogoURL && (
-              <img src={team.teamLogoURL} alt={team.teamNameFull || team.teamName} className="w-12 h-12 rounded" />
-            )}
-            <div>
-              <h1 className="text-2xl font-bold">{team.teamNameFull || team.teamName}</h1>
-              <p className="text-gray-600 text-sm">Team feed</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className="lg:col-span-2">
-              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Packs</h2>
-              <PackExplorer
-                packs={packsData}
-                accent="green"
-                hideLeagueChips={true}
-                forceTeamSlugFilter={team.teamSlug}
-                enableTodayFilter={false}
-                showTodayControl={false}
-                defaultShowTodayOnly={false}
-              />
-            </section>
-
-            <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
-              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Team Leaderboard</h2>
-              <LeaderboardTable leaderboard={(leaderboard || []).slice(0, 10)} />
-              <div className="mt-8">
-                <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
-              </div>
-            </aside>
-          </div>
-        </PageContainer>
+      <div className="w-full">
+        <PackFeedScaffold
+          packs={packsData}
+          accent="green"
+          title={team.teamNameFull || team.teamName}
+          subtitle="Team feed"
+          headerLeft={team.teamLogoURL ?
+            <img src={team.teamLogoURL} alt={team.teamName} className="w-12 h-12 rounded-full" />
+            : null
+          }
+          forceTeamSlugFilter={team.teamSlug}
+          hideLeagueChips={true}
+          initialDay='today'
+          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
+        />
       </div>
     </div>
   );

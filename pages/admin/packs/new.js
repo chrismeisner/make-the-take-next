@@ -158,6 +158,8 @@ export default function AdminCreatePackPage() {
                   awayTeamName: awayName,
                   homeTeamAbbr: homeAbbr,
                   awayTeamAbbr: awayAbbr,
+                  homeTeamShortName: ev.homeTeamShortName || null,
+                  awayTeamShortName: ev.awayTeamShortName || null,
                 };
               }
             } catch {}
@@ -167,8 +169,8 @@ export default function AdminCreatePackPage() {
         if (!cancelled) {
           setEventInfoById((prev) => {
             const next = { ...prev };
-            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr }) => {
-              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr };
+            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr, homeTeamShortName, awayTeamShortName }) => {
+              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr, homeTeamShortName, awayTeamShortName };
             });
             return next;
           });
@@ -204,6 +206,29 @@ export default function AdminCreatePackPage() {
     } catch (err) {
       setError(err.message || 'Failed to upload cover.');
       setCoverUploading(false);
+    }
+  };
+
+  const handleGeneratePackSummary = async (context, model) => {
+    try {
+      const evId = packEventId || (Array.isArray(packEventIds) && packEventIds.length > 0 ? packEventIds[0] : null);
+      if (!evId) { setError('Link an event to generate a summary.'); return; }
+      setLoading(true);
+      setError(null);
+      const res = await fetch('/api/admin/generatePropSummary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: evId, context, model })
+      });
+      const data = await res.json();
+      if (data?.success && data?.summary) return data.summary;
+      setError(data?.error || 'AI summary generation failed');
+      return '';
+    } catch (e) {
+      setError(e?.message || 'AI summary generation failed');
+      return '';
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -511,10 +536,36 @@ export default function AdminCreatePackPage() {
               onClick={() => {
                 try {
                   const info = eventInfoById[packEventId] || {};
-                  const awayLabel = (info.awayTeamAbbr || info.awayTeamName || '').toString().trim();
-                  const homeLabel = (info.homeTeamAbbr || info.homeTeamName || '').toString().trim();
+                  const league = (info.eventLeague || '').toString().toLowerCase();
+                  const pickLabel = (name, abbr, shortName) => {
+                    if (league === 'mlb') return (shortName || name || abbr || '').toString().trim();
+                    return (abbr || shortName || name || '').toString().trim();
+                  };
+                  const rawAway = pickLabel(info.awayTeamName, info.awayTeamAbbr, info.awayTeamShortName);
+                  const rawHome = pickLabel(info.homeTeamName, info.homeTeamAbbr, info.homeTeamShortName);
+                  const toTitleCase = (s) => {
+                    try {
+                      return s
+                        .split(/\s+/)
+                        .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+                        .join(' ');
+                    } catch { return s; }
+                  };
+                  const awayLabel = toTitleCase(rawAway);
+                  const homeLabel = toTitleCase(rawHome);
                   if (awayLabel && homeLabel) {
-                    setPackTitle(`${awayLabel} at ${homeLabel}`);
+                    if (league === 'mlb') {
+                      let day = '';
+                      try {
+                        if (info.eventTime) {
+                          day = new Date(info.eventTime).toLocaleDateString(undefined, { weekday: 'long' });
+                        }
+                      } catch {}
+                      const base = `${awayLabel} at ${homeLabel}`;
+                      setPackTitle([base, day].filter(Boolean).join(' | '));
+                    } else {
+                      setPackTitle(`${awayLabel} at ${homeLabel}`);
+                    }
                   } else if (info.eventTitle) {
                     setPackTitle(info.eventTitle);
                   }
@@ -566,6 +617,35 @@ export default function AdminCreatePackPage() {
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           />
+          {(packEventId || (packEventIds && packEventIds.length > 0)) && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                onClick={() => {
+                  try {
+                    const primaryId = packEventId || (packEventIds && packEventIds[0]);
+                    const info = (primaryId && eventInfoById[primaryId]) || {};
+                    const away = (info.awayTeamAbbr || info.awayTeamName || '').toString();
+                    const home = (info.homeTeamAbbr || info.homeTeamName || '').toString();
+                    const eventDateTime = info.eventTime ? new Date(info.eventTime).toLocaleString() : 'the scheduled time';
+                    const league = info.eventLeague || '';
+                    const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
+                    const serverPrompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDateTime} in the ${league}, use relevant narratives and stats.`;
+                    openModal('aiSummaryContext', {
+                      defaultPrompt,
+                      serverPrompt,
+                      defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
+                      onGenerate: handleGeneratePackSummary,
+                      onUse: (text) => setPackSummary(text),
+                    });
+                  } catch {}
+                }}
+              >
+                Generate AI Summary
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Prize</label>

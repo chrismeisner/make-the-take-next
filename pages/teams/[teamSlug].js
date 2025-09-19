@@ -145,9 +145,6 @@ export async function getServerSideProps({ params }) {
 
 export default function TeamPage({ team, packsData }) {
   const { openModal } = useModal();
-  const router = useRouter();
-  const [selectedDay, setSelectedDay] = useState('today');
-  const [selectedDate, setSelectedDate] = useState(null);
 
   // Show Pack Active modal if a team-related pack is open/active
   useEffect(() => {
@@ -181,51 +178,6 @@ export default function TeamPage({ team, packsData }) {
     } catch {}
   }, [packsData, openModal]);
 
-  // Sync selected day/date with URL query params on team page
-  useEffect(() => {
-    const { day, date } = router.query;
-    const validDays = new Set(['today','yesterday','tomorrow','thisWeek','nextWeek','later']);
-    if (typeof day === 'string' && validDays.has(day)) {
-      setSelectedDay(day);
-    }
-    const parseDateParam = (val) => {
-      if (!val || typeof val !== 'string') return null;
-      const s = val.trim();
-      let yyyy, mm, dd;
-      if (/^\d{6}$/.test(s)) { // YYMMDD
-        const yy = parseInt(s.slice(0, 2), 10);
-        yyyy = 2000 + yy;
-        mm = parseInt(s.slice(2, 4), 10);
-        dd = parseInt(s.slice(4, 6), 10);
-      } else if (/^\d{8}$/.test(s)) { // YYYYMMDD
-        yyyy = parseInt(s.slice(0, 4), 10);
-        mm = parseInt(s.slice(4, 6), 10);
-        dd = parseInt(s.slice(6, 8), 10);
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { // YYYY-MM-DD
-        return s;
-      } else {
-        return null;
-      }
-      if (!yyyy || !mm || !dd) return null;
-      const d = new Date(Date.UTC(yyyy, mm - 1, dd));
-      if (Number.isNaN(d.getTime())) return null;
-      return d.toISOString().slice(0, 10);
-    };
-    const iso = parseDateParam(typeof date === 'string' ? date : '');
-    if (iso) setSelectedDate(iso); else setSelectedDate(null);
-  }, [router.query.day, router.query.date]);
-
-  // Update URL when day changes (clear explicit date)
-  useEffect(() => {
-    if (!router.isReady) return;
-    const currentDay = (router.query.day || '').toString();
-    if (currentDay !== selectedDay || router.query.date) {
-      const nextQuery = { ...router.query, day: selectedDay };
-      delete nextQuery.date;
-      router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
-    }
-  }, [selectedDay]);
-
   return (
     <div className="bg-white text-gray-900">
       <Head>
@@ -243,10 +195,8 @@ export default function TeamPage({ team, packsData }) {
           forceTeamSlugFilter={team.teamSlug}
           hideLeagueChips={true}
           initialDay='today'
+          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
         />
-        <div className="mt-8">
-          <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
-        </div>
       </div>
     </div>
   );

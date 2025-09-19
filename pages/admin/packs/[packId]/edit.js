@@ -188,6 +188,22 @@ export default function AdminEditPackPage() {
                     coverUrl = (first && typeof first === 'object') ? (first.url || first?.thumbnails?.large?.url || first?.thumbnails?.full?.url) : null;
                   }
                 } catch {}
+                const firstString = (val) => {
+                  try {
+                    if (Array.isArray(val) && val.length) {
+                      const v = val[0];
+                      if (typeof v === 'string') return v;
+                      if (v && typeof v === 'object' && typeof v.name === 'string') return v.name;
+                    }
+                  } catch {}
+                  return null;
+                };
+                const homeTeamName = firstString(ev.homeTeam) || null;
+                const awayTeamName = firstString(ev.awayTeam) || null;
+                const homeTeamAbbr = ev.homeTeamAbbreviation || null;
+                const awayTeamAbbr = ev.awayTeamAbbreviation || null;
+                const homeTeamShortName = ev.homeTeamShortName || null;
+                const awayTeamShortName = ev.awayTeamShortName || null;
                 return {
                   id,
                   title: ev.eventTitle || id,
@@ -196,6 +212,12 @@ export default function AdminEditPackPage() {
                   coverUrl: coverUrl || null,
                   homeTeamLogo: ev.homeTeamLogo || null,
                   awayTeamLogo: ev.awayTeamLogo || null,
+                  homeTeamName,
+                  awayTeamName,
+                  homeTeamAbbr,
+                  awayTeamAbbr,
+                  homeTeamShortName,
+                  awayTeamShortName,
                 };
               }
             } catch {}
@@ -205,8 +227,8 @@ export default function AdminEditPackPage() {
         if (!cancelled) {
           setEventInfoById((prev) => {
             const next = { ...prev };
-            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo }) => {
-              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo };
+            results.forEach(({ id, title, time, league, coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr, homeTeamShortName, awayTeamShortName }) => {
+              next[id] = { eventTitle: title, eventTime: time, eventLeague: league, eventCoverUrl: coverUrl, homeTeamLogo, awayTeamLogo, homeTeamName, awayTeamName, homeTeamAbbr, awayTeamAbbr, homeTeamShortName, awayTeamShortName };
             });
             return next;
           });
@@ -242,6 +264,29 @@ export default function AdminEditPackPage() {
     } catch (err) {
       setError(err.message || 'Failed to upload cover.');
       setCoverUploading(false);
+    }
+  };
+
+  const handleGeneratePackSummary = async (context, model) => {
+    try {
+      const evId = packEventId || (Array.isArray(packEventIds) && packEventIds.length > 0 ? packEventIds[0] : null);
+      if (!evId) { setError('Link an event to generate a summary.'); return ''; }
+      setLoading(true);
+      setError(null);
+      const res = await fetch('/api/admin/generatePropSummary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: evId, context, model })
+      });
+      const data = await res.json();
+      if (data?.success && data?.summary) return data.summary;
+      setError(data?.error || 'AI summary generation failed');
+      return '';
+    } catch (e) {
+      setError(e?.message || 'AI summary generation failed');
+      return '';
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -607,6 +652,35 @@ export default function AdminEditPackPage() {
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           />
+          {(packEventId || (packEventIds && packEventIds.length > 0)) && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                onClick={() => {
+                  try {
+                    const primaryId = packEventId || (packEventIds && packEventIds[0]);
+                    const info = (primaryId && eventInfoById[primaryId]) || {};
+                    const away = (info.awayTeamAbbr || info.awayTeamShortName || info.awayTeamName || '').toString();
+                    const home = (info.homeTeamAbbr || info.homeTeamShortName || info.homeTeamName || '').toString();
+                    const eventDateTime = info.eventTime ? new Date(info.eventTime).toLocaleString() : 'the scheduled time';
+                    const league = info.eventLeague || '';
+                    const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
+                    const serverPrompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDateTime} in the ${league}, use relevant narratives and stats.`;
+                    openModal('aiSummaryContext', {
+                      defaultPrompt,
+                      serverPrompt,
+                      defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
+                      onGenerate: handleGeneratePackSummary,
+                      onUse: (text) => setPackSummary(text),
+                    });
+                  } catch {}
+                }}
+              >
+                Generate AI Summary
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Prize</label>

@@ -50,7 +50,9 @@ export default async function handler(req, res) {
       [league]
     );
     const template = ruleRows.length ? ruleRows[0].template : 'Pack {packTitle} is open! {packUrl}';
-    const packUrl = `/packs/${pack.pack_url || pack.pack_id}`;
+    const site = (process.env.SITE_URL || 'https://makethetake.com').replace(/\/$/, '');
+    const packPath = `/packs/${pack.pack_url || pack.pack_id}`;
+    const packUrl = `${site}${packPath}`;
     const message = renderTemplate(template, { packTitle: pack.title || 'New Pack', packUrl, league });
 
     // Find recipients
