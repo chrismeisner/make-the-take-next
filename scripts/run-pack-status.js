@@ -76,6 +76,31 @@ async function sendSMS({ to, message }) {
   }
 }
 
+async function createOutboxWithRecipients(message, profileIds) {
+  try {
+    const { rows } = await query(
+      `INSERT INTO outbox (message, status) VALUES ($1, 'ready') RETURNING id`,
+      [message]
+    );
+    const outboxId = rows[0]?.id;
+    if (!outboxId) return null;
+    if (Array.isArray(profileIds) && profileIds.length > 0) {
+      const values = [];
+      for (let i = 0; i < profileIds.length; i++) {
+        values.push(`($1, $${i + 2})`);
+      }
+      await query(
+        `INSERT INTO outbox_recipients (outbox_id, profile_id) VALUES ${values.join(', ')}`,
+        [outboxId, ...profileIds]
+      );
+    }
+    return outboxId;
+  } catch (err) {
+    console.error('[pack-status] Error creating outbox message:', err?.message || err);
+    return null;
+  }
+}
+
 async function calculatePackRankings(packId) {
   try {
     // Get all takes for this pack with their points
@@ -269,6 +294,10 @@ async function run() {
             console.log(`📱 [pack-status] No SMS recipients for pack ${packInfo.pack_url} (league: ${league})`);
             continue;
           }
+          
+          // Create outbox entry and recipients
+          const profileIds = recRows.map(r => r.profile_id);
+          const outboxId = await createOutboxWithRecipients(message, profileIds);
 
           // Send SMS to each recipient
           let sentCount = 0;
@@ -278,6 +307,16 @@ async function run() {
               sentCount++;
             } catch (smsErr) {
               console.error(`[pack-status] SMS send error for ${recipient.phone}:`, smsErr);
+            }
+          }
+
+          // Update outbox status based on outcome
+          if (outboxId) {
+            try {
+              const allSent = sentCount === recRows.length;
+              await query(`UPDATE outbox SET status = $2 WHERE id = $1`, [outboxId, allSent ? 'sent' : 'error']);
+            } catch (e) {
+              console.error(`[pack-status] Failed updating outbox status for ${outboxId}:`, e?.message || e);
             }
           }
 

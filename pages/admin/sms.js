@@ -153,13 +153,17 @@ export default function AdminSmsPage() {
     if (!msg || !selectedRecipientPhone) return;
     setTestBusy(true);
     try {
+      // find selected recipient's profileId
+      const selectedRecipient = (recipients || []).find((r) => String(r.phone) === String(selectedRecipientPhone));
+      const profileId = selectedRecipient?.profile_id;
       const res = await fetch('/api/admin/sms/sendTest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: selectedRecipientPhone, message: msg }),
+        body: JSON.stringify({ message: msg, profileId, phone: selectedRecipientPhone }),
       });
       const data = await res.json();
       console.log('send test (rule flow) result', data);
+      try { await fetchOutbox(); } catch {}
     } catch {} finally {
       setTestBusy(false);
     }
@@ -213,6 +217,7 @@ export default function AdminSmsPage() {
       });
       const data = await res.json();
       console.log('send test (number) result', data);
+      try { await fetchOutbox(); } catch {}
     } catch {} finally {
       setTestBusy(false);
     }
@@ -229,6 +234,7 @@ export default function AdminSmsPage() {
       });
       const data = await res.json();
       console.log('send test (all) result', data);
+      try { await fetchOutbox(); } catch {}
     } catch {} finally {
       setTestBusy(false);
     }
