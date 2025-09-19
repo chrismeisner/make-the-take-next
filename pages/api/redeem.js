@@ -1,5 +1,5 @@
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../auth/[...nextauth]';
+import { authOptions } from './auth/[...nextauth]';
 import { getDataBackend } from '../../../lib/runtimeConfig';
 import { query } from '../../../lib/db/postgres';
 
