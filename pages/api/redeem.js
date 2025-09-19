@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from './auth/[...nextauth]';
-import { getDataBackend } from '../../../lib/runtimeConfig';
-import { query } from '../../../lib/db/postgres';
+import { getDataBackend } from '../../lib/runtimeConfig';
+import { query } from '../../lib/db/postgres';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
