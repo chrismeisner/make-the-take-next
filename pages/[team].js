@@ -106,32 +106,7 @@ export async function getServerSideProps({ params }) {
     awayTeamName: r.away_team_name || null,
   }));
 
-  // Apply same visibility and sorting rules as homepage/teamSlug pages
-  const filteredPacks = packsData.filter((p) => {
-    const sRaw = String(p?.packStatus || '').toLowerCase();
-    const s = sRaw.replace(/\s+/g, '-');
-    return (
-      s === 'active' ||
-      s === 'open' ||
-      s === 'live' ||
-      s === 'coming-soon' ||
-      s === 'coming-up' ||
-      s === 'closed' ||
-      s === ''
-    );
-  });
-
-  const statusRank = (p) => {
-    const sRaw = String(p?.packStatus || '').toLowerCase();
-    const s = sRaw.replace(/\s+/g, '-');
-    if (s === 'open' || s === 'active') return 0;
-    if (s === 'coming-soon' || s === 'coming-up') return 1;
-    if (s === 'closed' || s === 'live') return 2;
-    if (s === 'completed') return 3;
-    if (s === 'graded') return 4;
-    return 5;
-  };
-
+  // Show all packs for the team; keep simple sorting by close time then created
   const parseToMs = (val) => {
     if (val == null) return NaN;
     if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
@@ -155,10 +130,15 @@ export async function getServerSideProps({ params }) {
     return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
   };
 
-  const sortedTeamPacks = filteredPacks.slice().sort((a, b) => {
-    const sr = statusRank(a) - statusRank(b);
-    if (sr !== 0) return sr;
-    return getCloseMs(a) - getCloseMs(b);
+  const getCreatedMs = (p) => {
+    const ms = parseToMs(p?.createdAt);
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  };
+
+  const sortedTeamPacks = packsData.slice().sort((a, b) => {
+    const closeDiff = getCloseMs(a) - getCloseMs(b);
+    if (closeDiff !== 0) return closeDiff;
+    return getCreatedMs(b) - getCreatedMs(a);
   });
 
   // Build team leaderboard aggregated from takes linked to this team's packs/events/props
@@ -270,7 +250,15 @@ export default function TeamRootPage({ team, packsData, leaderboard }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <section className="lg:col-span-2">
               <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Packs</h2>
-              <PackExplorer packs={packsData} accent="green" hideLeagueChips={true} forceTeamSlugFilter={team.teamSlug} />
+              <PackExplorer
+                packs={packsData}
+                accent="green"
+                hideLeagueChips={true}
+                forceTeamSlugFilter={team.teamSlug}
+                enableTodayFilter={false}
+                showTodayControl={false}
+                defaultShowTodayOnly={false}
+              />
             </section>
 
             <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">

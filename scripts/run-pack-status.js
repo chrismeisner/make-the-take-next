@@ -566,17 +566,17 @@ async function run() {
     const liveProcessMs = Date.now() - liveProcessStart;
     console.log('🟠 [pack-status] LIVE processed for immediate grading', { durationMs: liveProcessMs, ...liveAgg });
 
-    // Step 4: For packs in pending-grade and grade-pending, auto-grade their auto props via API
+    // Step 4: For packs in pending-grade, auto-grade their auto props via API
     async function gradePropsForPendingPacks() {
       const baseUrl = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
       const httpConcurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
       const logSample = (arr, mapFn) => (arr || []).slice(0, 10).map(mapFn);
 
-      // Fetch all packs in pending-grade or grade-pending
+      // Fetch all packs in pending-grade
       const { rows: packs } = await query(
         `SELECT id, pack_url
            FROM packs
-          WHERE LOWER(COALESCE(pack_status,'')) IN ('pending-grade', 'grade-pending')`
+          WHERE LOWER(COALESCE(pack_status,'')) = 'pending-grade'`
       );
       if (!packs || packs.length === 0) {
         return { packsScanned: 0, propsConsidered: 0, propsGraded: 0, gradedPacks: [] };
@@ -689,7 +689,7 @@ async function run() {
         } catch {}
       }
 
-      console.log('🧪 [pack-status] AUTO-GRADE pending/grade-pending packs', {
+      console.log('🧪 [pack-status] AUTO-GRADE pending-grade packs', {
         packsScanned: packs.length,
         propsConsidered,
         propsGraded,
@@ -701,7 +701,7 @@ async function run() {
     const pendingGradeStart = Date.now();
     const agg = await gradePropsForPendingPacks();
     const pendingGradeMs = Date.now() - pendingGradeStart;
-    console.log('🧮 [pack-status] PENDING-GRADE/GRADE-PENDING processed', { durationMs: pendingGradeMs, ...agg });
+    console.log('🧮 [pack-status] PENDING-GRADE processed', { durationMs: pendingGradeMs, ...agg });
 
     // Step 5: closed → graded when no props remain open for the pack
     const gradeSql = `

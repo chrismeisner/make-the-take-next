@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import PackPreview from './PackPreview';
 
-export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '', forceTeamSlugFilter = '' }) {
+export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '', forceTeamSlugFilter = '', enableTodayFilter = true, showTodayControl = true, defaultShowTodayOnly = true }) {
   const [selectedLeagues, setSelectedLeagues] = useState(new Set());
   const [sortBy, setSortBy] = useState('close-asc'); // default: pack close time, soonest first
-  const [showTodayOnly, setShowTodayOnly] = useState(true); // default: show today's packs
+  const [showTodayOnly, setShowTodayOnly] = useState(defaultShowTodayOnly); // configurable default
 
   // Ensure selected leagues default to include all available leagues
   useEffect(() => {
@@ -59,7 +59,7 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
     let list = packs || [];
     
     // Apply today filter first if enabled
-    if (showTodayOnly) {
+    if (enableTodayFilter && showTodayOnly) {
       list = list.filter(isEventToday);
     }
     
@@ -156,18 +156,20 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
         )}
         
         {/* Today filter toggle */}
-        <div className="flex items-center gap-2">
-          <label htmlFor="today-filter" className="text-sm text-gray-700">
-            Today only:
-          </label>
-          <input
-            id="today-filter"
-            type="checkbox"
-            checked={showTodayOnly}
-            onChange={(e) => setShowTodayOnly(e.target.checked)}
-            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-        </div>
+        {showTodayControl && enableTodayFilter && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="today-filter" className="text-sm text-gray-700">
+              Today only:
+            </label>
+            <input
+              id="today-filter"
+              type="checkbox"
+              checked={showTodayOnly}
+              onChange={(e) => setShowTodayOnly(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+        )}
         
         {/* Sort control */}
         <div className="ml-auto">

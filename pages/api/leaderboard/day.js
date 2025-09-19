@@ -73,7 +73,7 @@ export default async function handler(req, res) {
             OR (p.pack_open_time::date >= $1::date AND p.pack_open_time::date < $2::date)
             OR (p.pack_close_time::date >= $1::date AND p.pack_close_time::date < $2::date)
           )
-            AND p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','grade-pending','graded')
+            AND p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','graded')
        ),
        day_props AS (
          SELECT pr.id,
