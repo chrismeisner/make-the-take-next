@@ -1,55 +1,12 @@
 import { useState, useMemo } from 'react';
 import LeaderboardTable from './LeaderboardTable';
 import useDayLeaderboard from '../hooks/useDayLeaderboard';
+import { computeAvailableDays, getPackIdsForDay, getDayLabels } from '../lib/dayGrouping';
 
-export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today', accent = 'blue' }) {
+export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today', selectedDate = null, accent = 'blue' }) {
   
-  // Determine which days have packs
-  const availableDays = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const dayGroups = {
-      today: [],
-      yesterday: [],
-      tomorrow: [],
-      thisWeek: [],
-      nextWeek: [],
-      later: []
-    };
-
-    const getDateGroup = (pack) => {
-      const eventTime = pack?.eventTime || pack?.packOpenTime || pack?.packCloseTime;
-      if (!eventTime) return 'later';
-      
-      try {
-        const eventDate = new Date(eventTime);
-        eventDate.setHours(0, 0, 0, 0);
-        
-        const todayDate = new Date(today);
-        const diffTime = eventDate.getTime() - todayDate.getTime();
-        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 0) return 'today';
-        if (diffDays === -1) return 'yesterday';
-        if (diffDays === 1) return 'tomorrow';
-        if (diffDays >= 2 && diffDays <= 7) return 'thisWeek';
-        if (diffDays >= 8 && diffDays <= 14) return 'nextWeek';
-        return 'later';
-      } catch {
-        return 'later';
-      }
-    };
-
-    packs.forEach(pack => {
-      const group = getDateGroup(pack);
-      dayGroups[group].push(pack);
-    });
-
-    return Object.entries(dayGroups)
-      .filter(([_, packs]) => packs.length > 0)
-      .map(([day, _]) => day);
-  }, [packs]);
+  // Determine which days have packs (shared util)
+  const availableDays = useMemo(() => computeAvailableDays(packs, { selectedDateIso: selectedDate }), [packs, selectedDate]);
 
   // If no packs available, don't show anything
   if (availableDays.length === 0) {
@@ -58,17 +15,23 @@ export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today',
 
   // Use the selected day if it has packs, otherwise use the first available day
   const currentSelectedDay = availableDays.includes(selectedDay) ? selectedDay : availableDays[0];
-  
-  const { leaderboard, loading, error, dayLabel } = useDayLeaderboard(currentSelectedDay);
 
-  const dayLabels = {
-    today: "Today",
-    yesterday: "Yesterday", 
-    tomorrow: "Tomorrow",
-    thisWeek: "This Week",
-    nextWeek: "Next Week",
-    later: "Later"
-  };
+  // Compute the pack IDs that belong to the currentSelectedDay (shared util)
+  const dayPackIds = useMemo(() => getPackIdsForDay(packs, currentSelectedDay, { selectedDateIso: selectedDate }), [packs, currentSelectedDay, selectedDate]);
+
+  const { leaderboard, loading, error, dayLabel } = useDayLeaderboard(currentSelectedDay, dayPackIds);
+
+  // Debug logs
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[DayBasedLeaderboard] selectedDay =>', { selectedDay, currentSelectedDay });
+    // eslint-disable-next-line no-console
+    console.log('[DayBasedLeaderboard] dayPackIds =>', dayPackIds);
+    // eslint-disable-next-line no-console
+    console.log('[DayBasedLeaderboard] leaderboard state =>', { loading, error, count: leaderboard.length });
+  } catch {}
+
+  const dayLabels = getDayLabels();
 
   return (
     <div className="space-y-4">

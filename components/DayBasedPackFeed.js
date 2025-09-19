@@ -1,66 +1,13 @@
 import { useMemo, useState } from 'react';
 import PackPreview from './PackPreview';
+import { groupPacksByDay } from '../lib/dayGrouping';
 
-export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', accent = 'blue', hideLeagueChips = true, forceTeamSlugFilter = '' }) {
+export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', selectedDate = null, accent = 'blue', hideLeagueChips = true, forceTeamSlugFilter = '' }) {
   const [sortBy, setSortBy] = useState('close-asc'); // default: pack close time, soonest first
-  // Group packs by their event date
+  // Group packs by their event date (shared util)
   const groupedPacks = useMemo(() => {
-    const today = new Date();
-    // Set to start of day to avoid timezone issues
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-    
-    const groups = {
-      today: [],
-      yesterday: [],
-      tomorrow: [],
-      thisWeek: [],
-      nextWeek: [],
-      later: []
-    };
-
-    const getDateGroup = (pack) => {
-      // Try event time first, then pack open time, then pack close time
-      const eventTime = pack?.eventTime || pack?.packOpenTime || pack?.packCloseTime;
-      if (!eventTime) return 'later';
-      
-      try {
-        const eventDate = new Date(eventTime);
-        // Set to start of day to avoid timezone issues
-        eventDate.setHours(0, 0, 0, 0);
-        const eventDateStr = eventDate.toISOString().split('T')[0];
-        
-        // Calculate days difference
-        const todayDate = new Date(todayStr);
-        const diffTime = eventDate.getTime() - todayDate.getTime();
-        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 0) return 'today';
-        if (diffDays === -1) return 'yesterday';
-        if (diffDays === 1) return 'tomorrow';
-        if (diffDays >= 2 && diffDays <= 7) return 'thisWeek';
-        if (diffDays >= 8 && diffDays <= 14) return 'nextWeek';
-        return 'later';
-      } catch {
-        return 'later';
-      }
-    };
-
-    // Filter packs by team if needed
-    const teamFilterLc = (forceTeamSlugFilter || '').toString().toLowerCase().trim();
-    const filteredPacks = teamFilterLc 
-      ? packs.filter((p) => {
-          const h = (p?.homeTeamSlug || '').toString().toLowerCase();
-          const a = (p?.awayTeamSlug || '').toString().toLowerCase();
-          return h === teamFilterLc || a === teamFilterLc;
-        })
-      : packs;
-
-    // Group packs by date
-    filteredPacks.forEach(pack => {
-      const group = getDateGroup(pack);
-      groups[group].push(pack);
-    });
+    const explicitIso = (selectedDate && typeof selectedDate === 'string') ? selectedDate : null;
+    const groups = groupPacksByDay(packs, { selectedDateIso: explicitIso, teamSlug: forceTeamSlugFilter });
 
     // Sort packs within each group by status and close time
     const statusRank = (p) => {
@@ -88,11 +35,50 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', ac
     });
 
     return groups;
-  }, [packs, forceTeamSlugFilter]);
+  }, [packs, forceTeamSlugFilter, selectedDate]);
+
+  const groupDateString = useMemo(() => {
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+
+    if (selectedDate) {
+      try {
+        const d = new Date(selectedDate + 'T00:00:00Z');
+        return d.toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      } catch {}
+    }
+
+    let dateToShow = null;
+    if (selectedDay === 'today') {
+      dateToShow = new Date(base);
+    } else if (selectedDay === 'yesterday') {
+      dateToShow = new Date(base);
+      dateToShow.setDate(dateToShow.getDate() - 1);
+    } else if (selectedDay === 'tomorrow') {
+      dateToShow = new Date(base);
+      dateToShow.setDate(dateToShow.getDate() + 1);
+    }
+    if (!dateToShow) return '';
+    try {
+      return dateToShow.toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return dateToShow.toDateString();
+    }
+  }, [selectedDay, selectedDate]);
 
   const getGroupTitle = (groupKey) => {
     const titles = {
-      today: "Today's Packs",
+      today: selectedDate ? "Packs on selected date" : "Today's Packs",
       yesterday: "Yesterday's Packs", 
       tomorrow: "Tomorrow's Packs",
       thisWeek: "This Week",
@@ -104,7 +90,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', ac
 
   const getGroupDescription = (groupKey) => {
     const descriptions = {
-      today: "Packs with events happening today",
+      today: selectedDate ? "Packs with events on the selected date" : "Packs with events happening today",
       yesterday: "Packs with events that happened yesterday",
       tomorrow: "Packs with events happening tomorrow",
       thisWeek: "Packs with events this week",
@@ -173,6 +159,9 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', ac
       {selectedDayPacks.length > 0 ? (
         <>
           <div className="border-b border-gray-200 pb-2">
+            {groupDateString ? (
+              <p className="text-sm text-gray-500 mb-1">{groupDateString}</p>
+            ) : null}
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-bold text-gray-900">
                 {getGroupTitle(selectedDay)}

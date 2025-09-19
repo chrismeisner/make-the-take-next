@@ -2,7 +2,7 @@
 import { query } from '../../../lib/db/postgres';
 
 export default async function handler(req, res) {
-  const { day, limit: limitParam } = req.query;
+  const { day, limit: limitParam, packIds: packIdsParam } = req.query;
 
   try {
     const limit = Math.min(Number.parseInt(limitParam || '100', 10), 500);
@@ -55,24 +55,52 @@ export default async function handler(req, res) {
         dayLabel = "Today's";
     }
 
+    // Optional pack ID filter coming from client to scope strictly to visible packs
+    const packIds = String(packIdsParam || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const usePackFilter = packIds.length > 0;
+
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[day leaderboard] inputs =>', {
+        day,
+        startDate: startDate?.toISOString?.() || null,
+        endDate: endDate?.toISOString?.() || null,
+        usePackFilter,
+        packIdsCount: packIds.length,
+        limit
+      });
+    } catch {}
+
     const { rows } = await query(
-      `WITH day_packs AS (
-         SELECT p.id,
+      `WITH pack_events AS (
+         SELECT p.id AS pack_id,
+                e.event_time
+           FROM packs p
+           JOIN events e ON e.id = p.event_id
+         UNION ALL
+         SELECT pe.pack_id,
+                e.event_time
+           FROM packs_events pe
+           JOIN events e ON e.id = pe.event_id
+       ),
+       day_packs AS (
+         SELECT DISTINCT p.id,
                 p.pack_id,
                 p.pack_url,
                 p.title,
-                p.pack_status,
-                p.pack_open_time,
-                p.pack_close_time,
-                p.event_id,
-                e.event_time
+                p.pack_status
            FROM packs p
-           LEFT JOIN events e ON e.id = p.event_id
-          WHERE (
-            (e.event_time::date >= $1::date AND e.event_time::date < $2::date)
-            OR (p.pack_open_time::date >= $1::date AND p.pack_open_time::date < $2::date)
-            OR (p.pack_close_time::date >= $1::date AND p.pack_close_time::date < $2::date)
-          )
+           JOIN pack_events ev ON ev.pack_id = p.id
+          WHERE (ev.event_time::date >= $1::date AND ev.event_time::date < $2::date)
+           AND (
+             $4::boolean = FALSE
+             OR p.id::text = ANY($5::text[])
+             OR p.pack_id::text = ANY($5::text[])
+           )
             AND p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','graded')
        ),
        day_props AS (
@@ -111,7 +139,7 @@ export default async function handler(req, res) {
          LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
         ORDER BY a.points DESC, a.takes DESC
         LIMIT $3`,
-      [startDate, endDate, limit]
+      [startDate, endDate, limit, usePackFilter, usePackFilter ? packIds : []]
     );
 
     const leaderboard = rows.map((r) => ({
@@ -123,6 +151,11 @@ export default async function handler(req, res) {
       lost: r.lost,
       pushed: r.pushed,
     }));
+
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[day leaderboard] results =>', { count: leaderboard.length });
+    } catch {}
 
     return res.status(200).json({ 
       success: true, 

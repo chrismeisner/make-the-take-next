@@ -5,11 +5,7 @@ import { useRouter } from "next/router";
 import Toast from "../components/Toast";
 import { useSession } from "next-auth/react";
 import { useModal } from "../contexts/ModalContext";
-import DayBasedPackFeed from "../components/DayBasedPackFeed";
-import PageContainer from "../components/PageContainer";
-import DayBasedLeaderboard from "../components/DayBasedLeaderboard";
-import DaySelector from "../components/DaySelector";
-import MarketplacePreview from "../components/MarketplacePreview";
+import PackFeedScaffold from "../components/PackFeedScaffold";
 import { getDataBackend } from "../lib/runtimeConfig";
 import { getToken } from "next-auth/jwt";
 import { query } from "../lib/db/postgres";
@@ -19,13 +15,14 @@ export default function LandingPage({ packsData = [] }) {
   const { data: session } = useSession();
   const { openModal } = useModal();
   const [toastMessage, setToastMessage] = useState("");
-  const [selectedDay, setSelectedDay] = useState('today');
 
   useEffect(() => {
     if (router.query.logout === "1") {
       setToastMessage("Logged out successfully");
     }
   }, [router.query.logout]);
+  // Home now delegates day/date state to PackFeedScaffold
+
 
   useEffect(() => {
     try {
@@ -81,38 +78,16 @@ export default function LandingPage({ packsData = [] }) {
           <Toast message={toastMessage} onClose={() => setToastMessage("")} />
         )}
         
-        <DaySelector 
-          selectedDay={selectedDay}
-          onDayChange={setSelectedDay}
+        <PackFeedScaffold
           packs={packsData}
           accent="green"
+          title={null}
+          subtitle={null}
+          headerLeft={null}
+          forceTeamSlugFilter={(router.query.team || '').toString()}
+          hideLeagueChips={true}
+          initialDay='today'
         />
-        
-        <PageContainer>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className="lg:col-span-2">
-              <DayBasedPackFeed
-                packs={packsData}
-                selectedDay={selectedDay}
-                accent="green"
-                hideLeagueChips={true}
-                forceTeamSlugFilter={(router.query.team || '').toString()}
-              />
-            </section>
-
-            <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
-              <DayBasedLeaderboard 
-                packs={packsData}
-                selectedDay={selectedDay}
-                accent="green"
-              />
-
-              <div className="mt-8">
-                <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
-              </div>
-            </aside>
-          </div>
-        </PageContainer>
       </div>
     </div>
   );

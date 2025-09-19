@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
  * @param {string} day - The day to fetch leaderboard for ('today', 'yesterday', 'tomorrow', 'thisWeek', 'nextWeek')
  * @returns {{ leaderboard: Array, loading: boolean, error: string, dayLabel: string }}
  */
-export default function useDayLeaderboard(day = 'today') {
+export default function useDayLeaderboard(day = 'today', packIds = []) {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +19,16 @@ export default function useDayLeaderboard(day = 'today') {
       setError('');
       
       try {
-        const res = await fetch(`/api/leaderboard/day?day=${encodeURIComponent(day)}`);
+        const params = new URLSearchParams();
+        if (day) params.append('day', day);
+        if (Array.isArray(packIds) && packIds.length > 0) {
+          params.append('packIds', packIds.join(','));
+        }
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[useDayLeaderboard] Fetching with params =>', params.toString());
+        } catch {}
+        const res = await fetch(`/api/leaderboard/day?${params.toString()}`);
         const data = await res.json();
         
         if (!res.ok || !data.success) {
@@ -30,8 +39,13 @@ export default function useDayLeaderboard(day = 'today') {
           setLeaderboard(data.leaderboard || []);
           setDayLabel(data.dayLabel || '');
         }
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[useDayLeaderboard] Received =>', { count: (data.leaderboard || []).length, day: data.day, dayLabel: data.dayLabel });
+        } catch {}
       } catch (err) {
         if (isMounted) setError(err.message);
+        try { console.warn('[useDayLeaderboard] error =>', err?.message || err); } catch {}
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -41,7 +55,7 @@ export default function useDayLeaderboard(day = 'today') {
     return () => {
       isMounted = false;
     };
-  }, [day]);
+  }, [day, Array.isArray(packIds) ? packIds.join(',') : '']);
 
   return { leaderboard, loading, error, dayLabel };
 }

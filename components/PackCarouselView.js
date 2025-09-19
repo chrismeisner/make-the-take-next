@@ -267,13 +267,25 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     }
   };
 
-  if (props.length === 0) {
-    return (
-      <p className="text-gray-600">
-        No propositions found for this pack.
-      </p>
-    );
-  }
+  // Create empty state component for when there are no props
+  const EmptyPropsCard = () => (
+    <div className="w-full max-w-[600px] aspect-square mx-auto border border-gray-300 rounded-lg shadow-lg overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center p-8 text-center">
+      <div className="mb-6">
+        <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full flex items-center justify-center">
+          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">No Propositions Yet</h3>
+        <p className="text-gray-500 text-sm leading-relaxed max-w-sm">
+          This pack is ready to go, but propositions haven't been added yet. Check back soon for exciting predictions to make your takes on!
+        </p>
+      </div>
+      <div className="text-xs text-gray-400 bg-white px-3 py-2 rounded-full">
+        Coming Soon
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -534,57 +546,67 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             <div className="w-full max-w-[520px] mx-auto overflow-visible">
               {/* Narrower wrapper for the card stack */}
               <div className="mx-auto max-w-[420px] overflow-visible">
-                <Swiper
-                  initialSlide={initialSlide}
-                  onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.activeIndex || 0); }}
-                  style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
-                  className="pb-24 sm:pb-12"
-                  modules={[EffectCards, Mousewheel]}
-                  loop={false}
-                  effect="cards"
-                  grabCursor={true}
-                  mousewheel={{ forceToAxis: true, thresholdDelta: 10, sensitivity: 0.5 }}
-                  cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
-                  onSlideChange={(swiper) => setCurrentSlide(swiper.activeIndex || 0)}
-                >
-                  {/* First slide: Pack Cover */}
-                  <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
-                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} onClick={handleCoverClick} />
-                  </SwiperSlide>
-                  {props.map((prop) => (
-                    <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
-                      <CardViewCard prop={prop} currentReceiptId={currentReceiptId} />
+{props.length === 0 ? (
+                  // Show empty state without Swiper when no props
+                  <div className="space-y-4">
+                    <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} onClick={() => {}} />
+                    <EmptyPropsCard />
+                  </div>
+                ) : (
+                  <Swiper
+                    initialSlide={initialSlide}
+                    onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.activeIndex || 0); }}
+                    style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
+                    className="pb-24 sm:pb-12"
+                    modules={[EffectCards, Mousewheel]}
+                    loop={false}
+                    effect="cards"
+                    grabCursor={true}
+                    mousewheel={{ forceToAxis: true, thresholdDelta: 10, sensitivity: 0.5 }}
+                    cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
+                    onSlideChange={(swiper) => setCurrentSlide(swiper.activeIndex || 0)}
+                  >
+                    {/* First slide: Pack Cover */}
+                    <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
+                      <PackCoverCard packCover={packData.packCover} packTitle={packData.packTitle} onImgLoad={adjustCardHeight} onClick={handleCoverClick} />
                     </SwiperSlide>
-                  ))}
-                </Swiper>
+                    {props.map((prop) => (
+                      <SwiperSlide key={prop.propID} style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>
+                        <CardViewCard prop={prop} currentReceiptId={currentReceiptId} />
+                      </SwiperSlide>
+                    ))}
+                  </Swiper>
+                )}
               </div>
-              <div className="mt-10 sm:mt-8 relative w-full flex items-center justify-center">
-                <button type="button" onClick={() => {
-                  if (!swiperRef.current) return;
-                  const idx = swiperRef.current.activeIndex ?? 0;
-                  if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
-                }} className="absolute left-0 p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <div className="flex justify-center w-full">
-                  <span className="text-sm text-gray-600">
-                    {(currentSlide ?? 0) === 0
-                      ? 'Swipe to Play'
-                      : `${currentSlide} of ${props.length}`}
-                  </span>
+{props.length > 0 && (
+                <div className="mt-10 sm:mt-8 relative w-full flex items-center justify-center">
+                  <button type="button" onClick={() => {
+                    if (!swiperRef.current) return;
+                    const idx = swiperRef.current.activeIndex ?? 0;
+                    if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
+                  }} className="absolute left-0 p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="flex justify-center w-full">
+                    <span className="text-sm text-gray-600">
+                      {(currentSlide ?? 0) === 0
+                        ? 'Swipe to Play'
+                        : `${currentSlide} of ${props.length}`}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => {
+                    if (!swiperRef.current) return;
+                    const idx = swiperRef.current.activeIndex ?? 0;
+                    if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
+                  }} className="absolute right-0 p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
                 </div>
-                <button type="button" onClick={() => {
-                  if (!swiperRef.current) return;
-                  const idx = swiperRef.current.activeIndex ?? 0;
-                  if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
-                }} className="absolute right-0 p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
+              )}
               <div className="mt-10 sm:mt-8">
                 <InlineCardProgressFooter />
               </div>

@@ -103,6 +103,10 @@ export default function AdminPage({ superAdminSecret }) {
   const [coverResult, setCoverResult] = useState(null);
   const [sendingHello, setSendingHello] = useState(false);
   const [helloResult, setHelloResult] = useState("");
+  const [helloProfiles, setHelloProfiles] = useState([]);
+  const [helloSelectedProfile, setHelloSelectedProfile] = useState("");
+  const [helloLoadingProfiles, setHelloLoadingProfiles] = useState(false);
+  const [helloMessage, setHelloMessage] = useState("Hello");
   const [closingProps, setClosingProps] = useState(false);
   const [closePropsResult, setClosePropsResult] = useState(null);
 
@@ -261,13 +265,28 @@ export default function AdminPage({ superAdminSecret }) {
     setSendingHello(true);
     setHelloResult("");
     try {
-      const res = await fetch("/api/admin/sendHelloText", { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
-        // Show both the from and to numbers in the success message
-        setHelloResult(`Hello text sent from ${data.from} to ${data.to}`);
+      // If a profile is selected, send to that profile; otherwise send to current session user
+      if (helloSelectedProfile) {
+        const res = await fetch('/api/admin/sendHelloToProfile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileID: helloSelectedProfile, message: helloMessage || 'Hello' }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setHelloResult(`Hello text sent from ${data.from} to ${data.to}`);
+        } else {
+          setHelloResult(`Error: ${data.error}`);
+        }
       } else {
-        setHelloResult(`Error: ${data.error}`);
+        const res = await fetch("/api/admin/sendHelloText", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          // Show both the from and to numbers in the success message
+          setHelloResult(`Hello text sent from ${data.from} to ${data.to}`);
+        } else {
+          setHelloResult(`Error: ${data.error}`);
+        }
       }
     } catch (err) {
       setHelloResult(`Error: ${err.message}`);
@@ -275,6 +294,24 @@ export default function AdminPage({ superAdminSecret }) {
       setSendingHello(false);
     }
   };
+
+  // Load profiles with phones for hello dropdown
+  useEffect(() => {
+    let ignore = false;
+    const run = async () => {
+      setHelloLoadingProfiles(true);
+      try {
+        const res = await fetch('/api/admin/listProfilesWithPhones?limit=100');
+        const data = await res.json();
+        if (!ignore && data?.success) {
+          setHelloProfiles(Array.isArray(data.profiles) ? data.profiles : []);
+        }
+      } catch {}
+      setHelloLoadingProfiles(false);
+    };
+    run();
+    return () => { ignore = true; };
+  }, []);
 
   // For example, if we only want to show it if the user is actually logged in:
   if (!session?.user) {
@@ -676,6 +713,29 @@ export default function AdminPage({ superAdminSecret }) {
         <section className="border rounded-lg p-4">
           <h2 className="text-lg font-semibold mb-3">Messaging</h2>
           <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700">Send to</label>
+              <select
+                value={helloSelectedProfile}
+                onChange={(e) => setHelloSelectedProfile(e.target.value)}
+                className="px-2 py-2 border rounded min-w-[220px]"
+              >
+                <option value="">Myself (session phone)</option>
+                {helloProfiles.map((p) => (
+                  <option key={p.id} value={p.profile_id}>
+                    {p.profile_id} {p.mobile_e164 ? `(${p.mobile_e164})` : ''}
+                  </option>
+                ))}
+              </select>
+              {helloLoadingProfiles && <span className="text-xs text-gray-500">Loading…</span>}
+            </div>
+            <input
+              type="text"
+              value={helloMessage}
+              onChange={(e) => setHelloMessage(e.target.value)}
+              className="px-2 py-2 border rounded"
+              placeholder="Message"
+            />
             <button
               onClick={sendHelloText}
               disabled={sendingHello}

@@ -1,11 +1,10 @@
 import React from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
 import { useModal } from '../../contexts/ModalContext';
 import Head from 'next/head';
 import { query } from '../../lib/db/postgres';
-import PageContainer from '../../components/PageContainer';
-import PackExplorer from '../../components/PackExplorer';
-import LeaderboardTable from '../../components/LeaderboardTable';
+import PackFeedScaffold from '../../components/PackFeedScaffold';
 import MarketplacePreview from '../../components/MarketplacePreview';
 
 export async function getServerSideProps({ params }) {
@@ -141,62 +140,14 @@ export async function getServerSideProps({ params }) {
     return getCreatedMs(b) - getCreatedMs(a);
   });
 
-  // Build team leaderboard aggregated from takes linked to this team's packs/events/props
-  const { rows: lbRows } = await query(
-    `WITH filtered_takes AS (
-       SELECT t.take_mobile,
-              t.take_result,
-              COALESCE(t.take_pts, 0) AS take_pts
-         FROM takes t
-         JOIN props pr ON pr.id = t.prop_id
-         LEFT JOIN packs pk ON pk.id = COALESCE(t.pack_id, pr.pack_id)
-         LEFT JOIN events ev_pk ON ev_pk.id = pk.event_id
-         LEFT JOIN events ev_pr ON ev_pr.id = pr.event_id
-        WHERE t.take_status = 'latest'
-          AND EXISTS (
-            SELECT 1 FROM props_teams pt
-             WHERE pt.prop_id = pr.id AND pt.team_id = $1
-          )
-     ),
-     agg AS (
-       SELECT take_mobile,
-              COUNT(*)::int AS takes,
-              SUM(CASE WHEN take_result = 'won'  THEN 1 ELSE 0 END)::int AS won,
-              SUM(CASE WHEN take_result = 'lost' THEN 1 ELSE 0 END)::int AS lost,
-              SUM(CASE WHEN take_result = 'push' THEN 1 ELSE 0 END)::int AS pushed,
-              SUM(take_pts)::int AS points
-         FROM filtered_takes
-        GROUP BY take_mobile
-     )
-     SELECT a.take_mobile,
-            a.takes,
-            a.won,
-            a.lost,
-            a.pushed,
-            a.points,
-            pr.profile_id
-       FROM agg a
-       LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
-      ORDER BY a.points DESC, a.takes DESC
-      LIMIT 200`,
-    [team.id]
-  );
-
-  const leaderboard = lbRows.map((r) => ({
-    phone: r.take_mobile,
-    takes: Number(r.takes || 0),
-    points: Number(r.points || 0),
-    won: Number(r.won || 0),
-    lost: Number(r.lost || 0),
-    pushed: Number(r.pushed || 0),
-    profileID: r.profile_id || null,
-  }));
-
-  return { props: { team, packsData: sortedTeamPacks, leaderboard } };
+  return { props: { team, packsData: sortedTeamPacks } };
 }
 
-export default function TeamPage({ team, packsData, leaderboard }) {
+export default function TeamPage({ team, packsData }) {
   const { openModal } = useModal();
+  const router = useRouter();
+  const [selectedDay, setSelectedDay] = useState('today');
+  const [selectedDate, setSelectedDate] = useState(null);
 
   // Show Pack Active modal if a team-related pack is open/active
   useEffect(() => {
@@ -230,46 +181,72 @@ export default function TeamPage({ team, packsData, leaderboard }) {
     } catch {}
   }, [packsData, openModal]);
 
+  // Sync selected day/date with URL query params on team page
+  useEffect(() => {
+    const { day, date } = router.query;
+    const validDays = new Set(['today','yesterday','tomorrow','thisWeek','nextWeek','later']);
+    if (typeof day === 'string' && validDays.has(day)) {
+      setSelectedDay(day);
+    }
+    const parseDateParam = (val) => {
+      if (!val || typeof val !== 'string') return null;
+      const s = val.trim();
+      let yyyy, mm, dd;
+      if (/^\d{6}$/.test(s)) { // YYMMDD
+        const yy = parseInt(s.slice(0, 2), 10);
+        yyyy = 2000 + yy;
+        mm = parseInt(s.slice(2, 4), 10);
+        dd = parseInt(s.slice(4, 6), 10);
+      } else if (/^\d{8}$/.test(s)) { // YYYYMMDD
+        yyyy = parseInt(s.slice(0, 4), 10);
+        mm = parseInt(s.slice(4, 6), 10);
+        dd = parseInt(s.slice(6, 8), 10);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { // YYYY-MM-DD
+        return s;
+      } else {
+        return null;
+      }
+      if (!yyyy || !mm || !dd) return null;
+      const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const iso = parseDateParam(typeof date === 'string' ? date : '');
+    if (iso) setSelectedDate(iso); else setSelectedDate(null);
+  }, [router.query.day, router.query.date]);
+
+  // Update URL when day changes (clear explicit date)
+  useEffect(() => {
+    if (!router.isReady) return;
+    const currentDay = (router.query.day || '').toString();
+    if (currentDay !== selectedDay || router.query.date) {
+      const nextQuery = { ...router.query, day: selectedDay };
+      delete nextQuery.date;
+      router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+    }
+  }, [selectedDay]);
+
   return (
     <div className="bg-white text-gray-900">
       <Head>
         <title>{team.teamNameFull || team.teamName} | Make the Take</title>
       </Head>
       <div className="p-4 w-full">
-        <PageContainer>
-          <div className="mb-4 flex items-center gap-3">
-            {team.teamLogoURL && (
-              <img src={team.teamLogoURL} alt={team.teamNameFull || team.teamName} className="w-12 h-12 rounded" />
-            )}
-            <div>
-              <h1 className="text-2xl font-bold">{team.teamNameFull || team.teamName}</h1>
-              <p className="text-gray-600 text-sm">Team feed</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className="lg:col-span-2">
-              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Packs</h2>
-              <PackExplorer
-                packs={packsData}
-                accent="green"
-                hideLeagueChips={true}
-                forceTeamSlugFilter={team.teamSlug}
-                enableTodayFilter={false}
-                showTodayControl={false}
-                defaultShowTodayOnly={false}
-              />
-            </section>
-
-            <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
-              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Team Leaderboard</h2>
-              <LeaderboardTable leaderboard={(leaderboard || []).slice(0, 10)} />
-              <div className="mt-8">
-                <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
-              </div>
-            </aside>
-          </div>
-        </PageContainer>
+        <PackFeedScaffold
+          packs={packsData}
+          accent="green"
+          title={team.teamNameFull || team.teamName}
+          subtitle="Team feed"
+          headerLeft={team.teamLogoURL ? (
+            <img src={team.teamLogoURL} alt={team.teamNameFull || team.teamName} className="w-12 h-12 rounded" />
+          ) : null}
+          forceTeamSlugFilter={team.teamSlug}
+          hideLeagueChips={true}
+          initialDay='today'
+        />
+        <div className="mt-8">
+          <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
+        </div>
       </div>
     </div>
   );
