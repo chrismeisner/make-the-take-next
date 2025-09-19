@@ -5,10 +5,10 @@ import { useRouter } from "next/router";
 import Toast from "../components/Toast";
 import { useSession } from "next-auth/react";
 import { useModal } from "../contexts/ModalContext";
-import PackExplorer from "../components/PackExplorer";
+import DayBasedPackFeed from "../components/DayBasedPackFeed";
 import PageContainer from "../components/PageContainer";
-import LeaderboardTable from "../components/LeaderboardTable";
-import useLeaderboard from "../hooks/useLeaderboard";
+import DayBasedLeaderboard from "../components/DayBasedLeaderboard";
+import DaySelector from "../components/DaySelector";
 import MarketplacePreview from "../components/MarketplacePreview";
 import { getDataBackend } from "../lib/runtimeConfig";
 import { getToken } from "next-auth/jwt";
@@ -19,7 +19,7 @@ export default function LandingPage({ packsData = [] }) {
   const { data: session } = useSession();
   const { openModal } = useModal();
   const [toastMessage, setToastMessage] = useState("");
-  const { leaderboard, loading, error } = useLeaderboard();
+  const [selectedDay, setSelectedDay] = useState('today');
 
   useEffect(() => {
     if (router.query.logout === "1") {
@@ -76,17 +76,24 @@ export default function LandingPage({ packsData = [] }) {
       <Head>
         <title>Packs | Make the Take</title>
       </Head>
-      <div className="p-4 w-full">
+      <div className="w-full">
         {toastMessage && (
           <Toast message={toastMessage} onClose={() => setToastMessage("")} />
         )}
         
+        <DaySelector 
+          selectedDay={selectedDay}
+          onDayChange={setSelectedDay}
+          packs={packsData}
+          accent="green"
+        />
+        
         <PageContainer>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <section className="lg:col-span-2">
-              <h1 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">All Packs</h1>
-              <PackExplorer
+              <DayBasedPackFeed
                 packs={packsData}
+                selectedDay={selectedDay}
                 accent="green"
                 hideLeagueChips={true}
                 forceTeamSlugFilter={(router.query.team || '').toString()}
@@ -94,19 +101,11 @@ export default function LandingPage({ packsData = [] }) {
             </section>
 
             <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
-              <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">All-Time Leaderboard</h2>
-              {loading && (
-                <p className="text-gray-600">Loading leaderboard…</p>
-              )}
-              {!loading && error && (
-                <p className="text-red-600">{error}</p>
-              )}
-              {!loading && !error && (
-                <LeaderboardTable leaderboard={(leaderboard || []).slice(0, 10)} />
-              )}
-              <div className="mt-3 text-right">
-                <a href="/leaderboard" className="text-blue-600 underline">See full leaderboard</a>
-              </div>
+              <DayBasedLeaderboard 
+                packs={packsData}
+                selectedDay={selectedDay}
+                accent="green"
+              />
 
               <div className="mt-8">
                 <MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />
@@ -175,7 +174,7 @@ export async function getServerSideProps(context) {
                   e.title AS event_title
              FROM packs p
              LEFT JOIN events e ON e.id = p.event_id
-          WHERE p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','grade-pending')
+          WHERE p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','grade-pending','graded')
                OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT 80
@@ -453,6 +452,7 @@ export async function getServerSideProps(context) {
         s === 'closed' ||
         s === 'pending-grade' ||
         s === 'grade-pending' ||
+        s === 'graded' ||
         s === ''
       );
     });

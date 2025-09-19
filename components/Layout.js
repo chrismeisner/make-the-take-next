@@ -15,7 +15,7 @@ export default function Layout({ children }) {
   const sidebarItems = [
     { label: "Dashboard", href: "/" },
     { label: "Packs", href: "/packs" },
-    { label: "Marketplace", href: "/marketplace" },
+    { label: "Redeem", href: "/redeem" },
     { label: "Contests", href: "/contests" },
     { label: "Leaderboard", href: "/leaderboard" },
     ...(profileID ? [{ label: "Profile", href: `/profile/${profileID}` }] : []),

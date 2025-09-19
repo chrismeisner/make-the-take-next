@@ -99,7 +99,7 @@ export default function AdminMarketplacePage() {
         <h1 className="text-2xl font-bold">Marketplace Items</h1>
         <div className="flex items-center gap-3">
           <Link href="/admin/marketplace/new" className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">New Item</Link>
-          <Link href="/marketplace" className="text-blue-600 underline">View Marketplace</Link>
+          <Link href="/redeem" className="text-blue-600 underline">View Redeem Page</Link>
         </div>
       </div>
 

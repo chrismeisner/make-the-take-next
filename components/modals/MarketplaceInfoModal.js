@@ -1,7 +1,9 @@
 import React from 'react';
+import { useRouter } from 'next/router';
 import GlobalModal from './GlobalModal';
 
-export default function MarketplaceInfoModal({ isOpen, onClose, item, tokenBalance = 0, onGo, onRedeem }) {
+export default function MarketplaceInfoModal({ isOpen, onClose, item, tokenBalance = 0, onGo }) {
+  const router = useRouter();
   if (!item) return null;
   const cost = Number(item.itemTokens) || 0;
   const balance = Number(tokenBalance) || 0;
@@ -38,14 +40,20 @@ export default function MarketplaceInfoModal({ isOpen, onClose, item, tokenBalan
         </button>
         <button
           type="button"
-          onClick={onGo}
+          onClick={() => {
+            onClose();
+            router.push('/redeem');
+          }}
           className="px-4 py-2 rounded bg-gray-200 text-gray-900 hover:bg-gray-300"
         >
-          Go to Marketplace
+          View Marketplace
         </button>
         <button
           type="button"
-          onClick={onRedeem || onGo}
+          onClick={() => {
+            onClose();
+            router.push(`/redeem?itemID=${item.itemID}`);
+          }}
           disabled={!canRedeem}
           className="px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
         >

@@ -108,7 +108,7 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
       openModal('marketplaceInfo', {
         item: itemPayload,
         tokenBalance,
-        onGo: () => router.push('/marketplace'),
+        onGo: () => router.push('/redeem'),
       });
     };
     const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInfo(); } };
@@ -139,7 +139,7 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
         ) : null}
         <div className="mt-3 text-sm text-gray-700"><strong>Cost:</strong> {item.itemTokens} tokens</div>
         <div className="mt-2">
-          <p className="text-sm text-gray-600 mb-1">{Math.min(tokenBalance, item.itemTokens)} / {item.itemTokens} tokens</p>
+          <p className="text-sm text-gray-600 mb-1">{tokenBalance} / {item.itemTokens} tokens</p>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((tokenBalance / item.itemTokens) * 100, 100)}%` }}></div>
           </div>

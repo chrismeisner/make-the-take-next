@@ -4,6 +4,7 @@ import PackPreview from './PackPreview';
 export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueChips = true, forceLeagueFilter = '', forceTeamSlugFilter = '' }) {
   const [selectedLeagues, setSelectedLeagues] = useState(new Set());
   const [sortBy, setSortBy] = useState('close-asc'); // default: pack close time, soonest first
+  const [showTodayOnly, setShowTodayOnly] = useState(true); // default: show today's packs
 
   // Ensure selected leagues default to include all available leagues
   useEffect(() => {
@@ -36,8 +37,32 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
   const leagueFilterLc = useMemo(() => (forceLeagueFilter || '').toString().toLowerCase().trim(), [forceLeagueFilter]);
   const teamFilterLc = useMemo(() => (forceTeamSlugFilter || '').toString().toLowerCase().trim(), [forceTeamSlugFilter]);
 
+  // Helper function to check if a pack's event time is today
+  const isEventToday = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    return (pack) => {
+      if (!pack?.eventTime) return false;
+      
+      try {
+        const eventDate = new Date(pack.eventTime);
+        const eventDateStr = eventDate.toISOString().split('T')[0];
+        return eventDateStr === todayStr;
+      } catch {
+        return false;
+      }
+    };
+  }, []);
+
   const visiblePacks = useMemo(() => {
     let list = packs || [];
+    
+    // Apply today filter first if enabled
+    if (showTodayOnly) {
+      list = list.filter(isEventToday);
+    }
+    
     if (teamFilterLc) {
       list = list.filter((p) => {
         const h = (p?.homeTeamSlug || '').toString().toLowerCase();
@@ -59,7 +84,7 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
       if (!lg) return true; // Packs without a league are always visible
       return selectedLeagues.has(lg);
     });
-  }, [packs, selectedLeagues, leagues, leagueFilterLc, hideLeagueChips, teamFilterLc]);
+  }, [packs, selectedLeagues, leagues, leagueFilterLc, hideLeagueChips, teamFilterLc, showTodayOnly, isEventToday]);
 
   function toggleLeague(lg) {
     setSelectedLeagues((prev) => {
@@ -129,6 +154,21 @@ export default function PackExplorer({ packs = [], accent = 'blue', hideLeagueCh
             Showing team: <strong>{teamFilterLc.toUpperCase()}</strong>
           </div>
         )}
+        
+        {/* Today filter toggle */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="today-filter" className="text-sm text-gray-700">
+            Today only:
+          </label>
+          <input
+            id="today-filter"
+            type="checkbox"
+            checked={showTodayOnly}
+            onChange={(e) => setShowTodayOnly(e.target.checked)}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+        </div>
+        
         {/* Sort control */}
         <div className="ml-auto">
           <label htmlFor="pack-sort" className="sr-only">Sort packs</label>
