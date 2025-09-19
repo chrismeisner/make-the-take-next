@@ -281,6 +281,9 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Store structured logs for outbox processing (errors, send attempts, metadata)
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS logs JSONB;
+
 CREATE TABLE IF NOT EXISTS outbox_recipients (
   outbox_id UUID REFERENCES outbox(id) ON DELETE CASCADE,
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -406,6 +409,8 @@ CREATE TABLE IF NOT EXISTS award_cards (
 CREATE INDEX IF NOT EXISTS idx_award_cards_status ON award_cards (status);
 -- Redirect target after successful claim (team slug)
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS redirect_team_slug TEXT;
+-- Image shown on claim/success modals
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 -- Per-user award redemptions (allow many users, one redemption each)
 CREATE TABLE IF NOT EXISTS award_redemptions (

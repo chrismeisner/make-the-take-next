@@ -79,11 +79,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
   const getGroupTitle = (groupKey) => {
     const titles = {
       today: selectedDate ? "Packs on selected date" : "Today's Packs",
-      yesterday: "Yesterday's Packs", 
-      tomorrow: "Tomorrow's Packs",
-      thisWeek: "This Week",
-      nextWeek: "Next Week",
-      later: "Later"
+      yesterday: "Yesterday's Packs",
     };
     return titles[groupKey] || groupKey;
   };
@@ -92,10 +88,6 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
     const descriptions = {
       today: selectedDate ? "Packs with events on the selected date" : "Packs with events happening today",
       yesterday: "Packs with events that happened yesterday",
-      tomorrow: "Packs with events happening tomorrow",
-      thisWeek: "Packs with events this week",
-      nextWeek: "Packs with events next week", 
-      later: "Packs with events further out"
     };
     return descriptions[groupKey] || '';
   };

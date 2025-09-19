@@ -2,6 +2,7 @@
 
 import { getToken } from "next-auth/jwt";
 import { createRepositories } from "../../lib/dal/factory";
+import { query } from "../../lib/db/postgres";
 import { getCurrentUser } from "../../lib/auth";
 
 export default async function handler(req, res) {
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
   );
 
   try {
-	const { props, takes, profiles } = createRepositories();
+    const { props, takes, profiles, packs, awards } = createRepositories();
 	// 3) Find the matching Prop record by propID
 	const propRec = await props.getByPropID(propID);
 	if (!propRec) {
@@ -91,7 +92,62 @@ export default async function handler(req, res) {
 	if (receiptId) takeFields.receiptID = receiptId;
 	// Include takeRef if present in referer URL
 	if (takeRef) takeFields.takeRef = takeRef;
-	const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: takeFields });
+    const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: takeFields });
+
+    // 7.5) If this came from a shared link, auto-award +5 tokens to the referrer once per pack
+    try {
+      if (takeRef && ensuredProfile?.id) {
+        // Prevent self-award when ref equals current user's profile_id
+        const selfProfileId = ensuredProfile.profile_id || null;
+        if (!selfProfileId) {
+          // Resolve profile_id string if not on ensuredProfile
+          try {
+            const { rows } = await query('SELECT profile_id FROM profiles WHERE id = $1 LIMIT 1', [ensuredProfile.id]);
+            if (rows.length) {
+              // eslint-disable-next-line no-param-reassign
+              ensuredProfile.profile_id = rows[0].profile_id;
+            }
+          } catch {}
+        }
+        const isSelfRef = String(takeRef) && String(takeRef) === String(ensuredProfile.profile_id || '');
+        if (!isSelfRef) {
+          // Need packURL for scoping the award code
+          let packURL = null;
+          try {
+            // Fetch packURL via prop -> pack_id
+            const prop = await props.getByPropID(propID);
+            if (prop?.Packs && prop.Packs.length) {
+              const packRow = await query('SELECT pack_url FROM packs WHERE id = $1 LIMIT 1', [prop.Packs[0]]);
+              packURL = packRow?.rows?.[0]?.pack_url || null;
+            }
+          } catch {}
+          if (packURL) {
+            const code = `ref5:${packURL}`;
+            // Ensure award card exists with +5 tokens
+            try {
+              await query(
+                `INSERT INTO award_cards (code, name, tokens, status)
+                 VALUES ($1, $2, $3, 'available')
+                 ON CONFLICT (code) DO NOTHING`,
+                [code, `Referral bonus for ${packURL}`, 5]
+              );
+            } catch {}
+            // Redeem for the referrer (profile in takeRef) if not already redeemed
+            try {
+              const { rows: refRows } = await query('SELECT id FROM profiles WHERE profile_id = $1 LIMIT 1', [takeRef]);
+              const refProfileRowId = refRows?.[0]?.id || null;
+              if (refProfileRowId) {
+                await awards.redeemAvailableByCode(code, refProfileRowId);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal: continue even if award flow fails
+      // eslint-disable-next-line no-console
+      console.warn('[api/take] referral award attempt failed', e?.message || e);
+    }
 
 	// 8) Compute dynamic side counts for this prop
 	const recount = await takes.countBySides(propID);

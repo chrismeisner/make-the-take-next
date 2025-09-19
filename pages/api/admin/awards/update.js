@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug } = req.body || {};
+  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl } = req.body || {};
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
   const updates = [];
   const params = [];
@@ -29,6 +29,7 @@ export default async function handler(req, res) {
   if (validFrom !== undefined) { updates.push(`valid_from = $${i++}`); params.push(validFrom || null); }
   if (validTo !== undefined) { updates.push(`valid_to = $${i++}`); params.push(validTo || null); }
   if (redirectTeamSlug !== undefined) { updates.push(`redirect_team_slug = $${i++}`); params.push(redirectTeamSlug || null); }
+  if (imageUrl !== undefined) { updates.push(`image_url = $${i++}`); params.push(imageUrl || null); }
   if (updates.length === 0) return res.status(400).json({ success: false, error: 'No updates provided' });
   params.push(code);
   const sql = `UPDATE award_cards SET ${updates.join(', ')} WHERE code = $${i} RETURNING code`;

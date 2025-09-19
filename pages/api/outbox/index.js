@@ -14,6 +14,7 @@ export default async function handler(req, res) {
                 o.message,
                 o.status,
                 o.created_at,
+                o.logs,
                 ARRAY_REMOVE(ARRAY_AGG(orx.profile_id), NULL) AS profile_ids
            FROM outbox o
       LEFT JOIN outbox_recipients orx ON orx.outbox_id = o.id

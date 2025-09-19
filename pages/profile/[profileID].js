@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
+  const [referralAwards, setReferralAwards] = useState([]);
   // Notification preferences state (own profile only)
   const [notifLeagues, setNotifLeagues] = useState([]);
   const [availableLeagues, setAvailableLeagues] = useState([]);
@@ -64,6 +65,7 @@ export default function ProfilePage() {
           setCreatorPacks(Array.isArray(data.creatorPacks) ? data.creatorPacks : []);
           setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
           setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
+          setReferralAwards(Array.isArray(data.referralAwards) ? data.referralAwards : []);
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
@@ -419,7 +421,42 @@ export default function ProfilePage() {
 	    </div>
 	  )}
 
-      
+      {/* Referral Awards */}
+      {Array.isArray(referralAwards) && referralAwards.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-xl font-bold mb-2">Marketplace Taker Token bonuses</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full bg-white">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2 text-left">Pack</th>
+                  <th className="px-4 py-2 text-left">Tokens</th>
+                  <th className="px-4 py-2 text-left">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referralAwards.map((row) => {
+                  const packUrl = typeof row.code === 'string' && row.code.startsWith('ref5:') ? row.code.slice(5) : '';
+                  const href = packUrl ? `/packs/${encodeURIComponent(packUrl)}` : null;
+                  return (
+                    <tr key={`${row.code}-${row.redeemedAt}`}>
+                      <td className="border px-4 py-2">
+                        {href ? (
+                          <Link href={href} className="text-blue-600 underline">{packUrl}</Link>
+                        ) : (
+                          packUrl || row.name || row.code
+                        )}
+                      </td>
+                      <td className="border px-4 py-2">+{row.tokens}</td>
+                      <td className="border px-4 py-2">{row.redeemedAt ? new Date(row.redeemedAt).toLocaleString() : ''}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Takes Table */}
       <div className="mt-6 mb-2 flex items-center justify-between">

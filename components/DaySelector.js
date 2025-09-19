@@ -1,20 +1,13 @@
-import { useState, useEffect } from 'react';
+import { } from 'react';
 import { computeAvailableDays, getDayLabels } from '../lib/dayGrouping';
 
 export default function DaySelector({ selectedDay, onDayChange, packs = [], accent = 'blue' }) {
-  // Determine which days have packs (shared util)
-  const availableDays = useState(() => computeAvailableDays(packs))[0];
-
   const dayLabels = getDayLabels();
+  const daysToShow = ['today', 'yesterday'];
 
   const getPackCount = (day) => (Array.isArray(packs) ? packs : []).filter((p) => {
     return (p && (p.eventTime || p.packOpenTime || p.packCloseTime)) && (computeAvailableDays([p]).includes(day));
   }).length;
-
-  // If no packs available, don't show anything
-  if (availableDays.length === 0) {
-    return null;
-  }
 
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-3">
@@ -25,7 +18,7 @@ export default function DaySelector({ selectedDay, onDayChange, packs = [], acce
           <div className="flex items-center space-x-1">
             <span className="text-sm text-gray-600 mr-3">Show:</span>
             <div className="flex bg-gray-100 rounded-lg p-1">
-              {availableDays.map(day => {
+              {daysToShow.map(day => {
                 const packCount = getPackCount(day);
                 const isSelected = day === selectedDay;
                 

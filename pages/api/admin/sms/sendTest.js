@@ -66,10 +66,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'profileId (or known phone) is required' });
     }
 
-    // Create outbox record (ready)
+    // Create outbox record (ready) with initial log entry
+    const initLog = [{ at: new Date().toISOString(), level: 'info', message: 'created', details: { route: 'admin/sms/sendTest' } }];
     const { rows: obRows } = await query(
-      `INSERT INTO outbox (message, status) VALUES ($1, 'ready') RETURNING id`,
-      [message]
+      `INSERT INTO outbox (message, status, logs) VALUES ($1, 'ready', $2::jsonb) RETURNING id`,
+      [message, JSON.stringify(initLog)]
     );
     const outboxId = obRows[0].id;
 
@@ -85,11 +86,11 @@ export default async function handler(req, res) {
       [profileId]
     );
     if (!phoneRows.length || !phoneRows[0].phone) {
-      await query(`UPDATE outbox SET status = 'error' WHERE id = $1`, [outboxId]);
+      await query(`UPDATE outbox SET status = 'error', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'error', message: 'no phone on file' }])]);
       return res.status(400).json({ success: false, error: 'Recipient has no phone on file', outboxId });
     }
     if (phoneRows[0].opted_out) {
-      await query(`UPDATE outbox SET status = 'error' WHERE id = $1`, [outboxId]);
+      await query(`UPDATE outbox SET status = 'error', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'error', message: 'recipient opted out' }])]);
       return res.status(400).json({ success: false, error: 'Recipient opted out of SMS', outboxId });
     }
 
@@ -98,11 +99,11 @@ export default async function handler(req, res) {
     try {
       await sendSMS({ to: phoneRows[0].phone, message });
       sent = true;
+      await query(`UPDATE outbox SET status = 'sent', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'info', message: 'twilio sent', details: { to: phoneRows[0].phone } }])]);
     } catch (err) {
       try { console.error('[admin/sms/sendTest] send error =>', err?.message || err); } catch {}
+      await query(`UPDATE outbox SET status = 'error', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'error', message: 'twilio error', details: { error: String(err?.message || err) } }])]);
     }
-
-    await query(`UPDATE outbox SET status = $2 WHERE id = $1`, [outboxId, sent ? 'sent' : 'error']);
 
     return res.status(200).json({ success: true, outboxId, sent });
   } catch (error) {

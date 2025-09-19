@@ -394,6 +394,7 @@ export default async function handler(req, res) {
 	let achievementsValueTotal = 0;
 	let achievements = [];
 	let tokensEarned = 0;
+	let tokensAwarded = 0; // ensure defined for tokens balance/response
 	if (isPG) {
 	  try {
 		const { rows } = await query(
@@ -406,6 +407,20 @@ export default async function handler(req, res) {
 		tokensEarned = Number(rows[0]?.earned) || 0;
 	  } catch (err) {
 		tokensEarned = 0;
+	  }
+	  // Also compute tokens awarded via awards redemptions (PG only)
+	  try {
+		const { rows } = await query(
+		  `SELECT COALESCE(SUM(a.tokens),0) AS awarded
+		     FROM award_redemptions ar
+		     JOIN award_cards a ON a.id = ar.award_card_id
+		     JOIN profiles p ON p.id = ar.profile_id
+		    WHERE p.profile_id = $1`,
+		  [profileID]
+		);
+		tokensAwarded = Number(rows[0]?.awarded) || 0;
+	  } catch (err) {
+		tokensAwarded = 0;
 	  }
 	} else {
 	  try {
@@ -461,6 +476,32 @@ export default async function handler(req, res) {
 	  }
 	}
 
+	// Referral awards (Postgres): list redemptions for pack-scoped referral cards (code starts with 'ref5:')
+	let referralAwards = [];
+	if (isPG) {
+	  try {
+		const { rows } = await query(
+		  `SELECT a.code, a.name, a.tokens, ar.redeemed_at
+		     FROM award_redemptions ar
+		     JOIN award_cards a ON a.id = ar.award_card_id
+		     JOIN profiles p ON p.id = ar.profile_id
+		    WHERE p.profile_id = $1
+		      AND a.code LIKE 'ref5:%'
+		    ORDER BY ar.redeemed_at DESC
+		    LIMIT 5000`,
+		  [profileID]
+		);
+		referralAwards = rows.map(r => ({
+		  code: r.code,
+		  name: r.name,
+		  tokens: Number(r.tokens) || 0,
+		  redeemedAt: r.redeemed_at ? new Date(r.redeemed_at).toISOString() : null,
+		}));
+	  } catch (pgAwardsErr) {
+		try { console.error('[profile][pg] Error fetching referral awards =>', pgAwardsErr); } catch {}
+	  }
+	}
+
 	// 7) Tokens summary consistent with Marketplace
 	let tokensSpent = 0;
 	if (isPG) {
@@ -480,7 +521,7 @@ export default async function handler(req, res) {
 	} else {
 	  tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
 	}
-  const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
+	const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
 
 	// Creator packs/leaderboard (Airtable-only)
 	let creatorPacks = [];
@@ -573,6 +614,7 @@ export default async function handler(req, res) {
 	  tokensSpent,
       tokensBalance,
       tokensAwarded,
+	  referralAwards,
 	  creatorPacks,
 	  creatorLeaderboard,
 	  creatorLeaderboardUpdatedAt,

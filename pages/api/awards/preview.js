@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     const isBefore = rec.valid_from ? new Date(rec.valid_from).getTime() > now : false;
     const isAfter = rec.valid_to ? new Date(rec.valid_to).getTime() < now : false;
     const status = isBefore || isAfter ? 'expired' : rec.status;
-    return res.status(200).json({ success: true, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null });
+    return res.status(200).json({ success: true, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: rec.image_url || null });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[awards/preview] error', err);

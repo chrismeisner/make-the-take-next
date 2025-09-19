@@ -561,6 +561,7 @@ export default function AdminSmsPage() {
                     <th className="px-2 py-1">Status</th>
                     <th className="px-2 py-1">Recipients</th>
                     <th className="px-2 py-1">Message</th>
+                    <th className="px-2 py-1">Logs</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -577,12 +578,35 @@ export default function AdminSmsPage() {
                         <td className="px-2 py-1">
                           <div className="max-w-xl truncate" title={ob.message || ''}>{ob.message || ''}</div>
                         </td>
+                        <td className="px-2 py-1">
+                          {Array.isArray(ob.logs) && ob.logs.length > 0 ? (
+                            <details>
+                              <summary className="cursor-pointer text-blue-700 hover:underline">{ob.logs.length} entries</summary>
+                              <div className="mt-1 space-y-1 max-w-xl">
+                                {ob.logs.slice().reverse().map((log, idx) => (
+                                  <div key={idx} className="text-xs p-2 bg-gray-50 border rounded">
+                                    <div className="flex items-center justify-between">
+                                      <span className={`px-1.5 py-0.5 rounded ${String(log.level).toLowerCase() === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-200 text-gray-800'}`}>{log.level || 'info'}</span>
+                                      <span className="text-gray-500">{log.at ? new Date(log.at).toLocaleString() : ''}</span>
+                                    </div>
+                                    <div className="mt-1 text-gray-800">{log.message || ''}</div>
+                                    {log.details ? (
+                                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-gray-700">{JSON.stringify(log.details, null, 2)}</pre>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                   {(!outbox || outbox.length === 0) && (
                     <tr>
-                      <td className="px-2 py-2 text-gray-500" colSpan={4}>{outboxLoading ? 'Loading…' : 'No outbox messages yet.'}</td>
+                      <td className="px-2 py-2 text-gray-500" colSpan={5}>{outboxLoading ? 'Loading…' : 'No outbox messages yet.'}</td>
                     </tr>
                   )}
                 </tbody>

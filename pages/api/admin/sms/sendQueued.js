@@ -47,12 +47,14 @@ export default async function handler(req, res) {
         try {
           await sendSMS({ to: r.phone, message: ob.message });
           totalSent += 1;
+          await query(`UPDATE outbox SET logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [ob.id, JSON.stringify([{ at: new Date().toISOString(), level: 'info', message: 'twilio sent', details: { to: r.phone } }])]);
         } catch (err) {
           allSent = false;
           try { console.error('[admin/sms/sendQueued] send error =>', err?.message || err); } catch {}
+          await query(`UPDATE outbox SET logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [ob.id, JSON.stringify([{ at: new Date().toISOString(), level: 'error', message: 'twilio error', details: { to: r.phone, error: String(err?.message || err) } }])]);
         }
       }
-      await query(`UPDATE outbox SET status = $2 WHERE id = $1`, [ob.id, allSent ? 'sent' : 'error']);
+      await query(`UPDATE outbox SET status = $2, logs = COALESCE(logs, '[]'::jsonb) || $3::jsonb WHERE id = $1`, [ob.id, allSent ? 'sent' : 'error', JSON.stringify([{ at: new Date().toISOString(), level: allSent ? 'info' : 'error', message: 'sendQueued complete', details: { recipients: recRows.length, allSent } }])]);
     }
 
     return res.status(200).json({ success: true, processed: outboxRows.length, recipients: totalRecipients, sent: totalSent });

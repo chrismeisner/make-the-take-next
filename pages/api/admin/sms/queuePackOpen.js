@@ -70,10 +70,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, outboxId: null, recipientCount: 0, info: 'No opted-in recipients' });
     }
 
-    // Create outbox and recipients
+    // Create outbox and recipients with initial logs
+    const initLog = [{ at: new Date().toISOString(), level: 'info', message: 'queued', details: { route: 'admin/sms/queuePackOpen', pack_id: pack.pack_id, league } }];
     const { rows: outboxRows } = await query(
-      `INSERT INTO outbox (message, status) VALUES ($1, 'ready') RETURNING id`,
-      [message]
+      `INSERT INTO outbox (message, status, logs) VALUES ($1, 'ready', $2::jsonb) RETURNING id`,
+      [message, JSON.stringify(initLog)]
     );
     const outboxId = outboxRows[0].id;
 

@@ -25,7 +25,7 @@ export default function PackFeedScaffold({
     if (!router.isReady) return;
     
     const { day, date } = router.query;
-    const validDays = new Set(['today','yesterday','tomorrow','thisWeek','nextWeek','later']);
+    const validDays = new Set(['today', 'yesterday']);
     
     if (typeof day === 'string' && validDays.has(day)) {
       setSelectedDay(day);

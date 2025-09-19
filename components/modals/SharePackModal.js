@@ -1,8 +1,19 @@
 import GlobalModal from "./GlobalModal";
 import { useModal } from "../../contexts/ModalContext";
+import { useSession } from "next-auth/react";
 
 export default function SharePackModal({ isOpen, onClose, packTitle, packSummary, packUrl }) {
-  const shareUrl = packUrl || (typeof window !== 'undefined' ? window.location.href : '');
+  const { data: session } = useSession();
+  const baseUrl = packUrl || (typeof window !== 'undefined' ? window.location.href : '');
+  // Append ?ref=<profileID> for logged-in users
+  let shareUrl = baseUrl;
+  try {
+    if (session?.user?.profileID && typeof window !== 'undefined') {
+      const url = new URL(baseUrl, window.location.origin);
+      url.searchParams.set('ref', session.user.profileID);
+      shareUrl = url.toString();
+    }
+  } catch {}
   const { openModal } = useModal();
 
   const handleSystemShare = async () => {
@@ -41,6 +52,7 @@ export default function SharePackModal({ isOpen, onClose, packTitle, packSummary
           className="w-full px-3 py-2 border rounded text-sm"
           onFocus={(e) => e.target.select()}
         />
+        <p className="mt-2 text-xs text-gray-600">When someone uses your link, <span className="font-semibold">you</span> get <span className="font-semibold">+5</span> marketplace tokens.</p>
       </div>
       <div className="flex items-center gap-2">
         <button onClick={handleSystemShare} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Share</button>
