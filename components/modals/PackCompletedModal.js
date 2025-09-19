@@ -8,7 +8,7 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const { data: session } = useSession();
   const router = useRouter();
   const profileID = session?.user?.profileID;
-  const [challengeUrl, setChallengeUrl] = useState("");
+  // Challenge functionality has been removed
   const [receiptUrl, setReceiptUrl] = useState("");
 
   // Prepare picks text for sharing
@@ -22,7 +22,6 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
-      setChallengeUrl(`${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`);
       setReceiptUrl(`${window.location.origin}/packs/${router.query.packURL}/${receiptId}`);
     }
   }, [receiptId, router.query.packURL]);
@@ -37,11 +36,11 @@ const handleShare = async () => {
 	if (navigator.share) {
 		try {
 			await navigator.share({
-				title: `Challenge a friend: ${packTitle}`,
+				title: `Share your picks: ${packTitle}`,
 				text: picksText
 					? `My picks: ${picksText}. Can you beat my score on ${packTitle}?`
 					: `Can you beat my score on ${packTitle}?`,
-				url: challengeUrl,
+				url: receiptUrl,
 			});
 		} catch (error) {
 			console.error("Error sharing", error);
@@ -50,8 +49,8 @@ const handleShare = async () => {
 		try {
 			await navigator.clipboard.writeText(
 				picksText
-					? `My picks: ${picksText}. ${challengeUrl}`
-					: challengeUrl
+					? `My picks: ${picksText}. ${receiptUrl}`
+					: receiptUrl
 			);
 			alert("Message copied to clipboard");
 		} catch (error) {
@@ -67,9 +66,9 @@ const handleShare = async () => {
 		<p className="mb-4">
 		  Thank you for completing the pack <strong>{packTitle}</strong>.
 		</p>
-		{challengeUrl && (
+		{receiptUrl && (
 		  <div className="mb-4">
-			<p className="mb-2 font-medium">Challenge a friend:</p>
+			<p className="mb-2 font-medium">Share your picks:</p>
 			<button
 				onClick={handleShare}
 				className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"

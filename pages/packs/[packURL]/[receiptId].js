@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Airtable from 'airtable';
 import { useModal } from '../../../contexts/ModalContext';
 import { useSession } from 'next-auth/react';
 import PageContainer from '../../../components/PageContainer';
+import { query } from '../../../lib/db/postgres';
 
 export async function getServerSideProps(context) {
   const { packURL, receiptId } = context.params;
@@ -19,20 +19,49 @@ export async function getServerSideProps(context) {
   }
   const packData = packJson.pack;
 
-  // Fetch takes by receiptId
-  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-  const takeRecords = await base('Takes').select({
-    filterByFormula: `{receiptID} = "${receiptId}"`,
-    maxRecords: 1000,
-  }).all();
+  // Fetch takes by receiptId (which is now a take ID in Postgres)
+  // First, get the take to find the user and timestamp
+  const { rows: takeRows } = await query(`
+    SELECT t.id, t.prop_id_text, t.prop_side, t.created_at, t.take_mobile, pr.profile_id
+    FROM takes t
+    JOIN props p ON p.id = t.prop_id
+    LEFT JOIN profiles pr ON pr.mobile_e164 = t.take_mobile
+    WHERE t.id = $1 AND p.pack_id = (SELECT id FROM packs WHERE pack_url = $2 LIMIT 1)
+    LIMIT 1
+  `, [receiptId, packURL]);
 
-  const takes = takeRecords
-    .map((rec) => ({
-      id: rec.id,
-      propID: rec.fields.propID,
-      propSide: rec.fields.propSide,
-      takeTime: rec._rawJson.createdTime,
-      profileID: rec.fields.profileID || null,
+  if (takeRows.length === 0) {
+    return { notFound: true };
+  }
+
+  const mainTake = takeRows[0];
+  const userMobile = mainTake.take_mobile;
+  const takeTime = mainTake.created_at;
+
+  // Get all takes for this user on this pack within a reasonable time window (e.g., 5 minutes)
+  // This simulates the "receipt" concept by grouping takes created together
+  const timeWindow = new Date(takeTime);
+  timeWindow.setMinutes(timeWindow.getMinutes() - 5);
+  
+  const { rows: allTakesRows } = await query(`
+    SELECT t.id, t.prop_id_text, t.prop_side, t.created_at, pr.profile_id
+    FROM takes t
+    JOIN props p ON p.id = t.prop_id
+    LEFT JOIN profiles pr ON pr.mobile_e164 = t.take_mobile
+    WHERE p.pack_id = (SELECT id FROM packs WHERE pack_url = $1 LIMIT 1)
+      AND t.take_mobile = $2 
+      AND t.take_status = 'latest'
+      AND t.created_at >= $3
+    ORDER BY t.created_at ASC
+  `, [packURL, userMobile, timeWindow]);
+
+  const takes = allTakesRows
+    .map((row) => ({
+      id: row.id,
+      propID: row.prop_id_text,
+      propSide: row.prop_side,
+      takeTime: new Date(row.created_at).toISOString(),
+      profileID: row.profile_id || null,
     }))
     .filter((take) => packData.props.some((p) => p.propID === take.propID))
     .sort((a, b) => new Date(a.takeTime) - new Date(b.takeTime));
@@ -126,14 +155,7 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  // Open challenge modal with picks and link
-  const handleChallenge = () => {
-    openModal('challengeShare', {
-      packTitle: packData.packTitle,
-      picksText,
-      challengeUrl: shareUrl,
-    });
-  };
+  // Challenge functionality has been removed
   return (
     <PageContainer>
       {/* Pack preview with link */}
@@ -173,7 +195,7 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
       )}
       <h1 className="text-2xl font-bold mb-4">Receipt for {packData.packTitle}</h1>
       <div className="mb-2 break-all flex items-center flex-wrap gap-2">
-        <span className="mr-2">Challenge URL:</span>
+        <span className="mr-2">Share URL:</span>
         <a
           href={shareUrl}
           target="_blank"
@@ -187,15 +209,6 @@ export default function PackReceiptPage({ packData, takes, receiptId, origin, pr
         >
           {copied ? 'Copied!' : 'Copy Link'}
         </button>
-        {session && (
-          <button
-            type="button"
-            onClick={handleChallenge}
-            className="ml-2 px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
-          >
-            Challenge
-          </button>
-        )}
         <button
           type="button"
           onClick={() => openModal('qrCode', { url: shareUrl })}

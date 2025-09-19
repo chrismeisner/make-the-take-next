@@ -27,9 +27,9 @@ export default async function handler(req, res) {
     });
   }
 
-  // Determine if this take is part of a challenge by inspecting the referer URL
+  // Determine if this take is part of a share by inspecting the referer URL
   const refHeader = req.headers.referer || req.headers.referrer || "";
-  const isChallenge = refHeader.includes("?ref=");
+  const isShared = refHeader.includes("?ref=");
   // Extract takeRef from the referer query if present (e.g., /packs/slug?ref=abcd123)
   let takeRef = null;
   try {
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     takeRef = refUrl.searchParams.get("ref");
   } catch {}
   console.log(
-    `[ /api/take ] ${isChallenge ? "🎯 Challenge submission detected" : "📦 Standard submission"}` +
+    `[ /api/take ] ${isShared ? "🎯 Shared submission detected" : "📦 Standard submission"}` +
       ` -> propID=${propID}, receiptId=${receiptId}`
   );
 

@@ -44,14 +44,14 @@ export default function AdminPacksPage() {
   }, [status]);
 
   // Initialize default visible statuses once real statuses are loaded
-  // Default: exclude archived and graded from initial selection
+  // Default: show only "coming-soon" status on page load
   useEffect(() => {
     if (visibleStatuses != null) return;
     const hasRealStatuses = statusOptions.some((s) => String(s).toLowerCase() !== 'live');
     if (!hasRealStatuses) return;
     const initial = statusOptions.filter((s) => {
       const lower = String(s).toLowerCase();
-      return lower !== 'archived' && lower !== 'graded';
+      return lower === 'coming-soon';
     });
     setVisibleStatuses(initial);
   }, [statusOptions, visibleStatuses]);
@@ -91,8 +91,8 @@ export default function AdminPacksPage() {
   if (!session) {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
-  // When none explicitly selected, default to showing all statuses
-  const effectiveVisibleStatuses = visibleStatuses == null ? statusOptions : visibleStatuses;
+  // When none explicitly selected, default to showing only "coming-soon" status
+  const effectiveVisibleStatuses = visibleStatuses == null ? ['coming-soon'] : visibleStatuses;
   // Filter out packs by selected statuses (or show all)
   const filteredPacks = packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
   // Optionally hide graded packs

@@ -109,6 +109,9 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
     if (s === 'pending-grade') {
       return { label: 'Pending Grade', classes: 'bg-purple-100 text-purple-800 border border-purple-200' };
     }
+    if (s === 'grade-pending') {
+      return { label: 'Grade Pending', classes: 'bg-purple-100 text-purple-800 border border-purple-200' };
+    }
     if (s === 'graded') {
       return { label: 'Graded', classes: 'bg-blue-100 text-blue-800 border border-blue-200' };
     }
@@ -322,7 +325,16 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			})()}
 			{propsCount > 0 && (
 				<div className="mt-1 text-xs md:text-sm text-gray-700">
-					{propsCount} {propsCount === 1 ? 'Prop' : 'Props'}
+					{session?.user && userTakesCount > 0 ? (
+						<span className="inline-flex items-center gap-1">
+							<span className="font-medium text-green-600">{userTakesCount}</span>
+							<span>of</span>
+							<span>{propsCount}</span>
+							<span>props completed</span>
+						</span>
+					) : (
+						<span>{propsCount} {propsCount === 1 ? 'Prop' : 'Props'}</span>
+					)}
 				</div>
 			)}
 				{isOpenLike && (

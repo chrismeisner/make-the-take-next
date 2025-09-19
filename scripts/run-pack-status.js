@@ -2,6 +2,7 @@
 // Run the same pack status transitions as the admin API, for cron use.
 
 const { Pool } = require('pg');
+const twilio = require('twilio');
 
 function shouldUseSsl(connectionString) {
   try {
@@ -46,8 +47,135 @@ function createPool() {
 
 const pool = createPool();
 
+// Initialize Twilio client
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
 async function query(text, params) {
   return pool.query(text, params);
+}
+
+async function sendSMS({ to, message }) {
+  const useFrom = (process.env.TWILIO_FROM_NUMBER || '').trim();
+  const useService = (process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim();
+  if (!useFrom && !useService) {
+    console.error("[twilioService] Twilio sender not configured. Set TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID.");
+    throw new Error("Twilio sender not configured");
+  }
+  try {
+    const params = { body: String(message || ''), to: String(to || '').trim() };
+    if (useService) params.messagingServiceSid = useService; else params.from = useFrom;
+    console.log("[twilioService] Sending SMS", { to: params.to, using: useService ? 'messagingServiceSid' : 'from' });
+    const msg = await twilioClient.messages.create(params);
+    return msg;
+  } catch (error) {
+    console.error("[twilioService] Error sending SMS to", to, error?.message || error);
+    throw error;
+  }
+}
+
+async function calculatePackRankings(packId) {
+  try {
+    // Get all takes for this pack with their points
+    const { rows } = await query(
+      `SELECT t.take_mobile, t.take_pts, t.take_result
+       FROM takes t
+       WHERE t.pack_id = $1
+         AND t.take_status = 'latest'
+         AND t.take_mobile IS NOT NULL`,
+      [packId]
+    );
+    
+    if (!rows || rows.length === 0) {
+      return new Map();
+    }
+    
+    // Group by phone number and sum points
+    const userStats = new Map();
+    for (const row of rows) {
+      const phone = row.take_mobile;
+      if (!userStats.has(phone)) {
+        userStats.set(phone, { phone, totalPoints: 0, wins: 0, losses: 0, pushes: 0 });
+      }
+      const stats = userStats.get(phone);
+      stats.totalPoints += Number(row.take_pts || 0);
+      
+      const result = String(row.take_result || '').toLowerCase();
+      if (result === 'won') stats.wins += 1;
+      else if (result === 'lost') stats.losses += 1;
+      else if (result === 'push' || result === 'pushed') stats.pushes += 1;
+    }
+    
+    // Sort by total points (descending) and assign rankings
+    const sortedUsers = Array.from(userStats.values()).sort((a, b) => b.totalPoints - a.totalPoints);
+    
+    const rankings = new Map();
+    let currentRank = 1;
+    let previousPoints = null;
+    
+    for (let i = 0; i < sortedUsers.length; i++) {
+      const user = sortedUsers[i];
+      
+      // If this user has different points than the previous user, update the rank
+      if (previousPoints !== null && user.totalPoints < previousPoints) {
+        currentRank = i + 1;
+      }
+      
+      rankings.set(user.phone, {
+        rank: currentRank,
+        totalPoints: user.totalPoints,
+        wins: user.wins,
+        losses: user.losses,
+        pushes: user.pushes,
+        totalParticipants: sortedUsers.length
+      });
+      
+      previousPoints = user.totalPoints;
+    }
+    
+    return rankings;
+  } catch (error) {
+    console.error(`[pack-status] Error calculating rankings for pack ${packId}:`, error);
+    return new Map();
+  }
+}
+
+function formatRankingMessage(ranking, packUrl) {
+  const { rank, totalPoints, totalParticipants, wins, losses, pushes } = ranking;
+  
+  // Create ordinal suffix (1st, 2nd, 3rd, 4th, etc.)
+  const getOrdinalSuffix = (num) => {
+    const lastDigit = num % 10;
+    const lastTwoDigits = num % 100;
+    
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 13) return 'th';
+    if (lastDigit === 1) return 'st';
+    if (lastDigit === 2) return 'nd';
+    if (lastDigit === 3) return 'rd';
+    return 'th';
+  };
+  
+  const ordinalRank = `${rank}${getOrdinalSuffix(rank)}`;
+  
+  // Build the message with ranking info
+  let message = `🎉 Your pack "${packUrl}" has been graded! `;
+  
+  if (totalParticipants === 1) {
+    message += `You're the only participant! `;
+  } else {
+    message += `You finished ${ordinalRank} out of ${totalParticipants} participants! `;
+  }
+  
+  message += `(${totalPoints} pts, ${wins}W-${losses}L`;
+  if (pushes > 0) message += `-${pushes}P`;
+  message += `) `;
+  
+  const siteUrl = process.env.SITE_URL || 'https://makethetake.com';
+  message += `View results: ${siteUrl}/packs/${packUrl}`;
+  
+  return message;
 }
 
 async function run() {
@@ -92,6 +220,73 @@ async function run() {
     const { rows: opened } = await query(openSql);
     const openMs = Date.now() - openStart;
     console.log('🟢 [pack-status] OPEN (from coming-soon)', { durationMs: openMs, openCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
+
+    // Send SMS notifications for newly opened packs
+    if (opened.length > 0) {
+      console.log('📱 [pack-status] Sending SMS notifications for opened packs...');
+      for (const pack of opened) {
+        try {
+          // Get pack details including league for SMS targeting
+          const { rows: packDetails } = await query(
+            `SELECT id, pack_id, pack_url, title, league FROM packs WHERE id = $1 LIMIT 1`,
+            [pack.id]
+          );
+          
+          if (packDetails.length === 0) continue;
+          const packInfo = packDetails[0];
+          const league = (packInfo.league || '').toLowerCase();
+
+          // Resolve SMS rule/template for this league
+          const { rows: ruleRows } = await query(
+            `SELECT template FROM sms_rules WHERE trigger_type = 'pack_open' AND active = TRUE AND (league = $1 OR league IS NULL) ORDER BY league NULLS LAST, updated_at DESC LIMIT 1`,
+            [league]
+          );
+          const template = ruleRows.length ? ruleRows[0].template : 'Pack {packTitle} is open! {packUrl}';
+          
+          // Render template with variables
+          const packUrl = `/packs/${packInfo.pack_url || packInfo.pack_id}`;
+          const message = template
+            .replace(/{packTitle}/g, packInfo.title || 'New Pack')
+            .replace(/{packUrl}/g, packUrl)
+            .replace(/{league}/g, league);
+
+          // Find recipients who opted in for this league
+          const { rows: recRows } = await query(
+            `SELECT p.id AS profile_id, p.mobile_e164 AS phone
+               FROM profiles p
+               JOIN notification_preferences np ON np.profile_id = p.id
+              WHERE COALESCE(p.sms_opt_out_all, FALSE) = FALSE
+                AND np.category = 'pack_open'
+                AND np.league = $1
+                AND np.opted_in = TRUE
+                AND p.mobile_e164 IS NOT NULL`,
+            [league]
+          );
+
+          if (recRows.length === 0) {
+            console.log(`📱 [pack-status] No SMS recipients for pack ${packInfo.pack_url} (league: ${league})`);
+            continue;
+          }
+
+          // Send SMS to each recipient
+          let sentCount = 0;
+          for (const recipient of recRows) {
+            try {
+              await sendSMS({ to: recipient.phone, message });
+              sentCount++;
+            } catch (smsErr) {
+              console.error(`[pack-status] SMS send error for ${recipient.phone}:`, smsErr);
+            }
+          }
+
+          if (sentCount > 0) {
+            console.log(`📱 [pack-status] Sent ${sentCount} SMS notifications for opened pack: ${packInfo.pack_url}`);
+          }
+        } catch (err) {
+          console.error(`[pack-status] Error sending SMS notifications for pack ${pack.pack_url}:`, err);
+        }
+      }
+    }
 
     const closeSql = `
       UPDATE packs
@@ -294,6 +489,58 @@ async function run() {
       const toPending = results.filter(r => (r.ungraded > 0)).map(r => r.packId);
       if (toGraded.length > 0) {
         await query(`UPDATE packs SET pack_status = 'graded' WHERE id = ANY($1::uuid[]) AND LOWER(COALESCE(pack_status,'')) IN ('live','pending-grade')`, [toGraded]);
+        
+        // Send SMS notifications for newly graded packs
+        try {
+          const { rows: packInfo } = await query(
+            `SELECT id, pack_url FROM packs WHERE id = ANY($1::uuid[])`,
+            [toGraded]
+          );
+          
+          for (const pack of packInfo) {
+            try {
+              // Calculate rankings for this pack
+              const rankings = await calculatePackRankings(pack.id);
+              
+              const { rows: tr } = await query(
+                `SELECT DISTINCT take_mobile
+                   FROM takes
+                  WHERE pack_id = $1
+                    AND take_status = 'latest'
+                    AND take_mobile IS NOT NULL`,
+                [pack.id]
+              );
+              const phones = (tr || []).map(r => r.take_mobile).filter(Boolean);
+              const urlPart = pack.pack_url || '';
+              
+              for (const to of phones) {
+                try {
+                  const ranking = rankings.get(to);
+                  let message;
+                  
+                  if (ranking) {
+                    message = formatRankingMessage(ranking, urlPart);
+                  } else {
+                    // Fallback to simple message if ranking calculation failed
+                    const siteUrl = process.env.SITE_URL || 'https://makethetake.com';
+                    message = `🎉 Your pack "${urlPart}" has been graded! View results: ${siteUrl}/packs/${urlPart}`;
+                  }
+                  
+                  await sendSMS({ to, message });
+                } catch (smsErr) {
+                  console.error(`[pack-status] SMS send error for ${to}:`, smsErr);
+                }
+              }
+              if (phones.length > 0) {
+                console.log(`📱 [pack-status] Sent ${phones.length} SMS notifications for graded pack: ${urlPart}`);
+              }
+            } catch (smsErr) {
+              console.error(`[pack-status] Error sending SMS notifications for pack ${pack.id}:`, smsErr);
+            }
+          }
+        } catch (smsErr) {
+          console.error(`[pack-status] Error processing SMS notifications for graded packs:`, smsErr);
+        }
       }
       if (toPending.length > 0) {
         await query(`UPDATE packs SET pack_status = 'pending-grade' WHERE id = ANY($1::uuid[]) AND LOWER(COALESCE(pack_status,'')) = 'live'`, [toPending]);
@@ -319,17 +566,17 @@ async function run() {
     const liveProcessMs = Date.now() - liveProcessStart;
     console.log('🟠 [pack-status] LIVE processed for immediate grading', { durationMs: liveProcessMs, ...liveAgg });
 
-    // Step 4: For packs in pending-grade, auto-grade their auto props via API
+    // Step 4: For packs in pending-grade and grade-pending, auto-grade their auto props via API
     async function gradePropsForPendingPacks() {
       const baseUrl = (process.env.SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
       const httpConcurrency = Math.max(2, Math.min(8, Number.parseInt(process.env.CRON_HTTP_CONCURRENCY || '6', 10)));
       const logSample = (arr, mapFn) => (arr || []).slice(0, 10).map(mapFn);
 
-      // Fetch all packs in pending-grade
+      // Fetch all packs in pending-grade or grade-pending
       const { rows: packs } = await query(
         `SELECT id, pack_url
            FROM packs
-          WHERE LOWER(COALESCE(pack_status,'')) = 'pending-grade'`
+          WHERE LOWER(COALESCE(pack_status,'')) IN ('pending-grade', 'grade-pending')`
       );
       if (!packs || packs.length === 0) {
         return { packsScanned: 0, propsConsidered: 0, propsGraded: 0, gradedPacks: [] };
@@ -383,7 +630,7 @@ async function run() {
         for (let i = 0; i < httpConcurrency; i++) workers.push(worker());
         await Promise.all(workers);
 
-        // If all props are now terminal, mark pack graded
+        // If all props are now terminal, mark pack graded and send SMS notifications
         try {
           const { rows: counts } = await query(
             `SELECT
@@ -397,11 +644,52 @@ async function run() {
           if (Number.isFinite(ungraded) && ungraded === 0) {
             await query(`UPDATE packs SET pack_status = 'graded' WHERE id = $1`, [pack.id]);
             gradedPacks.push(pack.pack_url);
+            
+            // Send SMS notifications to all participants
+            try {
+              // Calculate rankings for this pack
+              const rankings = await calculatePackRankings(pack.id);
+              
+              const { rows: tr } = await query(
+                `SELECT DISTINCT take_mobile
+                   FROM takes
+                  WHERE pack_id = $1
+                    AND take_status = 'latest'
+                    AND take_mobile IS NOT NULL`,
+                [pack.id]
+              );
+              const phones = (tr || []).map(r => r.take_mobile).filter(Boolean);
+              const urlPart = pack.pack_url || '';
+              
+              for (const to of phones) {
+                try {
+                  const ranking = rankings.get(to);
+                  let message;
+                  
+                  if (ranking) {
+                    message = formatRankingMessage(ranking, urlPart);
+                  } else {
+                    // Fallback to simple message if ranking calculation failed
+                    const siteUrl = process.env.SITE_URL || 'https://makethetake.com';
+                    message = `🎉 Your pack "${urlPart}" has been graded! View results: ${siteUrl}/packs/${urlPart}`;
+                  }
+                  
+                  await sendSMS({ to, message });
+                } catch (smsErr) {
+                  console.error(`[pack-status] SMS send error for ${to}:`, smsErr);
+                }
+              }
+              if (phones.length > 0) {
+                console.log(`📱 [pack-status] Sent ${phones.length} SMS notifications for graded pack: ${urlPart}`);
+              }
+            } catch (smsErr) {
+              console.error(`[pack-status] Error sending SMS notifications for pack ${pack.id}:`, smsErr);
+            }
           }
         } catch {}
       }
 
-      console.log('🧪 [pack-status] AUTO-GRADE pending packs', {
+      console.log('🧪 [pack-status] AUTO-GRADE pending/grade-pending packs', {
         packsScanned: packs.length,
         propsConsidered,
         propsGraded,
@@ -413,7 +701,7 @@ async function run() {
     const pendingGradeStart = Date.now();
     const agg = await gradePropsForPendingPacks();
     const pendingGradeMs = Date.now() - pendingGradeStart;
-    console.log('🧮 [pack-status] PENDING-GRADE processed', { durationMs: pendingGradeMs, ...agg });
+    console.log('🧮 [pack-status] PENDING-GRADE/GRADE-PENDING processed', { durationMs: pendingGradeMs, ...agg });
 
     // Step 5: closed → graded when no props remain open for the pack
     const gradeSql = `
@@ -430,6 +718,52 @@ async function run() {
     const gradeStart = Date.now();
     const { rows: graded } = await query(gradeSql);
     const gradeMs = Date.now() - gradeStart;
+    
+    // Send SMS notifications for newly graded packs (from closed status)
+    if (graded && graded.length > 0) {
+      for (const pack of graded) {
+        try {
+          // Calculate rankings for this pack
+          const rankings = await calculatePackRankings(pack.id);
+          
+          const { rows: tr } = await query(
+            `SELECT DISTINCT take_mobile
+               FROM takes
+              WHERE pack_id = $1
+                AND take_status = 'latest'
+                AND take_mobile IS NOT NULL`,
+            [pack.id]
+          );
+          const phones = (tr || []).map(r => r.take_mobile).filter(Boolean);
+          const urlPart = pack.pack_url || '';
+          
+          for (const to of phones) {
+            try {
+              const ranking = rankings.get(to);
+              let message;
+              
+              if (ranking) {
+                message = formatRankingMessage(ranking, urlPart);
+              } else {
+                // Fallback to simple message if ranking calculation failed
+                const siteUrl = process.env.SITE_URL || 'https://makethetake.com';
+                message = `🎉 Your pack "${urlPart}" has been graded! View results: ${siteUrl}/packs/${urlPart}`;
+              }
+              
+              await sendSMS({ to, message });
+            } catch (smsErr) {
+              console.error(`[pack-status] SMS send error for ${to}:`, smsErr);
+            }
+          }
+          if (phones.length > 0) {
+            console.log(`📱 [pack-status] Sent ${phones.length} SMS notifications for graded pack: ${urlPart}`);
+          }
+        } catch (smsErr) {
+          console.error(`[pack-status] Error sending SMS notifications for pack ${pack.id}:`, smsErr);
+        }
+      }
+    }
+    
     console.log('🟣 [pack-status] GRADED (from closed)', { durationMs: gradeMs, gradedCount: graded.length, sample: graded.slice(0, 10).map(r => r.pack_url) });
 
     console.log('✅ [pack-status] DONE', {

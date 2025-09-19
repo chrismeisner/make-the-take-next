@@ -690,6 +690,22 @@ export default function AdminEditPackPage() {
             >
               3 hours before event
             </button>
+            <button
+              type="button"
+              className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+              disabled={!packEventTimeISO}
+              onClick={() => {
+                try {
+                  const d = new Date(packEventTimeISO);
+                  const dt = new Date(d.getTime() - 1 * 60 * 60 * 1000);
+                  const pad = (n) => String(n).padStart(2, '0');
+                  const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                  setPackOpenTime(local);
+                } catch {}
+              }}
+            >
+              1 hour before event
+            </button>
           </div>
         </div>
         <div>

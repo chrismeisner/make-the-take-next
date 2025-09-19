@@ -156,12 +156,14 @@ export default function PropDetailPage({
             onClick={() => {
               const base = pageUrl.split("?")[0];
               const ref = lastTakeId || new URL(window.location.href).searchParams.get("ref");
-              const challengeUrl = ref ? `${base}?ref=${ref}` : base;
-              openModal("challengeShare", { packTitle: displayTitle, picksText: "", challengeUrl });
+              const shareUrl = ref ? `${base}?ref=${ref}` : base;
+              // Simple share functionality - copy URL to clipboard
+              navigator.clipboard.writeText(shareUrl);
+              alert("Share URL copied to clipboard!");
             }}
             className="text-blue-600 underline ml-4"
           >
-            Challenge
+            Share
           </button>
         </p>
       </div>
@@ -195,7 +197,7 @@ export async function getServerSideProps({ params, query }) {
     .base(process.env.AIRTABLE_BASE_ID);
   const { propID } = params;
   const baseUrl = process.env.SITE_URL || "http://localhost:3000";
-  // Include ref query param if present for challenge tracking
+  // Include ref query param if present for share tracking
   const pageUrl = `${baseUrl}/props/${propID}${query.ref ? `?ref=${query.ref}` : ''}`;
 
   console.log(`[PropDetailPage] getServerSideProps => propID="${propID}"`);

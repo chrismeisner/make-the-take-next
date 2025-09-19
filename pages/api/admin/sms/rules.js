@@ -92,6 +92,30 @@ export default async function handler(req, res) {
     }
   }
 
+  if (req.method === 'DELETE') {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const id = body.id || null;
+      const ruleKey = body.rule_key ? String(body.rule_key).trim().toLowerCase() : null;
+      if (!id && !ruleKey) {
+        return res.status(400).json({ success: false, error: 'id or rule_key required' });
+      }
+      const where = id ? `id = $1` : `rule_key = $1`;
+      const value = id ? id : ruleKey;
+      const { rows } = await query(
+        `DELETE FROM sms_rules WHERE ${where} RETURNING id, rule_key`,
+        [value]
+      );
+      if (!rows.length) {
+        return res.status(404).json({ success: false, error: 'Rule not found' });
+      }
+      return res.status(200).json({ success: true, deleted: rows[0] });
+    } catch (error) {
+      console.error('[admin/sms/rules][DELETE] error =>', error);
+      return res.status(500).json({ success: false, error: 'Failed to delete rule' });
+    }
+  }
+
   return res.status(405).json({ success: false, error: 'Method not allowed' });
 }
 

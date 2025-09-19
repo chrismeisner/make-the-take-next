@@ -1,7 +1,6 @@
 // File: pages/packs/[packURL].js
 
 import React, { useEffect, useState } from 'react';
-import Airtable from 'airtable';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../api/auth/[...nextauth]';
 import { PackContextProvider } from '../../contexts/PackContext';
@@ -13,15 +12,12 @@ import PackCarouselView from '../../components/PackCarouselView';
 import Head from 'next/head';
 import PropDetailPage from '../props/[propID]';
 import InlineCardProgressFooter from '../../components/InlineCardProgressFooter';
-import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import Link from 'next/link';
+import { query } from '../../lib/db/postgres';
 
 export async function getServerSideProps(context) {
   const { packURL } = context.params;
-  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-  const { ref } = context.query;
-  const isRef = Boolean(ref);
   // Force http for internal SSR fetch to avoid TLS handshake issues
   const proto = 'http';
   const host = context.req.headers['x-forwarded-host'] || context.req.headers.host;
@@ -34,35 +30,7 @@ export async function getServerSideProps(context) {
       return { notFound: true };
     }
     const debugLogs = { packURL, origin };
-    // Fetch friend's takes if ref query is present
-    let friendTakesByProp = {};
-    let friendProfile = null;
-    if (ref) {
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-      const takeRecords = await base('Takes').select({
-        filterByFormula: `{receiptID} = "${ref}"`,
-        maxRecords: 1000,
-      }).all();
-      friendTakesByProp = takeRecords.reduce((acc, rec) => {
-        const { propID, propSide } = rec.fields;
-        if (propID) acc[propID] = { side: propSide };
-        return acc;
-      }, {});
-      // Derive friend’s profileID from the first take and fetch profile data
-      if (takeRecords.length > 0 && takeRecords[0].fields.profileID) {
-        try {
-          const profileRes = await fetch(
-            `${origin}/api/profile/${encodeURIComponent(takeRecords[0].fields.profileID)}`
-          );
-          const profileJson = await profileRes.json();
-          if (profileRes.ok && profileJson.success) {
-            friendProfile = profileJson.profile;
-          }
-        } catch (err) {
-          console.error('Error fetching friend profile:', err);
-        }
-      }
-    }
+    // Note: Challenge functionality has been removed
     // Collect all distinct receipts (groups of takes) for this user on this pack
     // Get and sanitize session for serialization
     const rawSession = await getServerSession(context.req, context.res, authOptions);
@@ -83,73 +51,60 @@ export async function getServerSideProps(context) {
     if (session?.user?.phone) {
       console.log('[getServerSideProps] looking up receipts for phone:', session.user.phone);
       const phone = session.user.phone;
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-      // Use external propID values to match Takes.propID field
-      const propIDs = data.pack.props.map((p) => p.propID).filter(Boolean);
-      console.log('[getServerSideProps] propIDs (external) for receipt lookup:', propIDs);
-      if (propIDs.length > 0) {
-        const filters = propIDs.map((id) => `{propID}="${id}"`).join(",");
-        console.log('[getServerSideProps] using filter formula (by propID):', `AND({takeMobile}="${phone}", OR(${filters}))`);
-        const takeRecords = await base("Takes")
-          .select({ filterByFormula: `AND({takeMobile}="${phone}", OR(${filters}))`, maxRecords: 1000 })
-          .all();
-        console.log('[getServerSideProps] fetched takeRecords count:', takeRecords.length);
-        // Group takes by receiptID and capture earliest createdTime
-        const receiptMap = {};
-        takeRecords.forEach((rec) => {
-          const rid = rec.fields.receiptID;
-          if (!rid) return;
-          const created = rec._rawJson.createdTime;
-          if (!receiptMap[rid] || new Date(created) < new Date(receiptMap[rid])) {
-            receiptMap[rid] = created;
+      
+      // Get pack ID for the query
+      const { rows: packRows } = await query('SELECT id FROM packs WHERE pack_url = $1 LIMIT 1', [packURL]);
+      const packId = packRows?.[0]?.id;
+      
+      if (packId) {
+        // Get all takes for this user on this pack
+        const { rows: takeRows } = await query(`
+          SELECT t.id, t.created_at
+          FROM takes t
+          JOIN props p ON p.id = t.prop_id
+          WHERE p.pack_id = $1 
+            AND t.take_mobile = $2 
+            AND t.take_status = 'latest'
+          ORDER BY t.created_at DESC
+        `, [packId, phone]);
+        
+        console.log('[getServerSideProps] fetched takeRecords count:', takeRows.length);
+        
+        // Since Postgres doesn't have receiptID, we'll use take IDs as "receipt IDs"
+        // Group takes by timestamp windows (takes within 5 minutes are considered same receipt)
+        const receiptMap = new Map();
+        takeRows.forEach((row) => {
+          const takeTime = new Date(row.created_at);
+          const takeId = row.id;
+          
+          // Find existing receipt within 5 minutes, or create new one
+          let foundReceipt = null;
+          for (const [receiptId, receiptTime] of receiptMap.entries()) {
+            if (Math.abs(takeTime - new Date(receiptTime)) <= 5 * 60 * 1000) {
+              foundReceipt = receiptId;
+              break;
+            }
+          }
+          
+          if (foundReceipt) {
+            // Use the earliest time for this receipt group
+            if (takeTime < new Date(receiptMap.get(foundReceipt))) {
+              receiptMap.set(foundReceipt, takeTime.toISOString());
+            }
+          } else {
+            // Create new receipt using this take's ID
+            receiptMap.set(takeId, takeTime.toISOString());
           }
         });
-        userReceipts = Object.entries(receiptMap).map(([receiptID, createdTime]) => ({
+        
+        userReceipts = Array.from(receiptMap.entries()).map(([receiptID, createdTime]) => ({
           receiptID,
-          createdTime: new Date(createdTime).toISOString(),
+          createdTime,
         }));
         console.log('[getServerSideProps] final userReceipts:', userReceipts);
       }
     }
-    // Determine latest receipt ID for challenge acceptance check
-    let latestReceiptId = null;
-    if (userReceipts.length > 0) {
-      latestReceiptId = userReceipts.reduce((prev, curr) =>
-        new Date(curr.createdTime) > new Date(prev.createdTime) ? curr : prev,
-        userReceipts[0]
-      ).receiptID;
-    }
-
-    // Fetch the logged-in user's takes for their latest receipt
-    let challengerTakesByProp = {};
-    if (ref && latestReceiptId) {
-      const challengerTakeRecords = await base('Takes').select({
-        filterByFormula: `{receiptID} = "${latestReceiptId}"`,
-        maxRecords: 1000,
-      }).all();
-      challengerTakesByProp = challengerTakeRecords.reduce((acc, rec) => {
-        const { propID, propSide } = rec.fields;
-        if (propID) acc[propID] = { side: propSide };
-        return acc;
-      }, {});
-    }
-    // Check if a challenge record already exists for this pack/ref and user
-    let hasAcceptedChallenge = false;
-    if (ref && latestReceiptId) {
-      try {
-        const chRes = await fetch(
-          `${origin}/api/challenges?packURL=${encodeURIComponent(packURL)}`
-        );
-        const chData = await chRes.json();
-        if (chRes.ok && chData.success) {
-          hasAcceptedChallenge = chData.challenges.some(c =>
-            c.fields.initiatorReceiptID === ref && c.fields.challengerReceiptID === latestReceiptId
-          );
-        }
-      } catch (err) {
-        console.error('[getServerSideProps] Error checking challenge acceptance:', err);
-      }
-    }
+    // Note: Challenge functionality has been removed
     // Removed recent activity fetch since Takes tab was removed
 
     return {
@@ -158,13 +113,7 @@ export async function getServerSideProps(context) {
         packData: data.pack,
         leaderboard: data.leaderboard || [],
         debugLogs,
-        friendTakesByProp,
-        friendProfile,
         userReceipts,
-        latestReceiptId,
-        challengerTakesByProp,
-        isRef,
-        hasAcceptedChallenge,
       },
     };
   } catch {
@@ -172,74 +121,16 @@ export async function getServerSideProps(context) {
   }
 }
 
-// Challenge button for sharing picks via new ChallengeShareModal
-function ChallengeButton({ receiptId }) {
-  const { openModal } = useModal();
-  const { selectedChoices, packData } = usePackContext();
-  const router = useRouter();
-  // Build challenge URL
-  const challengeUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/packs/${router.query.packURL}?ref=${receiptId}`
-    : '';
-  // Build picks text from selectedChoices
-  const picksText = Object.entries(selectedChoices)
-    .map(([propID, side]) => {
-      const prop = packData.props.find(p => p.propID === propID);
-      if (!prop) return null;
-      const sideLabel = side === 'A'
-        ? (prop.PropSideAShort || 'A')
-        : (prop.PropSideBShort || 'B');
-      const label = prop.propShort || prop.propTitle || prop.propID;
-      return `${label}: ${sideLabel}`;
-    })
-    .filter(Boolean)
-    .join(', ');
-  const handleClick = () => {
-    openModal('challengeShare', { packTitle: packData.packTitle, picksText, challengeUrl });
-  };
-  return (
-    <button
-      onClick={handleClick}
-      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-    >
-      Challenge
-    </button>
-  );
-}
+// Challenge functionality has been removed
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, friendTakesByProp, challengerTakesByProp, friendProfile, userReceipts, isRef, latestReceiptId, hasAcceptedChallenge }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, userReceipts }) {
   const { openModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
-  // Determine the latest receipt ID for this user
-  const latestReceiptObj = userReceipts.length
-    ? userReceipts.reduce((prev, curr) =>
-        new Date(curr.createdTime) > new Date(prev.createdTime) ? curr : prev,
-        userReceipts[0]
-      )
-    : null;
-  const latestReceiptIdForChallenge = latestReceiptObj?.receiptID;
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
-  // Show challenge modal on page load when ref= present
-  useEffect(() => {
-    if (friendProfile && !hasAcceptedChallenge) {
-      // Determine which prop index (first for superprop)
-      const propIndex = 0;
-      openModal('challenge', {
-        friendName: friendProfile?.profileID || '',
-        friendTakesByProp,
-        challengerTakesByProp,
-        packProps: packData.props,
-        packURL: packData.packURL,
-        initiatorReceiptId: router.query.ref,
-        challengerReceiptId: latestReceiptIdForChallenge,
-        propIndex,
-      });
-    }
-  }, [friendProfile, hasAcceptedChallenge, openModal, friendTakesByProp, challengerTakesByProp, packData.props, packData.packURL, router.query.ref, latestReceiptIdForChallenge]);
   // Show Pack Graded modal on load if the pack is graded and not a referral view
   useEffect(() => {
     const status = String(packData?.packStatus || '').toLowerCase();
@@ -270,14 +161,6 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             <meta name="twitter:image" content={coverUrl} />
           )}
         </Head>
-        <PageHeader
-          title={packData.packTitle || packData.packURL}
-          breadcrumbs={[
-            { name: 'Home', href: '/' },
-            ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
-            { name: packData.packTitle || packData.packURL },
-          ]}
-        />
         <PageContainer>
           {packData.packCreatorID && (
             <p className="text-sm text-gray-600 mb-2">
@@ -307,7 +190,7 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
               </ul>
             </div>
           )}
-          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+          <PackContextProvider packData={packData}>
             <PropDetailPage
               propData={superProp}
               coverImageUrl={coverUrl}
@@ -340,17 +223,9 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
             <meta name="twitter:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
           )}
         </Head>
-        <PageHeader
-          title={packData.packTitle || packData.packURL}
-          breadcrumbs={[
-            { name: 'Home', href: '/' },
-            ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
-            { name: packData.packTitle || packData.packURL },
-          ]}
-        />
         <PageContainer>
-          {(!isRef || mounted) && (
-            <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
+          {mounted && (
+            <PackContextProvider packData={packData}>
               <PackCarouselView
                 packData={packData}
                 leaderboard={leaderboard}
@@ -383,26 +258,18 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, frien
           <meta name="twitter:image" content={Array.isArray(packData.packCover) ? packData.packCover[0].url : packData.packCover} />
         )}
       </Head>
-      <PageHeader
-        title={packData.packTitle || packData.packURL}
-        breadcrumbs={[
-          { name: 'Home', href: '/' },
-          ...(packData.packLeague ? [{ name: String(packData.packLeague).toUpperCase(), href: `/?league=${encodeURIComponent(String(packData.packLeague).toLowerCase())}` }] : []),
-          { name: packData.packTitle || packData.packURL },
-        ]}
-      />
-      <PageContainer>
-        {(!isRef || mounted) && (
-          <PackContextProvider packData={packData} friendTakesByProp={friendTakesByProp}>
-            <PackCarouselView
-              packData={packData}
-              leaderboard={leaderboard}
-              debugLogs={debugLogs}
-              userReceipts={userReceipts}
-            />
-          </PackContextProvider>
-        )}
-      </PageContainer>
+        <PageContainer>
+          {mounted && (
+            <PackContextProvider packData={packData}>
+              <PackCarouselView
+                packData={packData}
+                leaderboard={leaderboard}
+                debugLogs={debugLogs}
+                userReceipts={userReceipts}
+              />
+            </PackContextProvider>
+          )}
+        </PageContainer>
     </>
   );
 }

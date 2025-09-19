@@ -83,6 +83,26 @@ export default function AdminSmsPage() {
     }
   }
 
+  async function deleteRule(rule) {
+    if (!confirm(`Are you sure you want to delete the rule "${rule.rule_key}"?`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/sms/rules', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rule.id }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setRules((prev) => prev.filter((r) => r.id !== rule.id));
+      }
+    } catch {} finally {
+      setBusy(false);
+    }
+  }
+
   async function queuePack() {
     if (!packInput) return;
     setBusy(true);
@@ -183,6 +203,14 @@ export default function AdminSmsPage() {
                           className={`px-2 py-1 rounded text-white ${r.active ? 'bg-gray-600 hover:bg-gray-700' : 'bg-green-600 hover:bg-green-700'}`}
                         >
                           {r.active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => deleteRule(r)}
+                          className="px-2 py-1 rounded text-white bg-red-600 hover:bg-red-700"
+                        >
+                          Delete
                         </button>
                       </div>
                     </div>
