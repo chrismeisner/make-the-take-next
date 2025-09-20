@@ -14,7 +14,6 @@ import PackGradedModal from "./modals/PackGradedModal";
 import SuperPropCreatedModal from "./modals/SuperPropCreatedModal";
 import AddEventModal from "./modals/AddEventModal";
 import AddPropModal from "./modals/AddPropModal";
-import GenerateSummaryModal from "./modals/GenerateSummaryModal";
 import GradePacksModal from "./modals/GradePacksModal";
 import GradePropsModal from "./modals/GradePropsModal";
 import GetPackWinnersModal from "./modals/GetPackWinnersModal";
@@ -331,20 +330,7 @@ export default function GlobalModalRenderer() {
 		/>
 	  );
 	// Challenge functionality has been removed
-    case "aiSummaryContext": {
-      const { defaultPrompt, serverPrompt, defaultModel, onGenerate, onUse } = modalConfig.modalProps;
-      return (
-        <GenerateSummaryModal
-          isOpen={true}
-          onClose={closeModal}
-          defaultPrompt={defaultPrompt}
-          serverPrompt={serverPrompt}
-          defaultModel={defaultModel}
-          onGenerate={(context, model) => onGenerate?.(context, model)}
-          onUse={(text) => { try { onUse?.(text); } finally { closeModal(); } }}
-        />
-      );
-    }
+    
 	default:
 	  return null;
   }

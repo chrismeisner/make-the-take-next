@@ -91,7 +91,8 @@ export async function getServerSideProps(context) {
 
 export default function PackReceiptPage({ packData, takes, receiptId, origin, profileData }) {
   // build share URL and setup copy state/handlers
-  const shareUrl = `${origin}/packs/${packData.packURL}?ref=${receiptId}`;
+  const refParam = (profileData && profileData.profileID) || (Array.isArray(takes) && takes[0]?.profileID) || '';
+  const shareUrl = `${origin}/packs/${packData.packURL}${refParam ? `?ref=${encodeURIComponent(refParam)}` : ''}`;
   const receiptPageUrl = `${origin}/packs/${packData.packURL}/${receiptId}`;
   
   // Prepare picks text for copying

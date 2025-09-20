@@ -2,7 +2,6 @@ import { useSession } from 'next-auth/react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { buildGameSummaryPrompt } from '../../../lib/prompts/summary';
 import { useModal } from '../../../contexts/ModalContext';
 
 export default function AdminCreatePackPage() {
@@ -210,28 +209,6 @@ export default function AdminCreatePackPage() {
     }
   };
 
-  const handleGeneratePackSummary = async (context, model) => {
-    try {
-      const evId = packEventId || (Array.isArray(packEventIds) && packEventIds.length > 0 ? packEventIds[0] : null);
-      if (!evId) { setError('Link an event to generate a summary.'); return; }
-      setLoading(true);
-      setError(null);
-      const res = await fetch('/api/admin/generatePropSummary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: evId, context, model })
-      });
-      const data = await res.json();
-      if (data?.success && data?.summary) return data.summary;
-      setError(data?.error || 'AI summary generation failed');
-      return '';
-    } catch (e) {
-      setError(e?.message || 'AI summary generation failed');
-      return '';
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const moveProp = (fromIndex, toIndex) => {
     setPropsList(pl => {
@@ -618,35 +595,7 @@ export default function AdminCreatePackPage() {
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           />
-          {(packEventId || (packEventIds && packEventIds.length > 0)) && (
-            <div className="mt-2">
-              <button
-                type="button"
-                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
-                onClick={() => {
-                  try {
-                    const primaryId = packEventId || (packEventIds && packEventIds[0]);
-                    const info = (primaryId && eventInfoById[primaryId]) || {};
-                    const away = (info.awayTeamAbbr || info.awayTeamName || '').toString();
-                    const home = (info.homeTeamAbbr || info.homeTeamName || '').toString();
-                    const eventDateTime = info.eventTime ? new Date(info.eventTime).toLocaleString() : 'the scheduled time';
-                    const league = info.eventLeague || '';
-                    const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-                    const serverPrompt = buildGameSummaryPrompt({ away, home, eventDateTime, league, wordsMax: 40 });
-                    openModal('aiSummaryContext', {
-                      defaultPrompt,
-                      serverPrompt,
-                      defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
-                      onGenerate: handleGeneratePackSummary,
-                      onUse: (text) => setPackSummary(text),
-                    });
-                  } catch {}
-                }}
-              >
-                Generate AI Summary
-              </button>
-            </div>
-          )}
+          
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Prize</label>

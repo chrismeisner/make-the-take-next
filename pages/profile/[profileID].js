@@ -434,6 +434,7 @@ export default function ProfilePage() {
                   <th className="px-4 py-2 text-left">Take</th>
                   <th className="px-4 py-2 text-left">Tokens</th>
                   <th className="px-4 py-2 text-left">Date</th>
+                  <th className="px-4 py-2 text-left">View</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,6 +446,9 @@ export default function ProfilePage() {
                     packUrl = parts[1] || '';
                   }
                   const href = packUrl ? `/packs/${encodeURIComponent(packUrl)}` : null;
+                  const receiptHref = (packUrl && row.take?.id)
+                    ? `/packs/${encodeURIComponent(packUrl)}/${encodeURIComponent(row.take.id)}`
+                    : null;
                   return (
                     <tr key={`${row.code}-${row.redeemedAt}`}>
                       <td className="border px-4 py-2">
@@ -466,6 +470,13 @@ export default function ProfilePage() {
                       </td>
                       <td className="border px-4 py-2">+{row.tokens}</td>
                       <td className="border px-4 py-2">{row.redeemedAt ? new Date(row.redeemedAt).toLocaleString() : ''}</td>
+                      <td className="border px-4 py-2">
+                        {receiptHref ? (
+                          <Link href={receiptHref} className="text-blue-600 underline">View takes</Link>
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
