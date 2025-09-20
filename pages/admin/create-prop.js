@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { buildGameSummaryPrompt } from '../../lib/prompts/summary';
 import { useRouter } from 'next/router';
 import { useModal } from '../../contexts/ModalContext';
 
@@ -2583,28 +2582,7 @@ export default function CreatePropUnifiedPage() {
         <div>
           <label htmlFor="propSummary" className="block text-sm font-medium text-gray-700">Summary</label>
           <textarea id="propSummary" value={propSummary} onChange={(e) => setPropSummary(e.target.value)} className="mt-1 block w-full border rounded px-2 py-1" />
-          {event && (
-            <button
-              type="button"
-              onClick={() => {
-                const away = Array.isArray(event.awayTeam) ? event.awayTeam[0] : event.awayTeam || '';
-                const home = Array.isArray(event.homeTeam) ? event.homeTeam[0] : event.homeTeam || '';
-                const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
-                const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-                const serverPrompt = buildGameSummaryPrompt({ away, home, eventDateTime, league: event.eventLeague || '', wordsMax: 40 });
-                openModal('aiSummaryContext', {
-                  defaultPrompt,
-                  serverPrompt,
-                  defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
-                  onGenerate: handleGenerateSummary,
-                  onUse: (text) => setPropSummary(text)
-                });
-              }}
-              className="mt-2 text-sm bg-indigo-600 text-white rounded px-3 py-1 hover:bg-indigo-700"
-            >
-              Generate AI Summary
-            </button>
-          )}
+          
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
