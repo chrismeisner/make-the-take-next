@@ -276,6 +276,16 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       <div className="p-4 overflow-x-visible pb-32 md:pb-24">
         {/* Mobile-only hero above prop stack */}
         <div className="block md:hidden px-2 mb-4">
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="mb-2 inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
           {(packData.packPrize || packData.firstPlace) && (
             <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
@@ -320,6 +330,16 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
           <div className="order-2 md:order-1 flex flex-col space-y-6">
             {/* Desktop hero (hidden on mobile) */}
             <div className="hidden md:block px-2">
+              <button
+                type="button"
+                onClick={() => window.history.back()}
+                className="mb-2 inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
+              </button>
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
               {(packData.packPrize || packData.firstPlace) && (
                 <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
