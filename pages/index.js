@@ -25,17 +25,7 @@ export default function LandingPage({ packsData = [] }) {
   // Home now delegates day/date state to PackFeedScaffold
 
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_GLOBAL_MODALS__) return;
-    try {
-      const profileID = session?.user?.profileID || 'guest';
-      const key = `welcomeShown:${profileID}`;
-      if (typeof window !== 'undefined' && !sessionStorage.getItem(key)) {
-        openModal("welcome", { contestHref: "/" });
-        sessionStorage.setItem(key, '1');
-      }
-    } catch (_) {}
-  }, [openModal, session?.user?.profileID]);
+  // Removed welcome modal entirely
 
   // Show Pack Active modal if any pack is currently open/active
   useEffect(() => {
@@ -90,6 +80,7 @@ export default function LandingPage({ packsData = [] }) {
           forceTeamSlugFilter={(router.query.team || '').toString()}
           hideLeagueChips={true}
           initialDay='today'
+          showLeaderboard={false}
           sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
         />
       </div>

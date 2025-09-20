@@ -15,6 +15,7 @@ export default function PackFeedScaffold({
   hideLeagueChips = true,
   initialDay = 'today',
   sidebarBelow = null,
+  showLeaderboard = true,
 }) {
   const router = useRouter();
   const [selectedDay, setSelectedDay] = useState(initialDay);
@@ -106,12 +107,14 @@ export default function PackFeedScaffold({
           </section>
 
           <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
-            <DayBasedLeaderboard
-              packs={packs}
-              selectedDay={selectedDay}
-              selectedDate={selectedDate}
-              accent={accent}
-            />
+            {showLeaderboard ? (
+              <DayBasedLeaderboard
+                packs={packs}
+                selectedDay={selectedDay}
+                selectedDate={selectedDate}
+                accent={accent}
+              />
+            ) : null}
             {sidebarBelow ? (
               <div className="mt-8">
                 {sidebarBelow}

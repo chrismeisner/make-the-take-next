@@ -1,6 +1,7 @@
 // File: /components/modals/PackCompletedModal.js
 import React, { useState, useEffect } from "react";
 import GlobalModal from "./GlobalModal";
+import { useModal } from "../../contexts/ModalContext";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 
@@ -10,6 +11,8 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const profileID = session?.user?.profileID;
   // Challenge functionality has been removed
   const [receiptUrl, setReceiptUrl] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const { openModal } = useModal();
 
   // Prepare picks text for sharing
   const picksText = packProps.map((p) => {
@@ -22,9 +25,21 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
-      setReceiptUrl(`${window.location.origin}/packs/${router.query.packURL}/${receiptId}`);
+      const base = `${window.location.origin}/packs/${router.query.packURL}/${receiptId}`;
+      setReceiptUrl(base);
+      try {
+        let urlWithRef = base;
+        if (session?.user?.profileID) {
+          const u = new URL(base);
+          u.searchParams.set("ref", session.user.profileID);
+          urlWithRef = u.toString();
+        }
+        setShareUrl(urlWithRef);
+      } catch {
+        setShareUrl(base);
+      }
     }
-  }, [receiptId, router.query.packURL]);
+  }, [receiptId, router.query.packURL, session?.user?.profileID]);
 
   const handleProfileNavigation = () => {
 	onClose(); // Close the modal first
@@ -33,30 +48,37 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 
 // Define handleShare to open native share sheet or fallback to copy
 const handleShare = async () => {
-	if (navigator.share) {
-		try {
-			await navigator.share({
-				title: `Share your picks: ${packTitle}`,
-				text: picksText
-					? `My picks: ${picksText}. Can you beat my score on ${packTitle}?`
-					: `Can you beat my score on ${packTitle}?`,
-				url: receiptUrl,
-			});
-		} catch (error) {
-			console.error("Error sharing", error);
-		}
-	} else {
-		try {
-			await navigator.clipboard.writeText(
-				picksText
-					? `My picks: ${picksText}. ${receiptUrl}`
-					: receiptUrl
-			);
-			alert("Message copied to clipboard");
-		} catch (error) {
-			console.error("Failed to copy", error);
-		}
-	}
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `Share your picks: ${packTitle}`,
+        text: picksText
+          ? `My picks: ${picksText}. Can you beat my score on ${packTitle}?`
+          : `Can you beat my score on ${packTitle}?`,
+        url: shareUrl || receiptUrl,
+      });
+    } catch (error) {
+      console.error("Error sharing", error);
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(shareUrl || receiptUrl);
+      alert("Link copied to clipboard");
+    } catch (error) {
+      console.error("Failed to copy", error);
+    }
+  }
+};
+
+const handleCopy = async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl || receiptUrl);
+    alert("Link copied to clipboard");
+  } catch {}
+};
+
+const handleGenerateQR = () => {
+  openModal('qrCode', { url: shareUrl || receiptUrl, title: packTitle || 'Share Pack' });
 };
 
   return (
@@ -69,12 +91,19 @@ const handleShare = async () => {
 		{receiptUrl && (
 		  <div className="mb-4">
 			<p className="mb-2 font-medium">Share your picks:</p>
-			<button
-				onClick={handleShare}
-				className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-			>
-				Share this pack
-			</button>
+			<input
+			  type="text"
+			  readOnly
+			  value={shareUrl || receiptUrl}
+			  className="w-full px-3 py-2 border rounded text-sm"
+			  onFocus={(e) => e.target.select()}
+			/>
+			<p className="mt-2 text-xs text-gray-600">When someone uses your link, <span className="font-semibold">you</span> get <span className="font-semibold">+5</span> marketplace tokens.</p>
+			<div className="mt-3 flex items-center gap-2">
+			  <button onClick={handleShare} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Share</button>
+			  <button onClick={handleCopy} className="px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300">Copy link</button>
+			  <button onClick={handleGenerateQR} className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-black">Generate QR</button>
+			</div>
 		  </div>
 		)}
 		{/* Display created take record IDs for verification */}

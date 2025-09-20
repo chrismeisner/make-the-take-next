@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { createRepositories } from "../../lib/dal/factory";
 import { query } from "../../lib/db/postgres";
 import { getCurrentUser } from "../../lib/auth";
+import { sendSMS } from "../../lib/twilioService";
 
 export default async function handler(req, res) {
   console.log("[/api/take] Received request with method:", req.method);
@@ -94,7 +95,7 @@ export default async function handler(req, res) {
 	if (takeRef) takeFields.takeRef = takeRef;
     const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: takeFields });
 
-    // 7.5) If this came from a shared link, auto-award +5 tokens to the referrer once per pack
+    // 7.5) If this came from a shared link, auto-award +5 tokens to the referrer per referred user per pack
     try {
       if (takeRef && ensuredProfile?.id) {
         // Prevent self-award when ref equals current user's profile_id
@@ -109,27 +110,32 @@ export default async function handler(req, res) {
             }
           } catch {}
         }
-        const isSelfRef = String(takeRef) && String(takeRef) === String(ensuredProfile.profile_id || '');
+        const takerProfileIdStr = String(ensuredProfile.profile_id || '');
+        const isSelfRef = String(takeRef) && String(takeRef) === takerProfileIdStr;
         if (!isSelfRef) {
           // Need packURL for scoping the award code
           let packURL = null;
+          let packTitle = null;
           try {
             // Fetch packURL via prop -> pack_id
             const prop = await props.getByPropID(propID);
             if (prop?.Packs && prop.Packs.length) {
-              const packRow = await query('SELECT pack_url FROM packs WHERE id = $1 LIMIT 1', [prop.Packs[0]]);
+              const packRow = await query('SELECT pack_url, title FROM packs WHERE id = $1 LIMIT 1', [prop.Packs[0]]);
               packURL = packRow?.rows?.[0]?.pack_url || null;
+              packTitle = packRow?.rows?.[0]?.title || null;
             }
           } catch {}
           if (packURL) {
-            const code = `ref5:${packURL}`;
-            // Ensure award card exists with +5 tokens
+            // Build a per-pack-per-referred-user award code so referrer can earn once per referred user
+            // Format: ref5:<packURL>:<referredProfileID>
+            const code = `ref5:${packURL}:${takerProfileIdStr}`;
+            // Ensure award card exists with +5 tokens (available for many users to redeem one time each)
             try {
               await query(
                 `INSERT INTO award_cards (code, name, tokens, status)
                  VALUES ($1, $2, $3, 'available')
                  ON CONFLICT (code) DO NOTHING`,
-                [code, `Referral bonus for ${packURL}`, 5]
+                [code, `Referral bonus for ${packURL} (by ${takerProfileIdStr})`, 5]
               );
             } catch {}
             // Redeem for the referrer (profile in takeRef) if not already redeemed
@@ -137,7 +143,57 @@ export default async function handler(req, res) {
               const { rows: refRows } = await query('SELECT id FROM profiles WHERE profile_id = $1 LIMIT 1', [takeRef]);
               const refProfileRowId = refRows?.[0]?.id || null;
               if (refProfileRowId) {
-                await awards.redeemAvailableByCode(code, refProfileRowId);
+                const awardResult = await awards.redeemAvailableByCode(code, refProfileRowId);
+                // If newly redeemed (not already redeemed), notify the referrer via SMS (respect opt-out)
+                if (awardResult && !awardResult.alreadyRedeemed) {
+                  try {
+                    const { rows: phoneRows } = await query(
+                      `SELECT mobile_e164 AS phone, COALESCE(sms_opt_out_all, FALSE) AS opted_out FROM profiles WHERE id = $1 LIMIT 1`,
+                      [refProfileRowId]
+                    );
+                    const refPhone = phoneRows?.[0]?.phone || null;
+                    const refOptedOut = Boolean(phoneRows?.[0]?.opted_out);
+                    if (refPhone && !refOptedOut) {
+                      // Resolve display name for taker
+                      let takerDisplay = takerProfileIdStr || 'A user';
+                      try {
+                        const { rows: takerRows } = await query(`SELECT COALESCE(NULLIF(username, ''), profile_id) AS handle FROM profiles WHERE id = $1 LIMIT 1`, [ensuredProfile.id]);
+                        if (takerRows?.[0]?.handle) takerDisplay = takerRows[0].handle;
+                      } catch {}
+                      const packLabel = packTitle || packURL;
+                      const message = `${takerDisplay} just made their takes on the pack ${packLabel}`;
+                      // Create outbox record and recipient, then send and update status
+                      let outboxId = null;
+                      try {
+                        const initLog = [{ at: new Date().toISOString(), level: 'info', message: 'created', details: { route: 'api/take referral_sms', packURL, code } }];
+                        const { rows: obRows } = await query(
+                          `INSERT INTO outbox (message, status, logs) VALUES ($1, 'ready', $2::jsonb) RETURNING id`,
+                          [message, JSON.stringify(initLog)]
+                        );
+                        outboxId = obRows[0]?.id || null;
+                        if (outboxId) {
+                          await query(`INSERT INTO outbox_recipients (outbox_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [outboxId, refProfileRowId]);
+                        }
+                      } catch (obErr) {
+                        try { console.warn('[api/take] outbox create failed =>', obErr?.message || obErr); } catch {}
+                      }
+
+                      try {
+                        await sendSMS({ to: refPhone, message });
+                        if (outboxId) {
+                          await query(`UPDATE outbox SET status = 'sent', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'info', message: 'twilio sent', details: { to: refPhone } }])]);
+                        }
+                      } catch (smsErr) {
+                        try { console.warn('[api/take] SMS to referrer failed =>', smsErr?.message || smsErr); } catch {}
+                        if (outboxId) {
+                          await query(`UPDATE outbox SET status = 'error', logs = COALESCE(logs, '[]'::jsonb) || $2::jsonb WHERE id = $1`, [outboxId, JSON.stringify([{ at: new Date().toISOString(), level: 'error', message: 'twilio error', details: { error: String(smsErr?.message || smsErr) } }])]);
+                        }
+                      }
+                    }
+                  } catch (phErr) {
+                    try { console.warn('[api/take] Could not resolve referrer phone =>', phErr?.message || phErr); } catch {}
+                  }
+                }
               }
             } catch {}
           }

@@ -25,7 +25,6 @@ import MarketplaceInfoModal from "./modals/MarketplaceInfoModal";
 import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
-import WelcomeModal from "./modals/WelcomeModal";
 import SharePackModal from "./modals/SharePackModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
@@ -113,16 +112,6 @@ export default function GlobalModalRenderer() {
       );
     }
     // case "notifyMe": removed — individual pack notifications deprecated
-    case "welcome": {
-      const { contestHref } = modalConfig.modalProps;
-      return (
-        <WelcomeModal
-          isOpen={true}
-          onClose={closeModal}
-          contestHref={contestHref}
-        />
-      );
-    }
     case "shareContest": {
       const { contestTitle, contestSummary, contestUrl } = modalConfig.modalProps;
       return (

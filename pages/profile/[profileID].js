@@ -430,13 +430,20 @@ export default function ProfilePage() {
               <thead>
                 <tr>
                   <th className="px-4 py-2 text-left">Pack</th>
+                  <th className="px-4 py-2 text-left">User</th>
+                  <th className="px-4 py-2 text-left">Take</th>
                   <th className="px-4 py-2 text-left">Tokens</th>
                   <th className="px-4 py-2 text-left">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {referralAwards.map((row) => {
-                  const packUrl = typeof row.code === 'string' && row.code.startsWith('ref5:') ? row.code.slice(5) : '';
+                  let packUrl = '';
+                  if (typeof row.code === 'string' && row.code.startsWith('ref5:')) {
+                    const parts = row.code.split(':');
+                    // Format: ref5:<packURL>[:<referredProfileID>]
+                    packUrl = parts[1] || '';
+                  }
                   const href = packUrl ? `/packs/${encodeURIComponent(packUrl)}` : null;
                   return (
                     <tr key={`${row.code}-${row.redeemedAt}`}>
@@ -445,6 +452,16 @@ export default function ProfilePage() {
                           <Link href={href} className="text-blue-600 underline">{packUrl}</Link>
                         ) : (
                           packUrl || row.name || row.code
+                        )}
+                      </td>
+                      <td className="border px-4 py-2">{row.referredUser?.handle || '—'}</td>
+                      <td className="border px-4 py-2">
+                        {row.take ? (
+                          <span>
+                            {(row.take.propShort || row.take.propSummary || 'Take')} {row.take.side ? `(${row.take.side})` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">—</span>
                         )}
                       </td>
                       <td className="border px-4 py-2">+{row.tokens}</td>

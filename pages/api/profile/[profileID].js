@@ -476,27 +476,76 @@ export default async function handler(req, res) {
 	  }
 	}
 
-	// Referral awards (Postgres): list redemptions for pack-scoped referral cards (code starts with 'ref5:')
-	let referralAwards = [];
+  // Referral awards (Postgres): list redemptions for pack-scoped referral cards (code starts with 'ref5:')
+  // and include the referred user's latest take on that pack when available
+  let referralAwards = [];
 	if (isPG) {
 	  try {
-		const { rows } = await query(
-		  `SELECT a.code, a.name, a.tokens, ar.redeemed_at
-		     FROM award_redemptions ar
-		     JOIN award_cards a ON a.id = ar.award_card_id
-		     JOIN profiles p ON p.id = ar.profile_id
-		    WHERE p.profile_id = $1
-		      AND a.code LIKE 'ref5:%'
-		    ORDER BY ar.redeemed_at DESC
-		    LIMIT 5000`,
-		  [profileID]
-		);
-		referralAwards = rows.map(r => ({
-		  code: r.code,
-		  name: r.name,
-		  tokens: Number(r.tokens) || 0,
-		  redeemedAt: r.redeemed_at ? new Date(r.redeemed_at).toISOString() : null,
-		}));
+      const { rows } = await query(
+        `SELECT a.code, a.name, a.tokens, ar.redeemed_at
+           FROM award_redemptions ar
+           JOIN award_cards a ON a.id = ar.award_card_id
+           JOIN profiles p ON p.id = ar.profile_id
+          WHERE p.profile_id = $1
+            AND a.code LIKE 'ref5:%'
+          ORDER BY ar.redeemed_at DESC
+          LIMIT 5000`,
+        [profileID]
+      );
+      const enriched = [];
+      for (const r of rows) {
+        const base = {
+          code: r.code,
+          name: r.name,
+          tokens: Number(r.tokens) || 0,
+          redeemedAt: r.redeemed_at ? new Date(r.redeemed_at).toISOString() : null,
+        };
+        // Parse code format: ref5:<packURL>[:<referredProfileID>]
+        let packUrlFromCode = '';
+        let referredProfileIdText = '';
+        try {
+          if (typeof r.code === 'string' && r.code.startsWith('ref5:')) {
+            const parts = r.code.split(':');
+            packUrlFromCode = parts[1] || '';
+            referredProfileIdText = parts[2] || '';
+          }
+        } catch {}
+        if (packUrlFromCode && referredProfileIdText) {
+          try {
+            const [{ rows: packRows }, { rows: profRows }] = await Promise.all([
+              query(`SELECT id FROM packs WHERE pack_url = $1 LIMIT 1`, [packUrlFromCode]),
+              query(`SELECT id, COALESCE(NULLIF(username,''), profile_id) AS handle FROM profiles WHERE profile_id = $1 LIMIT 1`, [referredProfileIdText]),
+            ]);
+            const packUuid = packRows?.[0]?.id || null;
+            const refUserUuid = profRows?.[0]?.id || null;
+            const referredHandle = profRows?.[0]?.handle || referredProfileIdText || '';
+            if (referredHandle) base.referredUser = { handle: referredHandle };
+            if (packUuid && refUserUuid) {
+              const { rows: takeRows } = await query(
+                `SELECT t.id, t.prop_side, t.created_at, p.prop_short, p.prop_summary
+                   FROM takes t
+                   LEFT JOIN props p ON p.id = t.prop_id
+                  WHERE t.profile_id = $1 AND t.pack_id = $2 AND t.take_status = 'latest'
+                  ORDER BY t.created_at DESC
+                  LIMIT 1`,
+                [refUserUuid, packUuid]
+              );
+              if (takeRows.length) {
+                const tr = takeRows[0];
+                base.take = {
+                  id: tr.id,
+                  side: tr.prop_side || null,
+                  propShort: tr.prop_short || null,
+                  propSummary: tr.prop_summary || null,
+                  createdAt: tr.created_at ? new Date(tr.created_at).toISOString() : null,
+                };
+              }
+            }
+          } catch {}
+        }
+        enriched.push(base);
+      }
+      referralAwards = enriched;
 	  } catch (pgAwardsErr) {
 		try { console.error('[profile][pg] Error fetching referral awards =>', pgAwardsErr); } catch {}
 	  }
