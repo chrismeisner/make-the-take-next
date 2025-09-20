@@ -31,6 +31,10 @@ export default function AdminEditPackPage() {
   const [packEventIds, setPackEventIds] = useState([]);
   const [packEventTimeISO, setPackEventTimeISO] = useState('');
   const [eventInfoById, setEventInfoById] = useState({});
+  // AI summary helpers
+  const [aiContext, setAiContext] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [generatingSummary, setGeneratingSummary] = useState(false);
 
   // Load leagues
   useEffect(() => {
@@ -237,6 +241,47 @@ export default function AdminEditPackPage() {
     })();
     return () => { cancelled = true; };
   }, [packEventIds, packEventId]);
+
+  // Load default AI model
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/aiConfig');
+        const data = await res.json();
+        if (res.ok && data.success && data.defaultModel) {
+          setAiModel(data.defaultModel);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const handleGenerateSummary = async () => {
+    try {
+      const evId = packEventId;
+      if (!evId) {
+        setError('Link an event to this pack to generate a summary.');
+        return;
+      }
+      setGeneratingSummary(true);
+      setError(null);
+      const res = await fetch('/api/admin/generatePropSummary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: evId, context: aiContext, model: aiModel }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'AI summary generation failed');
+      }
+      if (typeof data.summary === 'string') {
+        setPackSummary(data.summary);
+      }
+    } catch (e) {
+      setError(e.message || 'AI summary generation failed');
+    } finally {
+      setGeneratingSummary(false);
+    }
+  };
 
   const handleCoverChange = async (e) => {
     const file = e.target.files[0];
@@ -630,7 +675,43 @@ export default function AdminEditPackPage() {
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           />
-          
+          <div className="mt-2 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 md:items-start gap-2">
+              <div className="md:col-span-2">
+                <textarea
+                  rows={2}
+                  value={aiContext}
+                  onChange={(e) => setAiContext(e.target.value)}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="Optional context: paste latest news or stats"
+                />
+              </div>
+              <div className="flex items-center gap-2 md:justify-end">
+                <select
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  className="px-2 py-2 border rounded bg-white"
+                >
+                  <option value="gpt-5-mini">gpt-5-mini</option>
+                  <option value="gpt-5">gpt-5</option>
+                  <option value="gpt-4.1">gpt-4.1</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                </select>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                  onClick={handleGenerateSummary}
+                  disabled={generatingSummary || !packEventId}
+                  title={!packEventId ? 'Link an event first' : ''}
+                >
+                  {generatingSummary ? 'Generating…' : 'Generate from AI'}
+                </button>
+              </div>
+            </div>
+            {!packEventId && (
+              <div className="text-xs text-gray-500">Link an event to enable AI summary.</div>
+            )}
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Prize</label>

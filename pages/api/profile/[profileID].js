@@ -510,6 +510,22 @@ export default async function handler(req, res) {
             referredProfileIdText = parts[2] || '';
           }
         } catch {}
+        // Fallback: older awards may not encode referred profile ID in code. Try to parse from name.
+        if (packUrlFromCode && !referredProfileIdText && typeof r.name === 'string') {
+          // Expect formats like: "Referral bonus for <packURL> (by <profileID>)"
+          const m = r.name.match(/\(by\s+([^\)]+)\)$/i);
+          if (m && m[1]) {
+            referredProfileIdText = m[1].trim();
+          }
+        }
+        try {
+          console.log('[profile][awards] resolving', {
+            profileID,
+            code: r.code,
+            hasPack: Boolean(packUrlFromCode),
+            hasReferredProfile: Boolean(referredProfileIdText),
+          });
+        } catch {}
         if (packUrlFromCode && referredProfileIdText) {
           try {
             const [{ rows: packRows }, { rows: profRows }] = await Promise.all([
@@ -520,6 +536,14 @@ export default async function handler(req, res) {
             const refUserUuid = profRows?.[0]?.id || null;
             const referredHandle = profRows?.[0]?.handle || referredProfileIdText || '';
             if (referredHandle) base.referredUser = { handle: referredHandle };
+            try {
+              console.log('[profile][awards] resolved identities', {
+                code: r.code,
+                packUuid: Boolean(packUuid),
+                refUserUuid: Boolean(refUserUuid),
+                referredHandle,
+              });
+            } catch {}
             if (packUuid && refUserUuid) {
               const { rows: takeRows } = await query(
                 `SELECT t.id, t.prop_side, t.created_at, p.prop_short, p.prop_summary
@@ -539,8 +563,25 @@ export default async function handler(req, res) {
                   propSummary: tr.prop_summary || null,
                   createdAt: tr.created_at ? new Date(tr.created_at).toISOString() : null,
                 };
+                try { console.log('[profile][awards] take found', { code: r.code, takeId: tr.id }); } catch {}
+              } else {
+                try { console.warn('[profile][awards] no latest take found for referred user/pack', { code: r.code, packUrlFromCode, referredProfileIdText }); } catch {}
               }
+            } else {
+              try {
+                console.warn('[profile][awards] could not resolve pack/profile', {
+                  code: r.code,
+                  packFound: Boolean(packUuid),
+                  profileFound: Boolean(refUserUuid),
+                  packUrlFromCode,
+                  referredProfileIdText,
+                });
+              } catch {}
             }
+          } catch {}
+        } else if (packUrlFromCode && !referredProfileIdText) {
+          try {
+            console.warn('[profile][awards] missing referred profile id in code and name', { code: r.code, name: r.name, packUrlFromCode });
           } catch {}
         }
         enriched.push(base);

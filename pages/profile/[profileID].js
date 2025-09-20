@@ -65,7 +65,30 @@ export default function ProfilePage() {
           setCreatorPacks(Array.isArray(data.creatorPacks) ? data.creatorPacks : []);
           setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
           setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
-          setReferralAwards(Array.isArray(data.referralAwards) ? data.referralAwards : []);
+		  setReferralAwards(Array.isArray(data.referralAwards) ? data.referralAwards : []);
+		  // Debug: Marketplace Taker Token bonuses summary
+		  try {
+			const awards = Array.isArray(data.referralAwards) ? data.referralAwards : [];
+			console.log('[Profile] Marketplace Taker Token bonuses loaded', {
+			  profileID,
+			  count: awards.length,
+			  examples: awards.slice(0, 3).map((r) => ({
+				code: r?.code,
+				name: r?.name,
+				tokens: r?.tokens,
+				hasUser: Boolean(r?.referredUser?.handle),
+				hasTake: Boolean(r?.take),
+				packFromCode: (typeof r?.code === 'string' && r.code.startsWith('ref5:')) ? (r.code.split(':')[1] || null) : null,
+			  })),
+			});
+			const missing = awards.filter((r) => !(r && r.referredUser && r.take));
+			if (missing.length > 0) {
+			  console.warn('[Profile] Referral awards missing user or take', {
+				missingCount: missing.length,
+				codes: missing.slice(0, 5).map((r) => r?.code),
+			  });
+			}
+		  } catch (e) {}
 		} else {
 		  setError(data.error || "Error loading profile");
 		}
