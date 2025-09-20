@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useModal } from '../../../contexts/ModalContext';
-import { buildGameSummaryPrompt } from '../../../lib/prompts/summary';
 
 export default function EditPropPage() {
   const router = useRouter();
@@ -721,32 +720,7 @@ export default function EditPropPage() {
 
   const handleAutoGradeNow = async () => {};
 
-  // Generate AI Summary (reuse events create-prop flow)
-  const handleGenerateSummary = async (context, model) => {
-    if (!event?.airtableId) {
-      setError('Missing eventId for summary generation');
-      return;
-    }
-    setGeneratingSummary(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/generatePropSummary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: event.airtableId, context, model }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        return data.summary;
-      } else {
-        setError(data.error || 'AI summary generation failed');
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setGeneratingSummary(false);
-    }
-  };
+  
 
   // Sync local UI fields from formulaParamsText
   useEffect(() => {
@@ -2545,25 +2519,7 @@ export default function EditPropPage() {
         <div>
           <label className="block text-sm font-medium text-gray-700">Summary</label>
           <textarea className="mt-1 block w-full border rounded px-2 py-1" value={propSummary} onChange={(e) => setPropSummary(e.target.value)} />
-          <button
-            type="button"
-            onClick={() => {
-              const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
-              const defaultPrompt = `Search the web for the latest news and statistics around ${event?.eventTitle || 'this event'} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-              const serverPrompt = buildGameSummaryPrompt({ eventTitle: event?.eventTitle || 'the upcoming game', eventDateTime, league: event?.eventLeague || '', wordsMax: 40 });
-              openModal('aiSummaryContext', {
-                defaultPrompt,
-                serverPrompt,
-                defaultModel: process.env.NEXT_PUBLIC_OPENAI_DEFAULT_MODEL || 'gpt-4.1',
-                onGenerate: handleGenerateSummary,
-                onUse: (text) => setPropSummary(text),
-              });
-            }}
-            disabled={generatingSummary || !event}
-            className={`mt-2 text-sm ${generatingSummary ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} text-white rounded px-3 py-1`}
-          >
-            {generatingSummary ? 'Generating…' : 'Generate AI Summary'}
-          </button>
+          
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
