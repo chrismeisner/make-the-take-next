@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useModal } from '../../../contexts/ModalContext';
+import { buildGameSummaryPrompt } from '../../../lib/prompts/summary';
 
 export default function EditPropPage() {
   const router = useRouter();
@@ -2549,7 +2550,7 @@ export default function EditPropPage() {
             onClick={() => {
               const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
               const defaultPrompt = `Search the web for the latest news and statistics around ${event?.eventTitle || 'this event'} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-              const serverPrompt = `Write a 30 words max summary previewing ${event?.eventTitle || 'the upcoming game'} on ${eventDateTime} in the ${event?.eventLeague || ''}, use relevant narratives and stats.`;
+              const serverPrompt = buildGameSummaryPrompt({ eventTitle: event?.eventTitle || 'the upcoming game', eventDateTime, league: event?.eventLeague || '', wordsMax: 40 });
               openModal('aiSummaryContext', {
                 defaultPrompt,
                 serverPrompt,

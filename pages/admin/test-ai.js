@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import EventSelector from "../../components/EventSelector";
+import { buildGameSummaryPrompt, DEFAULT_EXAMPLE } from "../../lib/prompts/summary";
 
 export default function AdminTestAIPage() {
   const { data: session } = useSession();
@@ -39,7 +40,7 @@ export default function AdminTestAIPage() {
       ? new Date(selectedEvent.eventTime).toLocaleString()
       : "";
     const lg = selectedEvent.eventLeague || league || "";
-    return `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDate} in the ${lg}, use relevant narratives and stats. A good example is: "Matthews (5.67 ERA, 42 K) opposes Paddack (4.77 ERA, 88 K) as Tigers (66–48) aim to extend their four-game win streak over Twins (52–60)."`;
+    return buildGameSummaryPrompt({ away, home, eventDateTime: eventDate, league: lg, wordsMax: 40, includeExample: true, example: DEFAULT_EXAMPLE });
   }, [selectedEvent, league]);
 
   useEffect(() => {

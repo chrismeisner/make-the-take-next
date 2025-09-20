@@ -2,6 +2,7 @@ import { useSession } from 'next-auth/react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { buildGameSummaryPrompt } from '../../../../lib/prompts/summary';
 import { useModal } from '../../../../contexts/ModalContext';
 
 export default function AdminEditPackPage() {
@@ -666,7 +667,7 @@ export default function AdminEditPackPage() {
                     const eventDateTime = info.eventTime ? new Date(info.eventTime).toLocaleString() : 'the scheduled time';
                     const league = info.eventLeague || '';
                     const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-                    const serverPrompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDateTime} in the ${league}, use relevant narratives and stats.`;
+                    const serverPrompt = buildGameSummaryPrompt({ away, home, eventDateTime, league, wordsMax: 40 });
                     openModal('aiSummaryContext', {
                       defaultPrompt,
                       serverPrompt,

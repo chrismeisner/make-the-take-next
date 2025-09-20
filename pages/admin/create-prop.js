@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { buildGameSummaryPrompt } from '../../lib/prompts/summary';
 import { useRouter } from 'next/router';
 import { useModal } from '../../contexts/ModalContext';
 
@@ -2590,7 +2591,7 @@ export default function CreatePropUnifiedPage() {
                 const home = Array.isArray(event.homeTeam) ? event.homeTeam[0] : event.homeTeam || '';
                 const eventDateTime = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
                 const defaultPrompt = `Search the web for the latest news and statistics around the game between ${away} and ${home} on ${eventDateTime}. Write this in long paragraph format filled with stats and narratives.`;
-                const serverPrompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDateTime} in the ${event.eventLeague || ''}, use relevant narratives and stats.`;
+                const serverPrompt = buildGameSummaryPrompt({ away, home, eventDateTime, league: event.eventLeague || '', wordsMax: 40 });
                 openModal('aiSummaryContext', {
                   defaultPrompt,
                   serverPrompt,

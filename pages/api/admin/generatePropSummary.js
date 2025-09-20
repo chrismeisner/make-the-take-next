@@ -1,4 +1,5 @@
 import { query } from '../../../lib/db/postgres';
+import { buildGameSummaryPrompt, DEFAULT_EXAMPLE } from '../../../lib/prompts/summary';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
     const league = event.eventLeague || '';
 
     // Construct prompt
-    const prompt = `Write a 30 words max summary previewing the upcoming game between ${away} and ${home} on ${eventDate} in the ${league}, use relevant narratives and stats. A good example is: "Matthews (5.67 ERA, 42 K) opposes Paddack (4.77 ERA, 88 K) as Tigers (66–48) aim to extend their four-game win streak over Twins (52–60)."`;
+    const prompt = buildGameSummaryPrompt({ away, home, eventDateTime: eventDate, league, wordsMax: 40, includeExample: true, example: DEFAULT_EXAMPLE });
     console.log('[generatePropSummary] Generated prompt:', prompt);
     // Prepare user content with explicit appended context text
     const userContent = `${prompt} Below is additional news and context to be used to inform the preview ${context || ''}`;

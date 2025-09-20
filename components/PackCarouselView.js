@@ -52,10 +52,12 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
   // Read 'prop' param from URL to set initial carousel slide (0 = cover, 1 = first prop, etc.)
   const propParam = router.query.prop;
   const initialSlide = (() => {
-    if (!propParam) return 0;
+    const hasProps = Array.isArray(props) && props.length > 0;
+    if (!propParam) return hasProps ? 1 : 0;
     const val = Array.isArray(propParam) ? propParam[0] : propParam;
     const idx = parseInt(val, 10);
-    return isNaN(idx) || idx < 0 ? 0 : idx;
+    if (isNaN(idx) || idx < 0) return hasProps ? 1 : 0;
+    return idx;
   })();
   const [isClient, setIsClient] = useState(false);
   // Activity feed local state
