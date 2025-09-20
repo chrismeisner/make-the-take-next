@@ -137,48 +137,34 @@ export default function AwardsAdminPage() {
               <input type="file" accept="image/*" onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                try {
-                  // eslint-disable-next-line no-console
-                  console.log('[Admin/Awards] File selected =>', { name: file.name, type: file.type, size: file.size });
-                } catch {}
                 const reader = new FileReader();
                 reader.onload = async () => {
                   try {
-                    const resultStr = String(reader.result || '');
-                    const base64 = resultStr.includes(',') ? resultStr.split(',').pop() : resultStr;
-                    try {
-                      // eslint-disable-next-line no-console
-                      console.log('[Admin/Awards] About to upload =>', {
-                        filename: file.name,
-                        mime: file.type,
-                        base64Length: base64?.length || 0
-                      });
-                    } catch {}
+                    const base64 = String(reader.result).split(',').pop();
+                    // Client-side diagnostics
+                    // eslint-disable-next-line no-console
+                    console.log('[awards] uploading image', { name: file.name, size: file.size, type: file.type, base64Len: base64?.length });
+
                     const up = await fetch('/api/admin/uploadAwardImage', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ filename: file.name, fileData: base64 }),
                     });
-                    let upText = '';
-                    try { upText = await up.clone().text(); } catch {}
-                    let upJson;
-                    try { upJson = JSON.parse(upText); } catch { upJson = {}; }
-                    try {
-                      // eslint-disable-next-line no-console
-                      console.log('[Admin/Awards] Upload response =>', { ok: up.ok, status: up.status, body: upJson || upText });
-                    } catch {}
+                    let upJson = null;
+                    try { upJson = await up.json(); } catch {}
+                    // eslint-disable-next-line no-console
+                    console.log('[awards] upload response', { ok: up.ok, status: up.status, json: upJson });
+
                     if (up.ok && upJson?.success) {
                       setForm((f) => ({ ...f, imageUrl: upJson.url }));
                     } else {
-                      alert((upJson && upJson.error) || 'Upload failed');
+                      alert(upJson?.error || 'Upload failed');
                     }
                   } catch (err) {
-                    try { console.error('[Admin/Awards] Upload threw error =>', err); } catch {}
+                    // eslint-disable-next-line no-console
+                    console.error('[awards] upload error', err);
                     alert('Upload failed');
                   }
-                };
-                reader.onerror = (ev) => {
-                  try { console.error('[Admin/Awards] FileReader error =>', ev); } catch {}
                 };
                 reader.readAsDataURL(file);
               }} />

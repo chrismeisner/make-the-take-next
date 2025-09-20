@@ -7,6 +7,18 @@ import { query } from '../../../lib/db/postgres';
 
 export async function getServerSideProps(context) {
   const { packURL, receiptId } = context.params;
+  // Validate that receiptId is a UUID; if not, redirect to the main pack page (preserve ?ref)
+  const isValidUuid = (v) => typeof v === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(v);
+  if (!isValidUuid(receiptId)) {
+    const ref = context.query?.ref;
+    const destination = `/packs/${encodeURIComponent(packURL)}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`;
+    return {
+      redirect: {
+        destination,
+        permanent: false,
+      },
+    };
+  }
   const proto = context.req.headers['x-forwarded-proto'] || 'http';
   const host = context.req.headers['x-forwarded-host'] || context.req.headers.host;
   const origin = process.env.SITE_URL || `${proto}://${host}`;

@@ -16,14 +16,19 @@ export default async function handler(req, res) {
 
   try {
     const { filename, fileData } = req.body || {};
-    try {
-      // eslint-disable-next-line no-console
-      console.log('[api/admin/uploadAwardImage] Incoming =>', {
-        hasFilename: Boolean(filename),
-        filename,
-        fileDataLength: (typeof fileData === 'string' ? fileData.length : 0),
-      });
-    } catch {}
+    // Server-side diagnostics to debug prod issues
+    // eslint-disable-next-line no-console
+    console.log("[uploadAwardImage] incoming", {
+      hasFilename: Boolean(filename),
+      fileDataLen: typeof fileData === 'string' ? fileData.length : 0,
+      bucketName: storageBucket?.name,
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+        SITE_URL: process.env.SITE_URL,
+      },
+    });
+
     if (!fileData) {
       return res.status(400).json({ success: false, error: "Missing fileData" });
     }
@@ -52,15 +57,8 @@ export default async function handler(req, res) {
       "application/octet-stream"
     );
 
-    try {
-      // eslint-disable-next-line no-console
-      console.log('[api/admin/uploadAwardImage] Derived =>', {
-        bucket: storageBucket?.name,
-        firebasePath,
-        contentType,
-        bufferLength: buffer?.length || 0,
-      });
-    } catch {}
+    // eslint-disable-next-line no-console
+    console.log("[uploadAwardImage] saving to", { firebasePath, contentType });
 
     await file.save(buffer, {
       metadata: { contentType },
@@ -69,10 +67,9 @@ export default async function handler(req, res) {
     });
 
     const publicUrl = `https://storage.googleapis.com/${storageBucket.name}/${firebasePath}`;
-    try {
-      // eslint-disable-next-line no-console
-      console.log('[api/admin/uploadAwardImage] Success =>', { url: publicUrl, filename: safeFileName });
-    } catch {}
+    // eslint-disable-next-line no-console
+    console.log("[uploadAwardImage] success", { publicUrl });
+
     return res.status(200).json({ success: true, url: publicUrl, filename: safeFileName });
   } catch (error) {
     // eslint-disable-next-line no-console
