@@ -49,6 +49,7 @@ export default function CreatePropUnifiedPage() {
   const [packsForEvent, setPacksForEvent] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // AI summary modal state (no inline controls)
 
   // Cover handling
   const [propCoverSource, setPropCoverSource] = useState('event'); // event | homeTeam | awayTeam | custom
@@ -387,26 +388,17 @@ export default function CreatePropUnifiedPage() {
 
   // Removed Moneyline populate helper
 
-  // AI summary via modal (event required)
-  const handleGenerateSummary = async (context, model) => {
+  // Open AI summary modal
+  const openAISummaryModal = () => {
     const evId = event?.id || eventId;
-    if (!evId) { setError('Missing eventId for summary generation'); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/generatePropSummary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: evId, context, model }),
-      });
-      const data = await res.json();
-      if (data.success) return data.summary;
-      setError(data.error || 'AI summary generation failed');
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    if (!evId) { setError('Link an event to enable AI summary.'); return; }
+    openModal('aiSummary', {
+      eventId: evId,
+      propShort,
+      onGenerated: (text) => {
+        if (typeof text === 'string') setPropSummary(text);
+      },
+    });
   };
 
   // Helpers for formula param JSON upserts
@@ -2582,7 +2574,17 @@ export default function CreatePropUnifiedPage() {
         <div>
           <label htmlFor="propSummary" className="block text-sm font-medium text-gray-700">Summary</label>
           <textarea id="propSummary" value={propSummary} onChange={(e) => setPropSummary(e.target.value)} className="mt-1 block w-full border rounded px-2 py-1" />
-          
+          <div className="mt-2">
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              onClick={openAISummaryModal}
+              disabled={!(event?.id || eventId)}
+              title={!(event?.id || eventId) ? 'Link an event first' : ''}
+            >
+              Generate AI Content
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

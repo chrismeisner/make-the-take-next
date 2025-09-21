@@ -14,14 +14,18 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
   const [shareUrl, setShareUrl] = useState("");
   const { openModal } = useModal();
 
-  // Prepare picks text for sharing
-  const picksText = packProps.map((p) => {
-    const side = selectedChoices[p.propID];
-    if (!side) return null;
-    const sideLabel = side === "A" ? (p.PropSideAShort || "A") : (p.PropSideBShort || "B");
-    const label = p.propShort || p.propTitle || p.propID;
-    return `${label}: ${sideLabel}`;
-  }).filter(Boolean).join(', ');
+  // Prepare a primary take text for sharing (use the first selected prop's take text)
+  const primaryTakeText = (() => {
+    const selectedPropIDs = Object.keys(selectedChoices || {});
+    if (selectedPropIDs.length === 0) return "";
+    const firstPropId = selectedPropIDs[0];
+    const prop = packProps.find((p) => p.propID === firstPropId);
+    if (!prop) return "";
+    const side = selectedChoices[firstPropId];
+    if (side === "A") return prop.propSideATake || prop.PropSideATake || prop.PropSideAShort || "";
+    if (side === "B") return prop.propSideBTake || prop.PropSideBTake || prop.PropSideBShort || "";
+    return "";
+  })();
 
   useEffect(() => {
     if (receiptId && router.query.packURL) {
@@ -50,11 +54,15 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
 const handleShare = async () => {
   if (navigator.share) {
     try {
+      const textLines = [];
+      textLines.push(`I just made my takes on ${packTitle}`);
+      if (primaryTakeText) {
+        textLines.push(`🔮 ${primaryTakeText}`);
+      }
+      textLines.push(`Think you can beat my takes?`);
       await navigator.share({
-        title: `Share your picks: ${packTitle}`,
-        text: picksText
-          ? `My picks: ${picksText}. Can you beat my score on ${packTitle}?`
-          : `Can you beat my score on ${packTitle}?`,
+        title: `Share your takes: ${packTitle}`,
+        text: textLines.join("\n"),
         url: shareUrl || receiptUrl,
       });
     } catch (error) {

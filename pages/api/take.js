@@ -146,6 +146,16 @@ export default async function handler(req, res) {
                 const awardResult = await awards.redeemAvailableByCode(code, refProfileRowId);
                 // If newly redeemed (not already redeemed), notify the referrer via SMS (respect opt-out)
                 if (awardResult && !awardResult.alreadyRedeemed) {
+                  // Persist context on the redemption for robust profile enrichment
+                  try {
+                    await awards.setRedemptionContext({
+                      code,
+                      profileRowId: refProfileRowId,
+                      packId: prop?.Packs?.[0] || null,
+                      referredProfileId: ensuredProfile.id,
+                      referredTakeId: newTakeID,
+                    });
+                  } catch {}
                   try {
                     const { rows: phoneRows } = await query(
                       `SELECT mobile_e164 AS phone, COALESCE(sms_opt_out_all, FALSE) AS opted_out FROM profiles WHERE id = $1 LIMIT 1`,
@@ -157,7 +167,7 @@ export default async function handler(req, res) {
                       // Resolve display name for taker
                       let takerDisplay = takerProfileIdStr || 'A user';
                       try {
-                        const { rows: takerRows } = await query(`SELECT COALESCE(NULLIF(username, ''), profile_id) AS handle FROM profiles WHERE id = $1 LIMIT 1`, [ensuredProfile.id]);
+                        const { rows: takerRows } = await query(`SELECT profile_id AS handle FROM profiles WHERE id = $1 LIMIT 1`, [ensuredProfile.id]);
                         if (takerRows?.[0]?.handle) takerDisplay = takerRows[0].handle;
                       } catch {}
                       const packLabel = packTitle || packURL;

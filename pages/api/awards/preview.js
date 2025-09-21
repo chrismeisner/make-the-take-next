@@ -1,12 +1,8 @@
-import { getDataBackend } from '../../../lib/runtimeConfig';
 import { createRepositories } from '../../../lib/dal/factory';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
-  }
-  if (getDataBackend() !== 'postgres') {
-    return res.status(400).json({ success: false, error: 'Awards are Postgres-only in this deployment' });
   }
   const code = String(req.query.code || '').trim();
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });

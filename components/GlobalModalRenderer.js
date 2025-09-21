@@ -28,6 +28,7 @@ import SharePackModal from "./modals/SharePackModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
 import PackActiveModal from "./modals/PackActiveModal";
+import AISummaryModal from "./modals/AISummaryModal";
 import LoginModal from "./modals/LoginModal";
 import AwardClaimModal from "./modals/AwardClaimModal";
 import AwardSuccessModal from "./modals/AwardSuccessModal";
@@ -41,6 +42,19 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "aiSummary": {
+      const { eventId, defaultModel, onGenerated, propShort } = modalConfig.modalProps;
+      return (
+        <AISummaryModal
+          isOpen={true}
+          onClose={closeModal}
+          eventId={eventId}
+          defaultModel={defaultModel}
+          onGenerated={onGenerated}
+          propShort={propShort}
+        />
+      );
+    }
     case "awardClaim": {
       const { code } = modalConfig.modalProps;
       return (

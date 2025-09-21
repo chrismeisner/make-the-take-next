@@ -304,24 +304,27 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 							const data = evt?.espnGameID ? eventScores[evt.espnGameID] : null;
 							const home = data?.home; const away = data?.away; const st = data?.status;
 							return (
-								<div key={`${evt.id || evt.espnGameID || idx}`} className="flex items-center gap-2">
-									<span className="text-gray-600">{(evt.league || '').toUpperCase()}</span>
-							{(() => { const chip = getGameStatusChip(st); return chip ? (
-								<span className={`${chip.classes} inline-flex items-center rounded-full px-2 py-0.5 text-[10px] md:text-xs font-medium`}>
-									{chip.label}
-								</span>
-							) : null; })()}
-							{home && away ? (
-										<span>
-											{away.abbreviation || away.name} {away.score}
-											<span className="mx-1">@</span>
-											{home.abbreviation || home.name} {home.score}
-											{st?.shortDetail ? <span className="ml-2 text-gray-600">{st.shortDetail}</span> : null}
-										</span>
-									) : (
-										<span className="text-gray-600">Fetching score…</span>
-									)}
-								</div>
+					<div key={`${evt.id || evt.espnGameID || idx}`} className="flex items-center gap-2">
+						{(() => {
+							const stateLc = String(st?.state || '').toLowerCase();
+							const hasStarted = stateLc === 'in' || stateLc === 'post';
+							if (hasStarted && home && away) {
+								return (
+									<span>
+										{away.abbreviation || away.name} {away.score}
+										<span className="mx-1">@</span>
+										{home.abbreviation || home.name} {home.score}
+										{st?.shortDetail ? <span className="ml-2 text-gray-600">{st.shortDetail}</span> : null}
+									</span>
+								);
+							}
+							// Pre-game or unknown: show concise status only (e.g., scheduled time), no score
+							if (st?.shortDetail) {
+								return <span className="text-gray-600">{st.shortDetail}</span>;
+							}
+							return null;
+						})()}
+					</div>
 							);
 						})}
 					</div>

@@ -595,7 +595,23 @@ export default function AdminCreatePackPage() {
             onChange={(e) => setPackSummary(e.target.value)}
             className="mt-1 px-3 py-2 border rounded w-full"
           />
-          
+          <div className="mt-2">
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              onClick={() => {
+                if (!packEventId) return;
+                openModal('aiSummary', {
+                  eventId: packEventId,
+                  onGenerated: (text) => { if (typeof text === 'string') setPackSummary(text); },
+                });
+              }}
+              disabled={!packEventId}
+              title={!packEventId ? 'Select an event first' : ''}
+            >
+              Generate AI Content
+            </button>
+          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Prize</label>

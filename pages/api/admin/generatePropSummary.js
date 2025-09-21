@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
-  const { eventId, context, model: requestModel } = req.body;
+  const { eventId, context, model: requestModel, wordsMax: reqWordsMax } = req.body;
   if (!eventId) {
     return res.status(400).json({ success: false, error: 'Missing eventId in request body' });
   }
@@ -32,7 +32,8 @@ export default async function handler(req, res) {
     const league = event.eventLeague || '';
 
     // Construct prompt
-    const prompt = buildGameSummaryPrompt({ away, home, eventDateTime: eventDate, league, wordsMax: 40, includeExample: true, example: DEFAULT_EXAMPLE });
+    const wordsMax = Number.isFinite(Number(reqWordsMax)) && Number(reqWordsMax) > 0 ? Math.min(200, Math.max(10, Number(reqWordsMax))) : 40;
+    const prompt = buildGameSummaryPrompt({ away, home, eventDateTime: eventDate, league, wordsMax, includeExample: true, example: DEFAULT_EXAMPLE });
     console.log('[generatePropSummary] Generated prompt:', prompt);
     // Prepare user content with explicit appended context text
     const userContent = `${prompt} Below is additional news and context to be used to inform the preview ${context || ''}`;

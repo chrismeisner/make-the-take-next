@@ -1,7 +1,4 @@
 // File: /pages/api/props/index.js
-import fetch from "node-fetch";
-import Airtable from "airtable";
-import { getDataBackend } from "../../../lib/runtimeConfig";
 import { query } from "../../../lib/db/postgres";
 import { createRepositories } from "../../../lib/dal/factory";
 
@@ -17,7 +14,7 @@ import { createRepositories } from "../../../lib/dal/factory";
  */
 export default async function handler(req, res) {
   // Postgres POST path
-  if (req.method === "POST" && getDataBackend() === 'postgres') {
+  if (req.method === "POST") {
     try {
       const {
         propShort,
@@ -200,7 +197,7 @@ export default async function handler(req, res) {
     }
   }
   // Postgres GET path
-  if (req.method === "GET" && getDataBackend() === 'postgres') {
+  if (req.method === "GET") {
     try {
       const limitRaw = parseInt(req.query.limit || "10", 10);
       const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
@@ -255,7 +252,6 @@ export default async function handler(req, res) {
   }
   if (req.method === "PATCH") {
     // Postgres path
-    if (getDataBackend() === 'postgres') {
       try {
         const {
           propId,
@@ -378,13 +374,11 @@ export default async function handler(req, res) {
         console.error("[api/props PATCH PG] Error =>", err);
         return res.status(500).json({ success: false, error: "Failed to update prop" });
       }
-    }
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   // DELETE: remove a prop completely
   if (req.method === "DELETE") {
-    if (getDataBackend() === 'postgres') {
       try {
         const { propId } = req.body || {};
         if (!propId) {
@@ -409,7 +403,6 @@ export default async function handler(req, res) {
         console.error("[api/props DELETE PG] Error =>", err);
         return res.status(500).json({ success: false, error: "Failed to delete prop" });
       }
-    }
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 

@@ -1,16 +1,8 @@
-import Airtable from 'airtable';
-import { sumTakePoints, isVisibleTake } from '../../../lib/points';
-import { aggregateTakeStats } from '../../../lib/leaderboard';
-import { getDataBackend } from '../../../lib/runtimeConfig';
+// Postgres-only implementation
 import { createRepositories } from '../../../lib/dal/factory';
 import { query } from '../../../lib/db/postgres';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
-
-// Cache creator leaderboard for 12 hours per profile
-const CREATOR_LEADERBOARD_TTL_MS = 12 * 60 * 60 * 1000;
-const creatorLeaderboardCache = new Map(); // key: profileID -> { leaderboard, updatedAtMs }
+// No creator leaderboard cache needed; Airtable path removed
 
 export default async function handler(req, res) {
   // Only allow GET requests
@@ -24,10 +16,8 @@ export default async function handler(req, res) {
   const select = String(req.query.select || '').toLowerCase();
 
   try {
-	// Fast path: tokens-only
-	if (select === 'tokens') {
-	  const isPG = getDataBackend() === 'postgres';
-      if (isPG) {
+    // Fast path: tokens-only
+    if (select === 'tokens') {
         let tokensEarned = 0;
         let tokensSpent = 0;
         let tokensAwarded = 0;
@@ -64,53 +54,13 @@ export default async function handler(req, res) {
         } catch {}
         const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
         return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensAwarded, tokensBalance });
-	  }
-	  // Airtable fallback (less efficient but scoped)
-	  let tokensEarned = 0;
-  let tokensSpent = 0;
-  let tokensAwarded = 0;
-	  try {
-		const found = await base('Profiles')
-		  .select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
-		  .all();
-		if (!found.length) {
-		  return res.status(404).json({ success: false, error: 'Profile not found' });
-		}
-		const pf = found[0].fields || {};
-		const phone = pf.profileMobile;
-		if (phone) {
-		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} = "latest")`;
-		  const takes = await base('Takes').select({ filterByFormula, maxRecords: 5000 }).all();
-		  const totalPoints = sumTakePoints(takes);
-		  tokensEarned = Math.floor(totalPoints * 0.05);
-		}
-		const exchFilter = `{profileID}="${profileID}"`;
-		const exchRecs = await base('Exchanges').select({ filterByFormula: exchFilter, maxRecords: 5000 }).all();
-		tokensSpent = exchRecs.reduce((sum, r) => sum + (Number(r.fields?.exchangeTokens) || 0), 0);
-	  } catch {}
-  if (isPG) {
-    try {
-      const { rows } = await query(
-        `SELECT COALESCE(SUM(a.tokens),0) AS awarded
-           FROM award_redemptions ar
-           JOIN award_cards a ON a.id = ar.award_card_id
-           JOIN profiles p ON p.id = ar.profile_id
-          WHERE p.profile_id = $1`,
-        [profileID]
-      );
-      tokensAwarded = Number(rows[0]?.awarded) || 0;
-    } catch {}
-  }
-  const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
-	  return res.status(200).json({ success: true, tokensEarned, tokensSpent, tokensBalance });
 	}
 
-	// 1) Fetch the profile record (Prefer Postgres when enabled)
+    // 1) Fetch the profile record (Postgres)
 	let profRec = null;
 	let pf = null;
 	let profileTeamData = null;
-	const isPG = getDataBackend() === 'postgres';
-	if (isPG) {
+    {
 	  const { profiles } = createRepositories();
 	  const r = await profiles.getByProfileID(profileID);
 	  if (!r) {
@@ -139,68 +89,15 @@ export default async function handler(req, res) {
 		  }
 		} catch {}
 	  }
-	} else {
-	  const found = await base('Profiles')
-		.select({ filterByFormula: `{profileID}="${profileID}"`, maxRecords: 1 })
-		.all();
-	  if (found.length === 0) {
-		return res.status(404).json({ success: false, error: 'Profile not found' });
-	  }
-	  profRec = found[0];
-	  pf = profRec.fields;
-	}
+    }
 
 	// Initialize arrays to hold user's takes & packs
 	let userTakes = [];
 	let userPackIDs = [];
 	let totalPoints = 0;
 
-	// 2) Fetch takes
-	if (!isPG && Array.isArray(pf.Takes) && pf.Takes.length > 0) {
-	  // Build a filter formula to fetch all takes linked to this profile
-	  const filterByFormula = `OR(${pf.Takes.map((id) => `RECORD_ID()='${id}'`).join(',')})`;
-	  const takeRecords = await base('Takes')
-		.select({ filterByFormula, maxRecords: 5000 })
-		.all();
-
-	  // Compute total points ignoring overwritten/hidden takes
-	  totalPoints = sumTakePoints(takeRecords);
-	  // Filter out any takes that have been overwritten
-	  userTakes = takeRecords
-		.filter(isVisibleTake)
-		.map((t) => {
-		  const tf = t.fields;
-		  // Collect linked pack IDs from the take
-		  const packIDs = tf.packID || [];
-		  userPackIDs.push(...packIDs);
-		  let contentImageUrls = [];
-		  if (Array.isArray(tf.contentImage)) {
-			contentImageUrls = tf.contentImage.map((att) => att.url);
-		  }
-		  return {
-			airtableRecordId: t.id,
-			takeID: tf.TakeID || t.id,
-			propID: tf.propID || '',
-			propSide: tf.propSide || null,
-			propTitle: tf.propTitle || '',
-			subjectTitle: tf.subjectTitle || '',
-			takePopularity: tf.takePopularity || 0,
-			createdTime: t._rawJson.createdTime,
-			takeStatus: tf.takeStatus || '',
-			propResult: Array.isArray(tf.propResult) ? tf.propResult[0] : tf.propResult || '',
-			propEventMatchup: Array.isArray(tf.propEventMatchup) ? tf.propEventMatchup[0] : tf.propEventMatchup || '',
-			propLeague: Array.isArray(tf.propLeague) ? tf.propLeague[0] : tf.propLeague || '',
-			propESPN: Array.isArray(tf.propESPN) ? tf.propESPN[0] : tf.propESPN || '',
-			propStatus: Array.isArray(tf.propStatus) ? tf.propStatus[0] : tf.propStatus || '',
-			takeResult: tf.takeResult || '',
-			takePTS: tf.takePTS || 0,
-			takeHide: tf.takeHide || false,
-			takeTitle: tf.takeTitle || '',
-			takeContentImageUrls: contentImageUrls,
-			packIDs, // lookup packIDs for this take
-		  };
-		});
-	} else if (isPG) {
+    // 2) Fetch takes (Postgres)
+    {
 	  // Postgres: derive by phone number with joins for enrichment
 	  try {
 		const phone = pf.profileMobile;
@@ -290,60 +187,12 @@ export default async function handler(req, res) {
 	  } catch (fallbackErr) {
 		console.error('[profile][pg] take fetch failed =>', fallbackErr);
 	  }
-	} else {
-	  // Airtable fallback by phone
-	  try {
-		const phone = pf.profileMobile;
-		if (phone && typeof phone === 'string') {
-		  const filterByFormula = `AND({takeMobile} = "${phone}", {takeStatus} != "overwritten")`;
-		  const takeRecords = await base('Takes')
-			.select({ filterByFormula, maxRecords: 5000 })
-			.all();
-		  totalPoints = sumTakePoints(takeRecords);
-		  userTakes = takeRecords
-			.filter(isVisibleTake)
-			.map((t) => {
-			  const tf = t.fields;
-			  const packIDs = tf.packID || [];
-			  userPackIDs.push(...packIDs);
-			  let contentImageUrls = [];
-			  if (Array.isArray(tf.contentImage)) {
-				contentImageUrls = tf.contentImage.map((att) => att.url);
-			  }
-			  return {
-				airtableRecordId: t.id,
-				takeID: tf.TakeID || t.id,
-				propID: tf.propID || '',
-				propSide: tf.propSide || null,
-				propTitle: tf.propTitle || '',
-				subjectTitle: tf.subjectTitle || '',
-				takePopularity: tf.takePopularity || 0,
-				createdTime: t._rawJson.createdTime,
-				takeStatus: tf.takeStatus || '',
-				propResult: Array.isArray(tf.propResult) ? tf.propResult[0] : tf.propResult || '',
-				propEventMatchup: Array.isArray(tf.propEventMatchup) ? tf.propEventMatchup[0] : tf.propEventMatchup || '',
-				propLeague: Array.isArray(tf.propLeague) ? tf.propLeague[0] : tf.propLeague || '',
-				propESPN: Array.isArray(tf.propESPN) ? tf.propESPN[0] : tf.propESPN || '',
-				propStatus: Array.isArray(tf.propStatus) ? tf.propStatus[0] : tf.propStatus || '',
-				takeResult: tf.takeResult || '',
-				takePTS: tf.takePTS || 0,
-				takeHide: tf.takeHide || false,
-				takeTitle: tf.takeTitle || '',
-				takeContentImageUrls: contentImageUrls,
-				packIDs,
-			  };
-			});
-		}
-	  } catch (fallbackErr) {
-		console.error('[profile] Fallback take fetch by phone failed =>', fallbackErr);
-	  }
-	}
+    }
 
 	// 3) Deduplicate and fetch pack details
 	const uniquePackIDs = [...new Set(userPackIDs)];
 	let validPacks = [];
-	if (uniquePackIDs.length > 0) {
-	  if (isPG) {
+  if (uniquePackIDs.length > 0) {
 		const params = uniquePackIDs.map((_, i) => `$${i + 1}`).join(',');
 		try {
 		  const { rows } = await query(`SELECT id, pack_id, pack_url, title, cover_url, event_time, pack_status FROM packs WHERE id IN (${params})`, uniquePackIDs);
@@ -358,23 +207,6 @@ export default async function handler(req, res) {
 		} catch (pgPackErr) {
 		  console.error('[profile][pg] pack fetch failed =>', pgPackErr);
 		}
-	  } else {
-		const filterByFormula = `OR(${uniquePackIDs.map((id) => "{packID}=\"" + id + "\"").join(',')})`;
-		const packRecords = await base("Packs")
-		  .select({ filterByFormula, maxRecords: uniquePackIDs.length })
-		  .all();
-		validPacks = packRecords.map((pr) => {
-		  const pfld = pr.fields;
-		  return {
-			packID: pfld.packID || '',
-			packURL: pfld.packURL || '',
-			packTitle: pfld.packTitle || '',
-			packStatus: pfld.packStatus || '',
-			packCover: pfld.packCover || [],
-			eventTime: pfld.eventTime || null,
-		  };
-		});
-	  }
 	}
 
 	// 4) Build the profile data object
@@ -476,125 +308,58 @@ export default async function handler(req, res) {
 	  }
 	}
 
-  // Referral awards (Postgres): list redemptions for pack-scoped referral cards (code starts with 'ref5:')
-  // and include the referred user's latest take on that pack when available
+  // Referral awards: prefer stored context on redemptions; no string parsing needed
   let referralAwards = [];
-	if (isPG) {
-	  try {
-      const { rows } = await query(
-        `SELECT a.code, a.name, a.tokens, ar.redeemed_at
-           FROM award_redemptions ar
-           JOIN award_cards a ON a.id = ar.award_card_id
-           JOIN profiles p ON p.id = ar.profile_id
-          WHERE p.profile_id = $1
-            AND a.code LIKE 'ref5:%'
-          ORDER BY ar.redeemed_at DESC
-          LIMIT 5000`,
-        [profileID]
-      );
-      const enriched = [];
-      for (const r of rows) {
-        const base = {
+    if (isPG) {
+      try {
+        const { rows } = await query(
+          `SELECT a.code,
+                  a.name,
+                  a.tokens,
+                  ar.redeemed_at,
+                  pk.pack_url,
+                  COALESCE(rp.profile_id, NULL) AS referred_profile_id_text,
+                  COALESCE(rp.profile_id, NULL) AS referred_handle,
+                  rt.id AS referred_take_id,
+                  rt.prop_side,
+                  rt.created_at AS referred_take_created_at,
+                  pr.prop_short,
+                  pr.prop_summary
+             FROM award_redemptions ar
+             JOIN award_cards a ON a.id = ar.award_card_id
+             JOIN profiles p ON p.id = ar.profile_id
+        LEFT JOIN packs pk ON pk.id = ar.pack_id
+        LEFT JOIN profiles rp ON rp.id = ar.referred_profile_id
+        LEFT JOIN takes rt ON rt.id = ar.referred_take_id
+        LEFT JOIN props pr ON pr.id = rt.prop_id
+            WHERE p.profile_id = $1
+              AND a.code LIKE 'ref5:%'
+            ORDER BY ar.redeemed_at DESC
+            LIMIT 5000`,
+          [profileID]
+        );
+        referralAwards = rows.map((r) => ({
           code: r.code,
           name: r.name,
           tokens: Number(r.tokens) || 0,
           redeemedAt: r.redeemed_at ? new Date(r.redeemed_at).toISOString() : null,
-        };
-        // Parse code format: ref5:<packURL>[:<referredProfileID>]
-        let packUrlFromCode = '';
-        let referredProfileIdText = '';
-        try {
-          if (typeof r.code === 'string' && r.code.startsWith('ref5:')) {
-            const parts = r.code.split(':');
-            packUrlFromCode = parts[1] || '';
-            referredProfileIdText = parts[2] || '';
-          }
-        } catch {}
-        // Fallback: older awards may not encode referred profile ID in code. Try to parse from name.
-        if (packUrlFromCode && !referredProfileIdText && typeof r.name === 'string') {
-          // Expect formats like: "Referral bonus for <packURL> (by <profileID>)"
-          const m = r.name.match(/\(by\s+([^\)]+)\)$/i);
-          if (m && m[1]) {
-            referredProfileIdText = m[1].trim();
-          }
-        }
-        try {
-          console.log('[profile][awards] resolving', {
-            profileID,
-            code: r.code,
-            hasPack: Boolean(packUrlFromCode),
-            hasReferredProfile: Boolean(referredProfileIdText),
-          });
-        } catch {}
-        if (packUrlFromCode && referredProfileIdText) {
-          try {
-            const [{ rows: packRows }, { rows: profRows }] = await Promise.all([
-              query(`SELECT id FROM packs WHERE pack_url = $1 LIMIT 1`, [packUrlFromCode]),
-              query(`SELECT id, COALESCE(NULLIF(username,''), profile_id) AS handle FROM profiles WHERE profile_id = $1 LIMIT 1`, [referredProfileIdText]),
-            ]);
-            const packUuid = packRows?.[0]?.id || null;
-            const refUserUuid = profRows?.[0]?.id || null;
-            const referredHandle = profRows?.[0]?.handle || referredProfileIdText || '';
-            if (referredHandle) base.referredUser = { handle: referredHandle };
-            try {
-              console.log('[profile][awards] resolved identities', {
-                code: r.code,
-                packUuid: Boolean(packUuid),
-                refUserUuid: Boolean(refUserUuid),
-                referredHandle,
-              });
-            } catch {}
-            if (packUuid && refUserUuid) {
-              const { rows: takeRows } = await query(
-                `SELECT t.id, t.prop_side, t.created_at, p.prop_short, p.prop_summary
-                   FROM takes t
-                   LEFT JOIN props p ON p.id = t.prop_id
-                  WHERE t.profile_id = $1 AND t.pack_id = $2 AND t.take_status = 'latest'
-                  ORDER BY t.created_at DESC
-                  LIMIT 1`,
-                [refUserUuid, packUuid]
-              );
-              if (takeRows.length) {
-                const tr = takeRows[0];
-                base.take = {
-                  id: tr.id,
-                  side: tr.prop_side || null,
-                  propShort: tr.prop_short || null,
-                  propSummary: tr.prop_summary || null,
-                  createdAt: tr.created_at ? new Date(tr.created_at).toISOString() : null,
-                };
-                try { console.log('[profile][awards] take found', { code: r.code, takeId: tr.id }); } catch {}
-              } else {
-                try { console.warn('[profile][awards] no latest take found for referred user/pack', { code: r.code, packUrlFromCode, referredProfileIdText }); } catch {}
-              }
-            } else {
-              try {
-                console.warn('[profile][awards] could not resolve pack/profile', {
-                  code: r.code,
-                  packFound: Boolean(packUuid),
-                  profileFound: Boolean(refUserUuid),
-                  packUrlFromCode,
-                  referredProfileIdText,
-                });
-              } catch {}
-            }
-          } catch {}
-        } else if (packUrlFromCode && !referredProfileIdText) {
-          try {
-            console.warn('[profile][awards] missing referred profile id in code and name', { code: r.code, name: r.name, packUrlFromCode });
-          } catch {}
-        }
-        enriched.push(base);
+          referredUser: r.referred_handle ? { handle: r.referred_handle } : undefined,
+          take: r.referred_take_id ? {
+            id: r.referred_take_id,
+            side: r.prop_side || null,
+            propShort: r.prop_short || null,
+            propSummary: r.prop_summary || null,
+            createdAt: r.referred_take_created_at ? new Date(r.referred_take_created_at).toISOString() : null,
+          } : undefined,
+        }));
+      } catch (pgAwardsErr) {
+        try { console.error('[profile][pg] Error fetching referral awards =>', pgAwardsErr); } catch {}
       }
-      referralAwards = enriched;
-	  } catch (pgAwardsErr) {
-		try { console.error('[profile][pg] Error fetching referral awards =>', pgAwardsErr); } catch {}
-	  }
-	}
+    }
 
 	// 7) Tokens summary consistent with Marketplace
 	let tokensSpent = 0;
-	if (isPG) {
+    {
 	  try {
 		const { rows } = await query(
 		  `SELECT COALESCE(SUM(e.exchange_tokens),0) AS spent
@@ -608,86 +373,13 @@ export default async function handler(req, res) {
 		console.error('[profile][pg] Error computing tokensSpent =>', pgSpentErr);
 		tokensSpent = 0;
 	  }
-	} else {
-	  tokensSpent = userExchanges.reduce((sum, ex) => sum + (ex.exchangeTokens || 0), 0);
-	}
+    }
 	const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
 
-	// Creator packs/leaderboard (Airtable-only)
-	let creatorPacks = [];
-	let creatorLeaderboard = [];
-	let creatorLeaderboardUpdatedAt = null;
-	if (!isPG) {
-	  try {
-		const hasCreatorFormula = `OR(LEN({packCreator})>0, LEN({PackCreator})>0)`;
-		const candidateRecs = await base('Packs')
-		  .select({ filterByFormula: hasCreatorFormula, maxRecords: 5000 })
-		  .all();
-		const profileRecordId = profRec.id;
-		creatorPacks = candidateRecs
-		  .filter((rec) => {
-			const f = rec.fields || {};
-			const linksA = Array.isArray(f.packCreator) ? f.packCreator : [];
-			const linksB = Array.isArray(f.PackCreator) ? f.PackCreator : [];
-			return linksA.includes(profileRecordId) || linksB.includes(profileRecordId);
-		  })
-		  .map((rec) => {
-			const f = rec.fields || {};
-			const coverUrl = Array.isArray(f.packCover) && f.packCover.length > 0 ? f.packCover[0].url : null;
-			return {
-			  airtableId: rec.id,
-			  packID: f.packID || rec.id,
-			  packURL: f.packURL || '',
-			  packTitle: f.packTitle || '',
-			  packStatus: f.packStatus || '',
-			  packCover: coverUrl,
-			  eventTime: f.eventTime || rec._rawJson?.createdTime || null,
-			};
-		  });
-		if (creatorPacks.length > 0) {
-		  const cacheKey = profileID;
-		  const cached = creatorLeaderboardCache.get(cacheKey);
-		  const nowMs = Date.now();
-		  if (!refreshBypass && cached && (nowMs - cached.updatedAtMs) < CREATOR_LEADERBOARD_TTL_MS) {
-			creatorLeaderboard = cached.leaderboard;
-			creatorLeaderboardUpdatedAt = new Date(cached.updatedAtMs).toISOString();
-		  } else {
-			const packRecordIds = creatorPacks.map(p => p.airtableId);
-			if (packRecordIds.length > 0) {
-			  const packFilter = `OR(${packRecordIds.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-			  const packsFull = await base('Packs').select({ filterByFormula: packFilter, maxRecords: packRecordIds.length }).all();
-			  const propRecordIds = [];
-			  packsFull.forEach((pr) => {
-				const f = pr.fields || {};
-				const props = Array.isArray(f.Props) ? f.Props : [];
-				propRecordIds.push(...props);
-			  });
-			  const uniquePropRecordIds = [...new Set(propRecordIds)].filter(Boolean);
-			  if (uniquePropRecordIds.length > 0) {
-				const propsFilter = `OR(${uniquePropRecordIds.map(id => `RECORD_ID()='${id}'`).join(',')})`;
-				const propsFull = await base('Props')
-				  .select({ filterByFormula: propsFilter, maxRecords: uniquePropRecordIds.length })
-				  .all();
-				const allowedPropIds = propsFull
-				  .map((r) => r.fields?.propID)
-				  .filter((v) => typeof v === 'string' && v.trim());
-				if (allowedPropIds.length > 0) {
-				  const takesFilter = `AND({takeStatus}='latest', OR(${allowedPropIds.map(pid => `{propID}='${pid}'`).join(',')}))`;
-				  const takeRecs = await base('Takes')
-					.select({ filterByFormula: takesFilter, maxRecords: 5000 })
-					.all();
-				  creatorLeaderboard = aggregateTakeStats(takeRecs);
-				  creatorLeaderboardUpdatedAt = new Date().toISOString();
-				  creatorLeaderboardCache.set(cacheKey, { leaderboard: creatorLeaderboard, updatedAtMs: nowMs });
-				}
-			  }
-			}
-		  }
-		}
-	  } catch (clErr) {
-		console.error('[profile] Error building creatorLeaderboard =>', clErr);
-	  }
-	}
+    // Creator packs/leaderboard removed for Postgres-only path
+    const creatorPacks = [];
+    const creatorLeaderboard = [];
+    const creatorLeaderboardUpdatedAt = null;
 
 	// 8) Return the aggregated data
 	return res.status(200).json({

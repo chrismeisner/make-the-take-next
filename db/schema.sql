@@ -422,3 +422,12 @@ CREATE TABLE IF NOT EXISTS award_redemptions (
 );
 CREATE INDEX IF NOT EXISTS idx_award_redemptions_card ON award_redemptions (award_card_id);
 CREATE INDEX IF NOT EXISTS idx_award_redemptions_profile ON award_redemptions (profile_id);
+
+-- Store referral enrichment context directly on redemptions (idempotent safe alters)
+ALTER TABLE award_redemptions ADD COLUMN IF NOT EXISTS pack_id UUID REFERENCES packs(id);
+ALTER TABLE award_redemptions ADD COLUMN IF NOT EXISTS referred_profile_id UUID REFERENCES profiles(id);
+ALTER TABLE award_redemptions ADD COLUMN IF NOT EXISTS referred_take_id UUID REFERENCES takes(id);
+
+-- Helpful indexes for profile view and analytics
+CREATE INDEX IF NOT EXISTS idx_award_redemptions_profile_redeemed ON award_redemptions (profile_id, redeemed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_award_redemptions_pack_referred ON award_redemptions (pack_id, referred_profile_id);
