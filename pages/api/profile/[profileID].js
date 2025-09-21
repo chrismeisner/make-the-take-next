@@ -1,6 +1,7 @@
 // Postgres-only implementation
 import { createRepositories } from '../../../lib/dal/factory';
 import { query } from '../../../lib/db/postgres';
+import { getDataBackend } from '../../../lib/runtimeConfig';
 
 // No creator leaderboard cache needed; Airtable path removed
 
@@ -14,6 +15,7 @@ export default async function handler(req, res) {
   const includeExchanges = String(req.query.includeExchanges || '').toLowerCase() === '1' || String(req.query.includeExchanges || '').toLowerCase() === 'true';
   const refreshBypass = String(req.query.refresh || '').toLowerCase() === '1' || String(req.query.refresh || '').toLowerCase() === 'true';
   const select = String(req.query.select || '').toLowerCase();
+  const isPG = getDataBackend() === 'postgres';
 
   try {
     // Fast path: tokens-only
