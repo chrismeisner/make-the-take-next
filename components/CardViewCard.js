@@ -99,8 +99,9 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   const [score, setScore] = useState(null);
   const [scoreError, setScoreError] = useState(null);
   useEffect(() => {
-    const league = prop.propLeagueLookup || packData.eventLeague;
-    const espnId = prop.propESPNLookup || packData.espnGameID;
+    // Use only the prop-linked event identifiers; do not fall back to pack-level
+    const league = prop.propLeagueLookup;
+    const espnId = prop.propESPNLookup;
     const eventStartMs = prop.propEventTimeLookup ? new Date(prop.propEventTimeLookup).getTime() : null;
     if (!league || !espnId || !eventStartMs) return;
     const now = Date.now();
@@ -127,7 +128,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
     loadScore();
     timerId = setInterval(loadScore, 45000);
     return () => { isActive = false; if (timerId) clearInterval(timerId); };
-  }, [prop.propLeagueLookup, packData.eventLeague, prop.propESPNLookup, packData.espnGameID, prop.propEventTimeLookup]);
+  }, [prop.propLeagueLookup, prop.propESPNLookup, prop.propEventTimeLookup]);
 
   return (
     <div className="bg-white border border-gray-300 rounded-md shadow-lg w-full max-w-[600px] aspect-square mx-auto flex flex-col justify-center p-4">

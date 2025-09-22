@@ -154,7 +154,22 @@ export default async function handler(req, res) {
 
 	  propsData = await Promise.all(propsRecords.map(async (p) => {
 		const f = p;
-		console.log(`[api/packs/[packURL]] Building prop ${p.id}: espnGameID=${espnGameID}, eventLeague=${eventLeague}`);
+		// Prefer per-prop linked event for ESPN/league/time, then fallback to pack-level
+		let perPropEvent = null;
+		try {
+		  const perPropEventId = Array.isArray(f.Event) && f.Event.length > 0 ? f.Event[0] : null;
+		  if (perPropEventId) {
+			const { events } = createRepositories();
+			perPropEvent = await events.getById(perPropEventId);
+		  }
+		} catch (e) {
+		  // non-fatal
+		}
+		const effectiveEspnId = (f.propESPNLookup || perPropEvent?.espnGameID || espnGameID) || null;
+		const effectiveLeague = (f.propLeagueLookup || perPropEvent?.eventLeague || eventLeague) || null;
+		const effectiveEventTime = (f.propEventTimeLookup || perPropEvent?.eventTime || packEventTime) || null;
+		const effectiveEventTitle = f.propEventTitleLookup || perPropEvent?.eventTitle || null;
+		console.log(`[api/packs/[packURL]] Building prop ${p.id}: espnGameID=${effectiveEspnId}, league=${effectiveLeague}`);
 		// support dynamic sides for superprops
 		const sideCount = f.sideCount || 2;
 		const sideLabels = Array.from({ length: sideCount }, (_, i) => {
@@ -269,15 +284,15 @@ export default async function handler(req, res) {
 		  contentLinks,
 		  propCover,
 		  propOrder: f.propOrder || 0,
-		  // new per-prop ESPN lookup fields (fallback to pack-level event in Postgres)
-		  propESPNLookup: f.propESPNLookup || espnGameID || null,
-		  propLeagueLookup: f.propLeagueLookup || eventLeague || null,
-		  espnGameID,
-		  eventLeague,
-		  // Event time lookup on the prop record (fallback to pack-level event time)
-		  propEventTimeLookup: f.propEventTimeLookup || packEventTime || null,
-		  propEventTitleLookup: f.propEventTitleLookup || null,
-		  propEventMatchup: f.propEventMatchup || null,
+		  // Per-prop ESPN/league/time derived from linked event; fallback to pack-level
+		  propESPNLookup: effectiveEspnId,
+		  propLeagueLookup: effectiveLeague,
+		  espnGameID: effectiveEspnId,
+		  eventLeague: effectiveLeague,
+		  // Event time lookup derived per-prop if available
+		  propEventTimeLookup: effectiveEventTime,
+		  propEventTitleLookup: effectiveEventTitle,
+		  propEventMatchup: f.propEventMatchup || effectiveEventTitle || null,
 		};
 	  }));
 	} catch (e) {

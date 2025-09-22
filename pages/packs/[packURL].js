@@ -124,10 +124,11 @@ export async function getServerSideProps(context) {
 // Challenge functionality has been removed
 
 export default function PackDetailPage({ packData, leaderboard, debugLogs, userReceipts }) {
-  const { openModal } = useModal();
+  const { openModal, closeModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
   const [mounted, setMounted] = useState(false);
+  const [refModalFired, setRefModalFired] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -138,6 +139,45 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, userR
       openModal('packGraded', { packTitle: packData.packTitle, packProps: packData.props, packURL: packData.packURL });
     }
   }, [packData?.packStatus, packData?.packTitle, packData?.props, openModal, router.query.ref]);
+
+  // Show referral challenge modal when ?ref=<profileID> is present
+  useEffect(() => {
+    if (!router.isReady) return;
+    const ref = router.query?.ref;
+    if (!ref || refModalFired) return;
+    // Avoid self-referral prompt
+    if (session?.user?.profileID && String(session.user.profileID) === String(ref)) {
+      return;
+    }
+    let aborted = false;
+    async function run() {
+      let refUsername = String(ref);
+      try {
+        const res = await fetch(`/api/profile/${encodeURIComponent(String(ref))}`);
+        if (res.ok) {
+          const json = await res.json();
+          const name = json?.profile?.profileUsername;
+          if (name) refUsername = String(name);
+        }
+      } catch {}
+      if (aborted) return;
+      setRefModalFired(true);
+      openModal('referralChallenge', {
+        refUsername,
+        packTitle: packData?.packTitle || '',
+        onPlay: () => {
+          try {
+            const newQuery = { ...router.query };
+            delete newQuery.ref;
+            router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+          } catch {}
+          closeModal();
+        },
+      });
+    }
+    run();
+    return () => { aborted = true; };
+  }, [router.isReady, router.query, session?.user?.profileID, openModal, closeModal, refModalFired, packData?.packTitle]);
   // If this is a superprop pack, render the prop detail view instead of carousel
   if (packData.packType === 'superprop') {
     const superProp = Array.isArray(packData.props) && packData.props[0];

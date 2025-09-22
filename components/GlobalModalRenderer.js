@@ -32,6 +32,7 @@ import AISummaryModal from "./modals/AISummaryModal";
 import LoginModal from "./modals/LoginModal";
 import AwardClaimModal from "./modals/AwardClaimModal";
 import AwardSuccessModal from "./modals/AwardSuccessModal";
+import ReferralChallengeModal from "./modals/ReferralChallengeModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 
 export default function GlobalModalRenderer() {
@@ -42,6 +43,18 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "referralChallenge": {
+      const { refUsername, packTitle, onPlay } = modalConfig.modalProps;
+      return (
+        <ReferralChallengeModal
+          isOpen={true}
+          onClose={closeModal}
+          refUsername={refUsername}
+          packTitle={packTitle}
+          onPlay={onPlay}
+        />
+      );
+    }
     case "aiSummary": {
       const { eventId, defaultModel, onGenerated, propShort } = modalConfig.modalProps;
       return (
