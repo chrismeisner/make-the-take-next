@@ -422,7 +422,7 @@ export default function CreatePropUnifiedPage() {
     }
   };
 
-  // Metric options loading for certain auto grade types
+  // Metric options loading: prefer catalog API; fallback to boxscore-derived keys for legacy
   useEffect(() => {
     if (!(autoGradeKey && event?.espnGameID)) return;
     const gid = String(event.espnGameID || '').trim();
@@ -436,36 +436,47 @@ export default function CreatePropUnifiedPage() {
     (async () => {
       try {
         const source = dataSource || 'major-mlb';
-        try { console.log('[create-prop] fetch stat keys', { source, gid, autoGradeKey }); } catch {}
-        const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(source)}&gameID=${encodeURIComponent(gid)}`);
-        const json = await resp.json();
-        let keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
-        // MLB team metrics convenience keys
-        if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && source === 'major-mlb') {
-          keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
-        }
-        // NFL team metrics from raw boxscore teams[].statistics[].name when Team Stat O/U or team multi-stat selected
-        if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && source === 'nfl') {
-          try {
-            const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
-            const nflTeamKeys = [];
-            for (const t of teams) {
-              const stats = Array.isArray(t?.statistics) ? t.statistics : [];
-              for (const s of stats) {
-                const name = String(s?.name || '').trim();
-                if (name) nflTeamKeys.push(name);
+        const entity = (autoGradeKey.startsWith('team_')) ? 'team' : 'player';
+        const scope = (autoGradeKey.includes('_multi_')) ? 'multi' : 'single';
+        // 1) Try catalog API
+        const catUrl = `/api/admin/metrics?league=${encodeURIComponent(source)}&entity=${encodeURIComponent(entity)}&scope=${encodeURIComponent(scope)}`;
+        const cat = await fetch(catUrl);
+        const catJson = await cat.json().catch(() => ({}));
+        let keys = Array.isArray(catJson?.metrics) && catJson.metrics.length ? catJson.metrics.map(m => m.key) : [];
+        // 2) Fallback to boxscore-derived keys for team metrics
+        if (!keys.length) {
+          try { console.log('[create-prop] fetch stat keys (fallback boxscore)', { source, gid, autoGradeKey }); } catch {}
+          const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(source)}&gameID=${encodeURIComponent(gid)}`);
+          const json = await resp.json();
+          keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
+          // MLB team metrics convenience keys
+          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && source === 'major-mlb') {
+            keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
+          }
+          // NFL team metrics from raw boxscore teams[].statistics[].name when Team Stat O/U or team multi-stat selected
+          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && source === 'nfl') {
+            try {
+              const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
+              const nflTeamKeys = [];
+              for (const t of teams) {
+                const stats = Array.isArray(t?.statistics) ? t.statistics : [];
+                for (const s of stats) {
+                  const name = String(s?.name || '').trim();
+                  if (name) nflTeamKeys.push(name);
+                }
               }
-            }
-            if (nflTeamKeys.length) {
-              const uniq = Array.from(new Set(nflTeamKeys));
-              keys = uniq;
-            }
-          } catch {}
-          // Always include curated manual metrics and 'points' alongside dynamic options
-          keys = Array.from(new Set([...(keys || []), ...nflTeamMetricFallback, 'points']));
-          // Sort for stable UX
-          keys.sort((a, b) => String(a).localeCompare(String(b)));
+              if (nflTeamKeys.length) {
+                const uniq = Array.from(new Set(nflTeamKeys));
+                keys = uniq;
+              }
+            } catch {}
+            // Always include curated manual metrics and 'points' alongside dynamic options
+            keys = Array.from(new Set([...(keys || []), ...nflTeamMetricFallback, 'points']));
+            // Sort for stable UX
+            keys.sort((a, b) => String(a).localeCompare(String(b)));
+          }
         }
+        // MLB team metrics convenience keys
         setMetricOptions(keys);
         try { console.log('[create-prop] metric options set', { count: keys?.length || 0, sample: (keys || []).slice(0, 10) }); } catch {}
       } catch (e) {
@@ -487,6 +498,16 @@ export default function CreatePropUnifiedPage() {
         try { console.log('[create-prop] preview load begin', { gid, dataSource, autoGradeKey, selectedMetric, selectedMetrics }); } catch {}
         setPreviewLoading(true);
         const ds = dataSource || 'major-mlb';
+        // If the event's league is known, wait until the selected dataSource matches it to avoid fetching wrong league endpoints initially
+        try {
+          const leagueLc = String(event?.eventLeague || '').toLowerCase();
+          const expected = leagueLc === 'nfl' ? 'nfl' : (leagueLc ? 'major-mlb' : ds);
+          if (leagueLc && ds !== expected) {
+            console.log('[create-prop] preview skipped until dataSource matches event league', { league: leagueLc, expected, ds });
+            setPreviewLoading(false);
+            return;
+          }
+        } catch {}
         // Track the exact endpoints used so developers can verify sources
         let boxscoreUrl = null;
         let statusUrl = null;
@@ -562,6 +583,36 @@ export default function CreatePropUnifiedPage() {
                 rawTeams = Array.isArray(bj?.data?.teams) ? bj.data.teams : [];
               }
             } catch {}
+            // NFL roster fallback: if no players found in normalized map, fetch team rosters and synthesize playersById
+            try {
+              if (ds === 'nfl') {
+                const count = Object.keys(normalized?.playersById || {}).length;
+                if (!count) {
+                  // Resolve abbreviations robustly and only proceed when we have validated ABVs from teamOptions
+                  const rawHome = event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam);
+                  const rawAway = event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam);
+                  const toAbvBestEffort = (val) => {
+                    const raw = String(val || '').toUpperCase();
+                    // If it already looks like an abv, keep it
+                    if (/^[A-Z]{2,4}$/.test(raw)) return raw;
+                    // Else try resolver
+                    return (typeof abvResolver?.toAbv === 'function') ? abvResolver.toAbv(raw) : raw;
+                  };
+                  const homeAbvResolved = toAbvBestEffort(rawHome);
+                  const awayAbvResolved = toAbvBestEffort(rawAway);
+                  const abvs = [homeAbvResolved, awayAbvResolved].filter((s) => !!s && /^[A-Z]{2,4}$/.test(String(s)));
+                  if (abvs.length) {
+                    const rosterUrl = `/api/admin/api-tester/nflPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`;
+                    try { console.log('[create-prop] NFL roster fallback', { rosterUrl, abvs }); } catch {}
+                    const r = await fetch(rosterUrl);
+                    const j = await r.json().catch(() => ({}));
+                    if (r.ok && j?.playersById && typeof j.playersById === 'object') {
+                      normalized = { ...(normalized || {}), playersById: j.playersById, statKeys: Array.isArray(normalized?.statKeys) ? normalized.statKeys : [] };
+                    }
+                  }
+                }
+              }
+            } catch {}
           }
         } catch {}
         setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly, endpoints: { boxscoreUrl, statusUrl, espnScoreboardUrl } });
@@ -572,7 +623,7 @@ export default function CreatePropUnifiedPage() {
         setPreviewLoading(false);
       }
     })();
-  }, [event?.espnGameID, event?.eventTime, event?.eventWeek, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, dataSource, autoGradeKey, selectedMetric]);
+  }, [event?.espnGameID, event?.eventTime, event?.eventWeek, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, dataSource, autoGradeKey, selectedMetric, teamOptions]);
 
   // Team abv options derived from event
   const normalizeAbv = (val) => {
@@ -1630,17 +1681,16 @@ export default function CreatePropUnifiedPage() {
                     <label className="block text-sm font-medium text-gray-700">Metric</label>
                     {metricLoading ? (
                       <div className="mt-1 text-xs text-gray-600">Loading metrics…</div>
-                    ) : metricOptions && metricOptions.length > 0 ? (
+                    ) : (
                       <select
                         className="mt-1 block w-full border rounded px-2 py-1"
                         value={selectedMetric}
                         onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }}
+                        disabled={!metricOptions || metricOptions.length === 0}
                       >
-                        <option value="">Select a metric…</option>
-                        {metricOptions.map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
+                        <option value="">{metricOptions && metricOptions.length > 0 ? 'Select a metric…' : 'No metrics available'}</option>
+                        {(metricOptions || []).map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
                       </select>
-                    ) : (
-                      <input className="mt-1 block w-full border rounded px-2 py-1" value={selectedMetric} onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }} placeholder="e.g. SO" />
                     )}
                     {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
                   </div>
@@ -2022,17 +2072,16 @@ export default function CreatePropUnifiedPage() {
                     <label className="block text-sm font-medium text-gray-700">Metric</label>
                     {metricLoading ? (
                       <div className="mt-1 text-xs text-gray-600">Loading metrics…</div>
-                    ) : metricOptions && metricOptions.length > 0 ? (
+                    ) : (
                       <select
                         className="mt-1 block w-full border rounded px-2 py-1"
                         value={selectedMetric}
                         onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); upsertRootParam('entity', 'player'); }}
+                        disabled={!metricOptions || metricOptions.length === 0}
                       >
-                        <option value="">Select a metric…</option>
-                        {metricOptions.map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
+                        <option value="">{metricOptions && metricOptions.length > 0 ? 'Select a metric…' : 'No metrics available'}</option>
+                        {(metricOptions || []).map((k) => (<option key={k} value={k}>{formatMetricLabel(k)}</option>))}
                       </select>
-                    ) : (
-                      <input className="mt-1 block w-full border rounded px-2 py-1" value={selectedMetric} onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); upsertRootParam('entity', 'player'); }} placeholder="e.g. passingYards" />
                     )}
                     {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
                   </div>
@@ -2670,7 +2719,7 @@ export default function CreatePropUnifiedPage() {
                   </div>
                 )}
                 <label className="block text-sm mt-2">Value A</label>
-                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueA} readOnly />
+                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueA ?? ''} readOnly />
               </>
             )}
           </div>
@@ -2693,7 +2742,7 @@ export default function CreatePropUnifiedPage() {
                   </div>
                 )}
                 <label className="block text-sm mt-2">Value B</label>
-                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueB} readOnly />
+                <input type="number" className="mt-1 block w-full border rounded px-2 py-1" value={computedValueB ?? ''} readOnly />
               </>
             )}
           </div>

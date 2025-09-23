@@ -9,7 +9,7 @@ export default function SidebarNav({ items = [], collapsed, setCollapsed }) {
   const router = useRouter();
 
   return (
-    <aside className={`hidden lg:flex flex-col border-r border-gray-200 bg-white sticky top-0 h-screen ${collapsed ? 'w-16' : 'w-64'}`} style={{ transition: 'width 200ms ease' }}>
+    <aside className={`hidden lg:flex lg:fixed lg:top-12 lg:bottom-0 lg:left-0 flex-col border-r border-gray-200 bg-white ${collapsed ? 'w-16' : 'w-64'}`} style={{ transition: 'width 200ms ease' }}>
       {/* Sidebar toggle always visible on desktop */}
       <div className={`px-2 py-2 border-b border-gray-200 flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
         <button

@@ -419,6 +419,11 @@ export default function AdminPage({ superAdminSecret }) {
                 Awards
               </button>
             </Link>
+            <Link href="/admin/players">
+              <button className="px-3 py-2 bg-emerald-700 text-white rounded hover:bg-emerald-800">
+                Players
+              </button>
+            </Link>
             <Link href="/admin/redeem">
               <button className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
                 Redemptions
