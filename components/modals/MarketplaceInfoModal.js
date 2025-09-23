@@ -42,16 +42,6 @@ export default function MarketplaceInfoModal({ isOpen, onClose, item, tokenBalan
           type="button"
           onClick={() => {
             onClose();
-            router.push('/redeem');
-          }}
-          className="px-4 py-2 rounded bg-gray-200 text-gray-900 hover:bg-gray-300"
-        >
-          View Marketplace
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onClose();
             router.push(`/redeem?itemID=${item.itemID}`);
           }}
           disabled={!canRedeem}

@@ -79,19 +79,21 @@ export default async function handler(req, res) {
       const teamLogoURL = teamInfo.logos?.[0]?.href || "";
       const teamAbbreviation = teamInfo.abbreviation || "";
       const nickname = teamInfo.shortDisplayName || teamInfo.nickname || '';
-      const preferredSlug = toSlug(nickname || teamName);
+      const preferredSlug = toSlug(nickname || teamNameFull);
       // Upsert into Postgres teams
       await query(
-        `INSERT INTO teams (team_id, team_slug, name, league, logo_url, short_name)
-         VALUES ($1,$2,$3,'nfl',$4,$5)
+        `INSERT INTO teams (team_id, team_slug, abbreviation, name, league, logo_url, short_name)
+         VALUES ($1,$2,$3,$4,'nfl',$5,$6)
          ON CONFLICT (league, team_id) DO UPDATE SET
            team_slug = COALESCE(EXCLUDED.team_slug, teams.team_slug),
+           abbreviation = COALESCE(EXCLUDED.abbreviation, teams.abbreviation),
            name = COALESCE(EXCLUDED.name, teams.name),
            logo_url = COALESCE(EXCLUDED.logo_url, teams.logo_url),
            short_name = COALESCE(EXCLUDED.short_name, teams.short_name)`,
         [
           String(teamID),
           preferredSlug || String(teamAbbreviation || '').toLowerCase(),
+          String(teamAbbreviation || '').toUpperCase() || null,
           String(teamNameFull || ''),
           teamLogoURL || null,
           nickname || String(teamAbbreviation || '').toUpperCase(),

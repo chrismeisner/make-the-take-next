@@ -182,6 +182,7 @@ export default function CreatePropUnifiedPage() {
     try {
       const leagueLc = String(event?.eventLeague || '').toLowerCase();
       const next = leagueLc === 'nfl' ? 'nfl' : 'major-mlb';
+      try { console.log('[create-prop] derive dataSource from event', { eventLeague: event?.eventLeague, next }); } catch {}
       setDataSource(next);
     } catch {}
   }, [event?.eventLeague]);
@@ -427,6 +428,7 @@ export default function CreatePropUnifiedPage() {
     const gid = String(event.espnGameID || '').trim();
     if (!gid) return;
     const needsMetrics = ['stat_over_under', 'player_h2h', 'player_multi_stat_ou', 'player_multi_stat_h2h', 'team_stat_over_under', 'team_stat_h2h', 'team_multi_stat_ou', 'team_multi_stat_h2h'].includes(autoGradeKey);
+    try { console.log('[create-prop] metric load check', { espnGameID: gid, autoGradeKey, dataSource, needsMetrics }); } catch {}
     if (!needsMetrics) return;
     setMetricLoading(true);
     setMetricError('');
@@ -434,6 +436,7 @@ export default function CreatePropUnifiedPage() {
     (async () => {
       try {
         const source = dataSource || 'major-mlb';
+        try { console.log('[create-prop] fetch stat keys', { source, gid, autoGradeKey }); } catch {}
         const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(source)}&gameID=${encodeURIComponent(gid)}`);
         const json = await resp.json();
         let keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
@@ -464,6 +467,7 @@ export default function CreatePropUnifiedPage() {
           keys.sort((a, b) => String(a).localeCompare(String(b)));
         }
         setMetricOptions(keys);
+        try { console.log('[create-prop] metric options set', { count: keys?.length || 0, sample: (keys || []).slice(0, 10) }); } catch {}
       } catch (e) {
         setMetricError(e.message || 'Failed to load stat keys');
       } finally {
@@ -480,6 +484,7 @@ export default function CreatePropUnifiedPage() {
         setPreviewData(null);
         if (!event) return;
         const gid = String(event.espnGameID || '').trim();
+        try { console.log('[create-prop] preview load begin', { gid, dataSource, autoGradeKey, selectedMetric, selectedMetrics }); } catch {}
         setPreviewLoading(true);
         const ds = dataSource || 'major-mlb';
         // Track the exact endpoints used so developers can verify sources
@@ -546,6 +551,7 @@ export default function CreatePropUnifiedPage() {
             boxscoreUrl = `/api/admin/api-tester/boxscore?source=${encodeURIComponent(ds)}&gameID=${encodeURIComponent(idFromBoard)}`;
           }
           if (boxscoreUrl) {
+            try { console.log('[create-prop] fetch boxscore for preview', { boxscoreUrl }); } catch {}
             const bs = await fetch(boxscoreUrl);
             const bj = await bs.json();
             if (bs.ok && bj?.normalized) {
@@ -559,6 +565,7 @@ export default function CreatePropUnifiedPage() {
           }
         } catch {}
         setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly, endpoints: { boxscoreUrl, statusUrl, espnScoreboardUrl } });
+        try { console.log('[create-prop] preview loaded', { source: ds, players: Object.keys(normalized?.playersById || {}).length, statKeys: (normalized?.statKeys || []).length }); } catch {}
       } catch (e) {
         setPreviewError(e?.message || 'Failed to load preview');
       } finally {
@@ -573,6 +580,47 @@ export default function CreatePropUnifiedPage() {
     const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
     return map[v] || v;
   };
+  // Resolve a wide variety of team identifiers (full name, short name, nickname, or abv) to the official abbreviation for the current league
+  const abvResolver = useMemo(() => {
+    try {
+      const nameToAbv = new Map();
+      const nicknameCandidates = (name) => {
+        try {
+          const tokens = String(name || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+          if (tokens.length >= 2) {
+            const last = tokens[tokens.length - 1];
+            const lastTwo = tokens.slice(-2).join(' ');
+            return [last, lastTwo];
+          }
+          return tokens;
+        } catch { return []; }
+      };
+      (teamOptions || []).forEach((t) => {
+        const abv = String(t?.teamAbbreviation || '').toUpperCase();
+        if (!abv) return;
+        nameToAbv.set(abv, abv);
+        const full = String(t?.teamName || t?.teamNameFull || '').toUpperCase();
+        const short = String(t?.teamNameShort || '').toUpperCase();
+        if (full) {
+          nameToAbv.set(full, abv);
+          nicknameCandidates(full).forEach((n) => { if (n) nameToAbv.set(n, abv); });
+        }
+        if (short) {
+          nameToAbv.set(short, abv);
+          nicknameCandidates(short).forEach((n) => { if (n) nameToAbv.set(n, abv); });
+        }
+      });
+      const normalizeMlb = (val) => normalizeAbv ? normalizeAbv(val) : String(val || '').toUpperCase();
+      return {
+        toAbv: (val) => {
+          const raw = String(val || '').toUpperCase();
+          if (!raw) return '';
+          const mlbNorm = normalizeMlb(raw);
+          return nameToAbv.get(mlbNorm) || nameToAbv.get(raw) || mlbNorm;
+        },
+      };
+    } catch { return { toAbv: (v) => String(v || '').toUpperCase() }; }
+  }, [teamOptions]);
   const homeTeamName = Array.isArray(event?.homeTeam) ? (event?.homeTeam?.[0] || '') : (event?.homeTeam || '');
   const awayTeamName = Array.isArray(event?.awayTeam) ? (event?.awayTeam?.[0] || '') : (event?.awayTeam || '');
 
@@ -724,17 +772,17 @@ export default function CreatePropUnifiedPage() {
       const set = new Set();
       try {
         const map = previewData?.normalized?.playersById || {};
-        Object.values(map).forEach((p) => { const abv = String(p?.teamAbv || '').toUpperCase(); if (abv) set.add(abv); });
+        Object.values(map).forEach((p) => { const abv = abvResolver.toAbv(p?.teamAbv); if (abv) set.add(abv); });
       } catch {}
       try {
-        const eAway = String(event?.awayTeamAbbreviation || event?.awayTeam || '').toUpperCase();
-        const eHome = String(event?.homeTeamAbbreviation || event?.homeTeam || '').toUpperCase();
+        const eAway = abvResolver.toAbv(event?.awayTeamAbbreviation || event?.awayTeam);
+        const eHome = abvResolver.toAbv(event?.homeTeamAbbreviation || event?.homeTeam);
         if (eAway) set.add(eAway);
         if (eHome) set.add(eHome);
       } catch {}
       return Array.from(set);
     } catch { return []; }
-  }, [previewData?.normalized?.playersById, event?.awayTeamAbbreviation, event?.homeTeamAbbreviation, event?.awayTeam, event?.homeTeam]);
+  }, [previewData?.normalized?.playersById, event?.awayTeamAbbreviation, event?.homeTeamAbbreviation, event?.awayTeam, event?.homeTeam, abvResolver]);
 
   const playersA = useMemo(() => {
     try {
@@ -1473,7 +1521,7 @@ export default function CreatePropUnifiedPage() {
             <select
               className="mt-1 block w-full border rounded px-2 py-1"
               value={autoGradeKey}
-              onChange={(e) => setAutoGradeKey(e.target.value)}
+              onChange={(e) => { const v = e.target.value; try { console.log('[create-prop] autoGradeKey changed', { autoGradeKey: v }); } catch {} setAutoGradeKey(v); }}
             >
               <option value="">Manual Grade</option>
               <option value="stat_over_under">Player Single Stat O/U</option>
@@ -1542,7 +1590,7 @@ export default function CreatePropUnifiedPage() {
                       <select
                         className="mt-1 block w-full border rounded px-2 py-1"
                         value={formulaTeamAbv}
-                        onChange={(e)=>{ const v=e.target.value; setFormulaTeamAbv(v); upsertRootParam('teamAbv', v); try { if (v && formulaPlayerId) { const pEntry = (previewData?.normalized?.playersById && previewData.normalized.playersById[formulaPlayerId]) || null; const team = String(pEntry?.teamAbv || '').toUpperCase(); if (team !== String(v).toUpperCase()) { setFormulaPlayerId(''); upsertRootParam('playerId',''); } } } catch {} }}
+                        onChange={(e)=>{ const v=e.target.value; try { console.log('[create-prop] team filter changed', { teamAbv: v }); } catch {} setFormulaTeamAbv(v); upsertRootParam('teamAbv', v); try { if (v && formulaPlayerId) { const pEntry = (previewData?.normalized?.playersById && previewData.normalized.playersById[formulaPlayerId]) || null; const team = String(pEntry?.teamAbv || '').toUpperCase(); if (team !== String(v).toUpperCase()) { setFormulaPlayerId(''); upsertRootParam('playerId',''); } } } catch {} }}
                       >
                         <option value="">(optional) Team filter</option>
                         {teamOptionsH2H.map((abv) => (<option key={`statou-team-${abv}`} value={abv}>{abv}</option>))}
@@ -1563,8 +1611,9 @@ export default function CreatePropUnifiedPage() {
                             <option value="">Select a player…</option>
                             {Object.entries(previewData.normalized.playersById || {})
                               .filter(([id, p]) => {
-                                if (!formulaTeamAbv) return true;
-                                return String(p?.teamAbv || '').toUpperCase() === String(formulaTeamAbv || '').toUpperCase();
+                                const filt = abvResolver.toAbv(formulaTeamAbv);
+                                if (!filt) return true;
+                                return abvResolver.toAbv(p?.teamAbv) === filt;
                               })
                               .sort(([, a], [, b]) => String(a?.longName || '').localeCompare(String(b?.longName || '')))
                               .map(([id, p]) => (
@@ -1633,7 +1682,7 @@ export default function CreatePropUnifiedPage() {
                   <select
                     className="mt-1 block w-full border rounded px-2 py-1"
                     value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvA||''; } catch { return ''; } })()}
-                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                    onChange={(e)=>{ const v=e.target.value; try { console.log('[create-prop] H2H team A changed', { teamAbvA: v }); } catch {} try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = v; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
                     {teamOptionsH2H.map((abv) => (<option key={`h2h-a-${abv}`} value={abv}>{abv}</option>))}
@@ -1644,7 +1693,7 @@ export default function CreatePropUnifiedPage() {
                   <select
                     className="mt-1 block w-full border rounded px-2 py-1"
                     value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.teamAbvB||''; } catch { return ''; } })()}
-                    onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                    onChange={(e)=>{ const v=e.target.value; try { console.log('[create-prop] H2H team B changed', { teamAbvB: v }); } catch {} try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = v; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
                     {teamOptionsH2H.map((abv) => (<option key={`h2h-b-${abv}`} value={abv}>{abv}</option>))}

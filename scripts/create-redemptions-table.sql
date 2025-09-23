@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS redemptions (
   profile_id UUID REFERENCES profiles(id),
   item_id UUID REFERENCES items(id),
   exchange_id UUID REFERENCES exchanges(id), -- Link to the exchange record
+  item_code_id UUID REFERENCES item_codes(id) ON DELETE SET NULL,
   
   -- Contact information
   full_name TEXT NOT NULL,

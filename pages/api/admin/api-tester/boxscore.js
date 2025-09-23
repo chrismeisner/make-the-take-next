@@ -92,18 +92,19 @@ export default async function handler(req, res) {
 
       const homeAbv = node.homeAbv || node.homeTeamAbv || node.home || node.homeTeam;
       const awayAbv = node.awayAbv || node.awayTeamAbv || node.away || node.awayTeam;
+      const nodeTeamAbv = (node.teamAbv || node.team_abv || (node.team && node.team.abbreviation)) || undefined;
 
       if (isLikelyPlayer(node)) {
-        const teamCtx = node.teamAbv || ctx || (node.teamSide === 'home' ? homeAbv : node.teamSide === 'away' ? awayAbv : undefined);
+        const teamCtx = node.teamAbv || nodeTeamAbv || ctx || (node.teamSide === 'home' ? homeAbv : node.teamSide === 'away' ? awayAbv : undefined);
         upsertPlayer(node, teamCtx);
       }
 
       for (const [key, val] of Object.entries(node)) {
         const keyLc = String(key).toLowerCase();
         if (Array.isArray(val)) {
-          const looksLikePlayers = keyLc.includes('player') || keyLc.includes('batter') || keyLc.includes('pitcher') || keyLc.includes('lineup');
+          const looksLikePlayers = keyLc.includes('player') || keyLc.includes('athlete') || keyLc.includes('batter') || keyLc.includes('pitcher') || keyLc.includes('lineup') || keyLc.includes('roster');
           if (looksLikePlayers) {
-            const teamCtx = keyLc.includes('home') ? (homeAbv || ctx) : keyLc.includes('away') ? (awayAbv || ctx) : ctx;
+            const teamCtx = keyLc.includes('home') ? (homeAbv || nodeTeamAbv || ctx) : keyLc.includes('away') ? (awayAbv || nodeTeamAbv || ctx) : (nodeTeamAbv || ctx);
             for (const item of val) {
               if (item && typeof item === 'object') {
                 if (isLikelyPlayer(item)) {
@@ -116,7 +117,7 @@ export default async function handler(req, res) {
             continue;
           }
         }
-        collectPlayers(val, ctx || homeAbv || awayAbv);
+        collectPlayers(val, (nodeTeamAbv || ctx || homeAbv || awayAbv));
       }
     }
 
@@ -262,12 +263,7 @@ export default async function handler(req, res) {
       } catch {}
       Object.assign(playerMap, map);
       statKeys = Array.from(keySet).sort();
-      // Fallback scan for any other numeric fields we can parse
-      collectPlayers(raw, undefined);
-      for (const p of Object.values(playerMap)) {
-        Object.keys(p.stats || {}).forEach((k) => { if (!statKeys.includes(k)) statKeys.push(k); });
-      }
-      statKeys.sort();
+      // Note: Do NOT run fallback collectPlayers for NFL to avoid pulling in non-player nodes (e.g., metric groups)
     }
 
     const statusCode = upstream.ok ? 200 : (upstream.status || 502);

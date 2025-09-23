@@ -141,14 +141,15 @@ export default async function handler(req, res) {
         if (!teamId || !abv || !name) continue;
 
         await query(
-          `INSERT INTO teams (team_id, team_slug, name, league, logo_url, short_name)
-           VALUES ($1,$2,$3,'mlb',$4,$5)
+          `INSERT INTO teams (team_id, team_slug, abbreviation, name, league, logo_url, short_name)
+           VALUES ($1,$2,$3,$4,'mlb',$5,$6)
            ON CONFLICT (league, team_id) DO UPDATE SET
              team_slug = COALESCE(EXCLUDED.team_slug, teams.team_slug),
+             abbreviation = COALESCE(EXCLUDED.abbreviation, teams.abbreviation),
              name = COALESCE(EXCLUDED.name, teams.name),
              logo_url = COALESCE(EXCLUDED.logo_url, teams.logo_url),
              short_name = COALESCE(EXCLUDED.short_name, teams.short_name)`,
-          [teamId, preferredSlug || abv.toLowerCase(), name, logo, shortName]
+          [teamId, preferredSlug || abv.toLowerCase(), abv || null, name, logo, shortName]
         );
 
         // Also try to ensure uniqueness on slug if present (optional secondary upsert)

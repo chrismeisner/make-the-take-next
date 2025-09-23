@@ -15,12 +15,75 @@ export default async function handler(req, res) {
   const backend = getDataBackend();
 
   try {
+    async function hasRequireAddressColumn() {
+      try {
+        const { rows } = await query(
+          `SELECT 1 FROM information_schema.columns WHERE table_name = 'items' AND column_name = 'require_address' LIMIT 1`
+        );
+        return rows.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function hasItemCodesTable() {
+      try {
+        const { rows } = await query(
+          `SELECT 1 FROM information_schema.tables WHERE table_name = 'item_codes' LIMIT 1`
+        );
+        return rows.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
     if (req.method === 'GET') {
       if (backend === 'postgres') {
-        const { rows } = await query(
-          'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items WHERE item_id = $1 LIMIT 1',
-          [itemID]
-        );
+        const [hasCol, hasCodes] = await Promise.all([
+          hasRequireAddressColumn(),
+          hasItemCodesTable(),
+        ]);
+        let selectSql;
+        if (hasCodes) {
+          selectSql = hasCol
+            ? `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.require_address,
+                       COALESCE(ic.total,0) AS inv_total,
+                       COALESCE(ic.available,0) AS inv_available,
+                       COALESCE(ic.assigned,0) AS inv_assigned,
+                       COALESCE(ic.redeemed,0) AS inv_redeemed
+                 FROM items i
+                 LEFT JOIN LATERAL (
+                   SELECT COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE status = 'available') AS available,
+                          COUNT(*) FILTER (WHERE status = 'assigned') AS assigned,
+                          COUNT(*) FILTER (WHERE status = 'redeemed') AS redeemed
+                     FROM item_codes c
+                    WHERE c.item_id = i.id
+                 ) ic ON TRUE
+                WHERE i.item_id = $1
+                 LIMIT 1`
+            : `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured,
+                       COALESCE(ic.total,0) AS inv_total,
+                       COALESCE(ic.available,0) AS inv_available,
+                       COALESCE(ic.assigned,0) AS inv_assigned,
+                       COALESCE(ic.redeemed,0) AS inv_redeemed
+                 FROM items i
+                 LEFT JOIN LATERAL (
+                   SELECT COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE status = 'available') AS available,
+                          COUNT(*) FILTER (WHERE status = 'assigned') AS assigned,
+                          COUNT(*) FILTER (WHERE status = 'redeemed') AS redeemed
+                     FROM item_codes c
+                    WHERE c.item_id = i.id
+                 ) ic ON TRUE
+                WHERE i.item_id = $1
+                 LIMIT 1`;
+        } else {
+          selectSql = hasCol
+            ? 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, require_address FROM items WHERE item_id = $1 LIMIT 1'
+            : 'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items WHERE item_id = $1 LIMIT 1';
+        }
+        const { rows } = await query(selectSql, [itemID]);
         if (rows.length === 0) return res.status(404).json({ success: false, error: 'Item not found' });
         const r = rows[0];
         const item = {
@@ -32,6 +95,13 @@ export default async function handler(req, res) {
           itemStatus: r.status || '',
           itemImage: r.image_url || '',
           featured: Boolean(r.featured),
+          requireAddress: hasCol ? Boolean(r.require_address) : false,
+          inventory: hasCodes ? {
+            total: Number(r.inv_total || 0),
+            available: Number(r.inv_available || 0),
+            assigned: Number(r.inv_assigned || 0),
+            redeemed: Number(r.inv_redeemed || 0),
+          } : undefined,
         };
         return res.status(200).json({ success: true, item });
       } else {
@@ -55,29 +125,56 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured } = req.body || {};
+      const { itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured, requireAddress } = req.body || {};
       if (backend === 'postgres') {
-        await query(
-          `UPDATE items
-             SET title = $1,
-                 brand = $2,
-                 description = $3,
-                 tokens = $4,
-                 status = $5,
-                 image_url = $6,
-                 featured = $7
-           WHERE item_id = $8`,
-          [
-            itemName || '',
-            itemBrand || '',
-            itemDescription || '',
-            Number(itemTokens) || 0,
-            itemStatus || '',
-            itemImage || '',
-            Boolean(featured),
-            itemID,
-          ]
-        );
+        const hasCol = await hasRequireAddressColumn();
+        if (hasCol) {
+          await query(
+            `UPDATE items
+               SET title = $1,
+                   brand = $2,
+                   description = $3,
+                   tokens = $4,
+                   status = $5,
+                   image_url = $6,
+                   featured = $7,
+                   require_address = $8
+              WHERE item_id = $9`,
+            [
+              itemName || '',
+              itemBrand || '',
+              itemDescription || '',
+              Number(itemTokens) || 0,
+              itemStatus || '',
+              itemImage || '',
+              Boolean(featured),
+              Boolean(requireAddress),
+              itemID,
+            ]
+          );
+        } else {
+          await query(
+            `UPDATE items
+               SET title = $1,
+                   brand = $2,
+                   description = $3,
+                   tokens = $4,
+                   status = $5,
+                   image_url = $6,
+                   featured = $7
+              WHERE item_id = $8`,
+            [
+              itemName || '',
+              itemBrand || '',
+              itemDescription || '',
+              Number(itemTokens) || 0,
+              itemStatus || '',
+              itemImage || '',
+              Boolean(featured),
+              itemID,
+            ]
+          );
+        }
         return res.status(200).json({ success: true });
       } else {
         const recs = await base('Items').select({ filterByFormula: `{itemID} = "${itemID}"`, maxRecords: 1 }).all();
@@ -90,6 +187,7 @@ export default async function handler(req, res) {
           itemTokens: Number(itemTokens) || 0,
           itemStatus: itemStatus || '',
           featured: Boolean(featured),
+          requireAddress: Boolean(requireAddress),
         };
         await base('Items').update([{ id: recordId, fields: updatePayload }]);
         return res.status(200).json({ success: true });

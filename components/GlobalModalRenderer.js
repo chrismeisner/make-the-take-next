@@ -34,6 +34,7 @@ import AwardClaimModal from "./modals/AwardClaimModal";
 import AwardSuccessModal from "./modals/AwardSuccessModal";
 import ReferralChallengeModal from "./modals/ReferralChallengeModal";
 import { getDataBackend } from "../lib/runtimeConfig";
+import NewInventoryModal from "./modals/NewInventoryModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -43,6 +44,17 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "newInventory": {
+      const { items, onAdded } = modalConfig.modalProps;
+      return (
+        <NewInventoryModal
+          isOpen={true}
+          onClose={closeModal}
+          items={items}
+          onAdded={onAdded}
+        />
+      );
+    }
     case "referralChallenge": {
       const { refUsername, packTitle, onPlay } = modalConfig.modalProps;
       return (

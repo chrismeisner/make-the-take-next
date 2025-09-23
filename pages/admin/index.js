@@ -409,6 +409,11 @@ export default function AdminPage({ superAdminSecret }) {
                 Marketplace
               </button>
             </Link>
+            <Link href="/admin/email-tester">
+              <button className="px-3 py-2 bg-sky-700 text-white rounded hover:bg-sky-800">
+                Email Tester
+              </button>
+            </Link>
             <Link href="/admin/awards">
               <button className="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
                 Awards

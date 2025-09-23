@@ -17,9 +17,11 @@ export default function EditMarketplaceItemPage() {
     itemStatus: '',
     itemImage: '',
     featured: false,
+    requireAddress: false,
   });
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [inventory, setInventory] = useState(null);
 
   const STATUS_OPTIONS = ['Available', 'Sold Out', 'Hidden'];
 
@@ -42,7 +44,9 @@ export default function EditMarketplaceItemPage() {
             itemStatus: it.itemStatus || '',
             itemImage: it.itemImage || '',
             featured: Boolean(it.featured),
+            requireAddress: Boolean(it.requireAddress),
           });
+          if (it.inventory) setInventory(it.inventory);
         } else {
           setError(data.error || 'Failed to load item');
         }
@@ -109,6 +113,17 @@ export default function EditMarketplaceItemPage() {
       ) : (
         <form onSubmit={handleSave} className="space-y-4 max-w-2xl">
           {error && <div className="text-red-600">{error}</div>}
+          {inventory && (
+            <div className="p-3 border rounded bg-gray-50 text-sm">
+              <div className="font-medium mb-1">Inventory</div>
+              <div className="flex items-center gap-4">
+                <div>Available: {inventory.available}/{inventory.total}</div>
+                <div>Assigned: {inventory.assigned}</div>
+                <div>Redeemed: {inventory.redeemed}</div>
+                <a href={`/admin/marketplace/${encodeURIComponent(itemID)}/inventory`} className="text-indigo-600 underline">Manage inventory</a>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700">Title</label>
             <input
@@ -171,6 +186,16 @@ export default function EditMarketplaceItemPage() {
                 className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <label htmlFor="featured" className="text-sm text-gray-700">Featured</label>
+            </div>
+            <div className="flex items-center gap-2 mt-6">
+              <input
+                id="requireAddress"
+                type="checkbox"
+                checked={form.requireAddress}
+                onChange={(e) => setForm({ ...form, requireAddress: e.target.checked })}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="requireAddress" className="text-sm text-gray-700">Require Address on Redeem</label>
             </div>
           </div>
           <div>

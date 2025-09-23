@@ -245,12 +245,7 @@ export default function RedeemAdminPage() {
                   </p>
                 </div>
 
-                {selectedRedemption.special_instructions && (
-                  <div>
-                    <h4 className="font-medium text-gray-700">Special Instructions</h4>
-                    <p className="text-sm text-gray-600">{selectedRedemption.special_instructions}</p>
-                  </div>
-                )}
+                {/* Special Instructions removed from admin view */}
 
                 <div>
                   <h4 className="font-medium text-gray-700">Admin Notes</h4>

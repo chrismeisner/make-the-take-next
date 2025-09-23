@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS teams (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id TEXT,
   team_slug TEXT,
+  -- Three-letter/team code like BOS, NYY
+  abbreviation TEXT,
   name TEXT,
   league TEXT,
   emoji TEXT,
@@ -20,6 +22,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_teams_league_team_slug ON teams (league, 
 
 -- Add short display name for teams
 ALTER TABLE teams ADD COLUMN IF NOT EXISTS short_name TEXT;
+
+-- Add abbreviation column idempotently for legacy databases
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS abbreviation TEXT;
+
+-- Ensure uniqueness by league for abbreviation where present (e.g., BOS, NYY)
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_teams_league_abbreviation ON teams (league, abbreviation) WHERE abbreviation IS NOT NULL;
 
 -- Add attachment-like JSONB fields for team sides
 ALTER TABLE teams ADD COLUMN IF NOT EXISTS team_home_side JSONB;
@@ -256,6 +264,8 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS brand TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS status TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;
+-- Whether redemption requires shipping address fields
+ALTER TABLE items ADD COLUMN IF NOT EXISTS require_address BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_items_status ON items (status);
 CREATE INDEX IF NOT EXISTS idx_items_featured ON items (featured);
 
@@ -272,6 +282,66 @@ CREATE INDEX IF NOT EXISTS idx_exchanges_status ON exchanges (status);
 
 -- Tokens spent per exchange (for marketplace balance)
 ALTER TABLE exchanges ADD COLUMN IF NOT EXISTS exchange_tokens INT;
+
+-- Item-specific unique code inventory for one-time redemption
+CREATE TABLE IF NOT EXISTS item_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_id UUID REFERENCES items(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'available', -- available | assigned | redeemed | disabled
+  assigned_to_profile_id UUID REFERENCES profiles(id),
+  assigned_at TIMESTAMPTZ,
+  redeemed_at TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (item_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_item_codes_item_status ON item_codes (item_id, status);
+CREATE INDEX IF NOT EXISTS idx_item_codes_assigned ON item_codes (assigned_to_profile_id);
+
+-- Detailed redemption records (shipping/contact info and code linkage)
+CREATE TABLE IF NOT EXISTS redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  item_id UUID REFERENCES items(id) ON DELETE SET NULL,
+  exchange_id UUID REFERENCES exchanges(id) ON DELETE SET NULL,
+  item_code_id UUID REFERENCES item_codes(id) ON DELETE SET NULL,
+  full_name TEXT,
+  email TEXT,
+  phone TEXT,
+  address TEXT,
+  city TEXT,
+  state TEXT,
+  zip_code TEXT,
+  country TEXT,
+  special_instructions TEXT,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | fulfilled | cancelled
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_redemptions_profile ON redemptions (profile_id);
+CREATE INDEX IF NOT EXISTS idx_redemptions_item ON redemptions (item_id);
+CREATE INDEX IF NOT EXISTS idx_redemptions_status ON redemptions (status);
+
+-- Keep updated_at fresh
+CREATE OR REPLACE FUNCTION set_redemptions_updated_at() RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'set_redemptions_updated_at'
+  ) THEN
+    CREATE TRIGGER set_redemptions_updated_at
+    BEFORE UPDATE ON redemptions
+    FOR EACH ROW
+    EXECUTE FUNCTION set_redemptions_updated_at();
+  END IF;
+END $$;
 
 -- Outbox
 CREATE TABLE IF NOT EXISTS outbox (

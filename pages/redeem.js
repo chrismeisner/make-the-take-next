@@ -9,28 +9,20 @@ export default function RedeemPage() {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
-    phone: '',
     address: '',
     city: '',
     state: '',
     zipCode: '',
-    country: '',
-    specialInstructions: ''
+    country: ''
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [item, setItem] = useState(null);
+  const [agree, setAgree] = useState(true);
+  const requireAddress = Boolean(item?.requireAddress);
 
-  // Pre-fill phone number from session when available
-  useEffect(() => {
-    if (session?.user?.phone) {
-      setFormData(prev => ({
-        ...prev,
-        phone: session.user.phone
-      }));
-    }
-  }, [session?.user?.phone]);
+  // Phone number is derived from the logged-in session; no need to collect in the form
 
   // Get item data from query params if available
   useEffect(() => {
@@ -71,15 +63,31 @@ export default function RedeemPage() {
     setError('');
 
     try {
+      const correlationId = `redeem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        console.log('[redeem] submit:start', {
+          correlationId,
+          itemID: router.query.itemID,
+          user: {
+            profileID: session?.user?.profileID,
+            phone: session?.user?.phone,
+            email: formData?.email,
+          },
+          requireAddress,
+        });
+      } catch {}
       const response = await fetch('/api/redeem', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Correlation-ID': correlationId,
         },
         body: JSON.stringify({
           ...formData,
+          phone: session.user.phone,
           itemID: router.query.itemID,
-          profileID: session.user.profileID
+          profileID: session.user.profileID,
+          correlationId,
         }),
       });
 
@@ -89,20 +97,28 @@ export default function RedeemPage() {
         throw new Error(data.error || 'Failed to submit redemption request');
       }
 
+      try {
+        console.log('[redeem] submit:success', {
+          correlationId,
+          redemptionID: data?.redemptionID,
+          exchangeID: data?.exchangeID,
+          tokensSpent: data?.tokensSpent,
+          remainingBalance: data?.remainingBalance,
+        });
+      } catch {}
       setSuccess(true);
       // Reset form
       setFormData({
         fullName: '',
         email: '',
-        phone: '',
         address: '',
         city: '',
         state: '',
         zipCode: '',
-        country: '',
-        specialInstructions: ''
+        country: ''
       });
     } catch (err) {
+      try { console.warn('[redeem] submit:error', { message: err?.message || String(err) }); } catch {}
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
@@ -168,7 +184,7 @@ export default function RedeemPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name *
+              Full Name
             </label>
             <input
               type="text"
@@ -176,7 +192,6 @@ export default function RedeemPage() {
               name="fullName"
               value={formData.fullName}
               onChange={handleInputChange}
-              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -197,118 +212,111 @@ export default function RedeemPage() {
           </div>
         </div>
 
-        <div>
-          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-            Phone Number *
-          </label>
+        {/* Phone is not collected here; it is included from the authenticated session on submit. */}
+
+        {requireAddress && (
+          <>
+            <div>
+              <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
+                Street Address *
+              </label>
+              <input
+                type="text"
+                id="address"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                required={requireAddress}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">
+                  City *
+                </label>
+                <input
+                  type="text"
+                  id="city"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                  required={requireAddress}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
+                  State/Province *
+                </label>
+                <input
+                  type="text"
+                  id="state"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleInputChange}
+                  required={requireAddress}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="zipCode" className="block text-sm font-medium text-gray-700 mb-1">
+                  ZIP/Postal Code *
+                </label>
+                <input
+                  type="text"
+                  id="zipCode"
+                  name="zipCode"
+                  value={formData.zipCode}
+                  onChange={handleInputChange}
+                  required={requireAddress}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
+                Country *
+              </label>
+              <select
+                id="country"
+                name="country"
+                value={formData.country}
+                onChange={handleInputChange}
+                required={requireAddress}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Country</option>
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="UK">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        <div className="flex items-start">
           <input
-            type="tel"
-            id="phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleInputChange}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            id="agree"
+            name="agree"
+            type="checkbox"
+            checked={agree}
+            onChange={(e) => setAgree(e.target.checked)}
+            className="mt-1 mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded"
           />
-        </div>
-
-        <div>
-          <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-            Street Address *
+          <label htmlFor="agree" className="text-sm text-gray-700">
+            I agree to the{' '}
+            <Link href="/terms" className="underline text-blue-600">Terms</Link>{' '}and{' '}
+            <Link href="/privacy" className="underline text-blue-600">Privacy Policy</Link>.
           </label>
-          <input
-            type="text"
-            id="address"
-            name="address"
-            value={formData.address}
-            onChange={handleInputChange}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">
-              City *
-            </label>
-            <input
-              type="text"
-              id="city"
-              name="city"
-              value={formData.city}
-              onChange={handleInputChange}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
-              State/Province *
-            </label>
-            <input
-              type="text"
-              id="state"
-              name="state"
-              value={formData.state}
-              onChange={handleInputChange}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="zipCode" className="block text-sm font-medium text-gray-700 mb-1">
-              ZIP/Postal Code *
-            </label>
-            <input
-              type="text"
-              id="zipCode"
-              name="zipCode"
-              value={formData.zipCode}
-              onChange={handleInputChange}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
-            Country *
-          </label>
-          <select
-            id="country"
-            name="country"
-            value={formData.country}
-            onChange={handleInputChange}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Country</option>
-            <option value="US">United States</option>
-            <option value="CA">Canada</option>
-            <option value="UK">United Kingdom</option>
-            <option value="AU">Australia</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="specialInstructions" className="block text-sm font-medium text-gray-700 mb-1">
-            Special Instructions (Optional)
-          </label>
-          <textarea
-            id="specialInstructions"
-            name="specialInstructions"
-            value={formData.specialInstructions}
-            onChange={handleInputChange}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Any special delivery instructions or notes..."
-          />
-        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded p-3">
@@ -319,9 +327,9 @@ export default function RedeemPage() {
         <div className="flex gap-2 pt-4">
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !agree}
             className={`px-6 py-2 rounded text-white ${
-              submitting
+              submitting || !agree
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700'
             }`}

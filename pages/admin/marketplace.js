@@ -1,6 +1,7 @@
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useModal } from '../../contexts/ModalContext';
 
 export default function AdminMarketplacePage() {
   const { data: session, status } = useSession();
@@ -12,6 +13,7 @@ export default function AdminMarketplacePage() {
   const [search, setSearch] = useState('');
   const [deleting, setDeleting] = useState(null); // itemID while confirming/deleting
   const [toast, setToast] = useState({ type: '', message: '' });
+  const { openModal, closeModal } = useModal();
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -100,6 +102,30 @@ export default function AdminMarketplacePage() {
         <div className="flex items-center gap-3">
           <Link href="/admin/marketplace/new" className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">New Item</Link>
           <Link href="/redeem" className="text-blue-600 underline">View Redeem Page</Link>
+          <button
+            className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            onClick={() => {
+              openModal('newInventory', {
+                items,
+                onAdded: () => {
+                  // refresh items to update counts
+                  (async () => {
+                    try {
+                      const res = await fetch('/api/admin/items');
+                      const data = await res.json();
+                      if (data.success) {
+                        setItems(Array.isArray(data.items) ? data.items : []);
+                      }
+                    } catch {}
+                  })();
+                  try { setToast({ type: 'success', message: 'Inventory added.' }); setTimeout(() => setToast({ type: '', message: '' }), 3000); } catch {}
+                  closeModal();
+                }
+              });
+            }}
+          >
+            New Inventory
+          </button>
         </div>
       </div>
 
@@ -143,7 +169,9 @@ export default function AdminMarketplacePage() {
                 <th className="px-4 py-2 border cursor-pointer select-none" onClick={() => toggleSort('tokens')}>
                   Tokens {sort.field === 'tokens' ? (sort.order === 'asc' ? '▲' : '▼') : ''}
                 </th>
+                <th className="px-4 py-2 border">Inventory</th>
                 <th className="px-4 py-2 border">Featured</th>
+                <th className="px-4 py-2 border">Require Address</th>
                 <th className="px-4 py-2 border">Item ID</th>
                 <th className="px-4 py-2 border">Actions</th>
               </tr>
@@ -165,11 +193,23 @@ export default function AdminMarketplacePage() {
                   <td className="px-4 py-2 border align-top">{it.itemBrand || '—'}</td>
                   <td className="px-4 py-2 border align-top">{it.itemStatus || '—'}</td>
                   <td className="px-4 py-2 border align-top">{Number(it.itemTokens) || 0}</td>
+                  <td className="px-4 py-2 border align-top">
+                    {it.inventory ? (
+                      <div className="text-sm">
+                        <div><span className="font-medium">Available:</span> {it.inventory.available}/{it.inventory.total}</div>
+                        <div className="text-gray-600">Redeemed: {it.inventory.redeemed} · Assigned: {it.inventory.assigned}</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 border align-top">{it.featured ? 'Yes' : 'No'}</td>
+                  <td className="px-4 py-2 border align-top">{it.requireAddress ? 'Yes' : 'No'}</td>
                   <td className="px-4 py-2 border align-top font-mono text-xs">{it.itemID}</td>
                   <td className="px-4 py-2 border align-top">
                     <div className="flex items-center gap-3">
                       <Link href={`/admin/marketplace/${encodeURIComponent(it.itemID)}`} className="text-blue-600 hover:underline">Edit</Link>
+                      <Link href={`/admin/marketplace/${encodeURIComponent(it.itemID)}/inventory`} className="text-indigo-600 hover:underline">Inventory</Link>
                       <button
                         className="text-red-600 hover:underline disabled:opacity-50"
                         disabled={deleting === it.itemID}
