@@ -154,6 +154,7 @@ export default function EditPropPage() {
     return p == null ? null : Math.round(p);
   }, [PropSideBMoneyline]);
   const [teams, setTeams] = useState([]);
+  const [teamOptions, setTeamOptions] = useState([]);
   const [propOpenTime, setPropOpenTime] = useState('');
   const [propCloseTime, setPropCloseTime] = useState('');
   const [propCoverSource, setPropCoverSource] = useState('event');
@@ -347,6 +348,45 @@ export default function EditPropPage() {
   // Auto-grading mode selection key (must be declared before effects that depend on it)
   const [autoGradeKey, setAutoGradeKey] = useState('');
 
+  // New state for team cover (declare before any hooks that depend on eventDetails)
+  const [eventDetails, setEventDetails] = useState(null);
+  const [teamCoverUrl, setTeamCoverUrl] = useState(null);
+  const [eventCoverUrl, setEventCoverUrl] = useState(null);
+  const [customCoverUrl, setCustomCoverUrl] = useState('');
+
+  // Load teams for abbreviation lookups (used to source Team ABV A/B from DB abbreviations)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/teams');
+        const data = await res.json();
+        if (!res.ok || !data?.success) return;
+        setTeamOptions(Array.isArray(data.teams) ? data.teams : []);
+      } catch {}
+    })();
+  }, []);
+
+  // Compute the event's team abbreviations from teams table by linked team IDs
+  const eventTeamAbvs = useMemo(() => {
+    try {
+      if (!eventDetails && !event) return [];
+      const league = eventDetails?.eventLeague || event?.eventLeague || '';
+      const inLeague = (Array.isArray(teamOptions) ? teamOptions : []).filter(t => String(t.teamType || '').toLowerCase() === String(league || '').toLowerCase());
+      const ids = [];
+      const homeId = Array.isArray(eventDetails?.homeTeamLink) && eventDetails.homeTeamLink[0];
+      const awayId = Array.isArray(eventDetails?.awayTeamLink) && eventDetails.awayTeamLink[0];
+      if (homeId) ids.push(homeId);
+      if (awayId) ids.push(awayId);
+      const abvs = ids
+        .map(id => {
+          const t = inLeague.find(x => x.recordId === id);
+          return String(t?.teamAbbreviation || '').toUpperCase();
+        })
+        .filter(Boolean);
+      return Array.from(new Set(abvs));
+    } catch { return []; }
+  }, [eventDetails?.homeTeamLink, eventDetails?.awayTeamLink, eventDetails?.eventLeague, event?.eventLeague, teamOptions]);
+
   // Inject unified schema fields into formula params based on selected auto grade type
   useEffect(() => {
     if (!autoGradeKey) return;
@@ -431,11 +471,7 @@ export default function EditPropPage() {
   const [tankHomeAbv, setTankHomeAbv] = useState('');
   const [tankAwayAbv, setTankAwayAbv] = useState('');
 
-  // New state for team cover
-  const [eventDetails, setEventDetails] = useState(null);
-  const [teamCoverUrl, setTeamCoverUrl] = useState(null);
-  const [eventCoverUrl, setEventCoverUrl] = useState(null);
-  const [customCoverUrl, setCustomCoverUrl] = useState('');
+  
 
   // Event API Readout (Major MLB)
   const [showEventReadout, setShowEventReadout] = useState(false);
@@ -1535,14 +1571,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamA-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
                 <div>
@@ -1553,14 +1582,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamB-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
               </div>
@@ -1602,14 +1624,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvA = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamA2-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
                 <div>
@@ -1620,14 +1635,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbvB = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamB2-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
               </div>
@@ -1657,14 +1665,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamSingle-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
               </div>
@@ -1710,14 +1711,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ const v=e.target.value; setFormulaTeamAbv(v); upsertRootParam('teamAbv', v); try { if (v && formulaPlayerId) { const p = playersById?.[formulaPlayerId]; const team = String(p?.teamAbv || '').toUpperCase(); if (team !== String(v).toUpperCase()) { setFormulaPlayerId(''); upsertRootParam('playerId',''); } } } catch {} }}
                   >
                     <option value="">(optional) Team filter</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`statou-team-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
                 <div>
@@ -1831,14 +1825,7 @@ export default function EditPropPage() {
                     onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.teamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
                   >
                     <option value="">Select team…</option>
-                    {(()=>{ try {
-                      const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
-                      const rawAway = eventDetails?.awayTeamAbbreviation || event?.awayTeamAbbreviation;
-                      const map = { CWS:'CHW', SDP:'SD', SFG:'SF', TBR:'TB', KCR:'KC', ARZ:'ARI', WSN:'WSH' };
-                      const norm = (v)=> map[String(v||'').toUpperCase()] || String(v||'').toUpperCase();
-                      const list = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
-                      return list.map(abv => (<option key={abv} value={abv}>{abv}</option>));
-                    } catch { return null; } })()}
+                    {eventTeamAbvs.map((abv) => (<option key={`teamou-team-${abv}`} value={abv}>{abv}</option>))}
                   </select>
                 </div>
               </div>
