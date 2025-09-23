@@ -70,6 +70,8 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   const resultsRevealed = prop.propStatus !== "open" || Boolean(selected || alreadyTookSide);
   const readOnly = prop.propStatus !== "open";
   const { propSummary = "No summary provided", propShort, propResult = "" } = prop;
+  const statusLc = String(prop.propStatus || '').toLowerCase();
+  const isGraded = statusLc.startsWith('graded');
   // Show prop-specific event title and date/time if available
   const eventTimeRaw = prop.propEventTimeLookup;
   // Live countdown until eventTimeRaw
@@ -79,10 +81,8 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   if (eventTimeRaw) {
     eventDateTime = new Date(eventTimeRaw).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
-  // Choose which summary to display when graded
-  const displaySummary = (prop.propStatus !== "open" && propResult.trim())
-    ? propResult
-    : propSummary;
+  // Choose which summary to display: show result only when graded
+  const displaySummary = (isGraded && propResult.trim()) ? propResult : propSummary;
 
   function handleShare() {
     // Neutral share: copy link to this pack/prop with optional ref, no challenge modal
