@@ -10,6 +10,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(null); // { name, tokens, status, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamName }
   const [checking, setChecking] = useState(false);
+  const [followStatus, setFollowStatus] = useState(null); // { followsTeam: boolean } or null
 
   useEffect(() => {
     let mounted = true;
@@ -63,6 +64,28 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
     return () => { mounted = false; };
   }, [isOpen, code, session, preview, openModal]);
 
+  // Fetch follow status for required team when preview available and user logged in
+  useEffect(() => {
+    let mounted = true;
+    async function fetchFollow() {
+      if (!isOpen || !preview?.requirementTeamSlug || !session?.user) {
+        setFollowStatus(null);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/follow/status?teamSlug=${encodeURIComponent(preview.requirementTeamSlug)}`);
+        const data = await res.json();
+        if (!mounted) return;
+        if (res.ok && data?.success) setFollowStatus({ followsTeam: !!data.followsTeam });
+        else setFollowStatus({ followsTeam: false });
+      } catch {
+        if (mounted) setFollowStatus({ followsTeam: false });
+      }
+    }
+    fetchFollow();
+    return () => { mounted = false; };
+  }, [isOpen, preview, session]);
+
   const handleClaim = useCallback(async () => {
     if (!preview || preview.status !== 'available') return;
     if (!session?.user) {
@@ -97,6 +120,14 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
                 openModal('favoriteTeam', {
                   onTeamSelected: async () => {
                     try {
+                      // If requirement specifies a team, set it directly before retry
+                      if (preview?.requirementTeamSlug) {
+                        await fetch('/api/profile/updateFavoriteTeam', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ teamSlug: preview.requirementTeamSlug }),
+                        });
+                      }
                       const retry = await fetch('/api/awards/redeem', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -131,13 +162,20 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+        if (res.ok && data.success) {
         openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview.redirectTeamSlug || null, imageUrl: data.imageUrl || preview.imageUrl || null });
       } else {
         if (data?.code === 'requirement_follow_team') {
           openModal('favoriteTeam', {
             onTeamSelected: async () => {
               try {
+                if (preview?.requirementTeamSlug) {
+                  await fetch('/api/profile/updateFavoriteTeam', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ teamSlug: preview.requirementTeamSlug }),
+                  });
+                }
                 const retry = await fetch('/api/awards/redeem', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -163,6 +201,69 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
     }
   }, [session, preview, openModal, code]);
 
+  const followRequiredTeamAndRedeem = useCallback(async () => {
+    if (!preview || preview.status !== 'available' || preview.requirementKey !== 'follow_team' || !preview.requirementTeamSlug) return;
+    const teamSlug = preview.requirementTeamSlug;
+    // If not logged in, prompt login first, then follow and redeem
+    if (!session?.user) {
+      openModal('login', {
+        title: 'Log in to follow',
+        ctaLabel: 'Verify & Follow',
+        onSuccess: async () => {
+          try {
+            await fetch('/api/profile/updateFavoriteTeam', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teamSlug }),
+            });
+          } catch {}
+          try {
+            const res = await fetch('/api/awards/redeem', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: data.imageUrl || preview?.imageUrl || null });
+            } else {
+              openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: data.error || 'Could not claim', imageUrl: preview?.imageUrl || null });
+            }
+          } catch {
+            openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: 'Could not claim', imageUrl: preview?.imageUrl || null });
+          }
+        },
+      });
+      return;
+    }
+
+    // Logged in: set favorite to required team, then redeem
+    try {
+      await fetch('/api/profile/updateFavoriteTeam', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamSlug }),
+      });
+      // Optimistically update follow status
+      setFollowStatus({ followsTeam: true });
+    } catch {}
+    try {
+      const res = await fetch('/api/awards/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: data.imageUrl || preview?.imageUrl || null });
+      } else {
+        setError(data.error || 'Could not claim');
+      }
+    } catch {
+      setError('Could not claim');
+    }
+  }, [session, preview, openModal, code]);
+
   return (
     <GlobalModal isOpen={isOpen} onClose={onClose}>
       <div className="flex flex-col gap-3">
@@ -180,12 +281,33 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
             ) : null}
             <p className="text-gray-800">{preview.name} <span className="font-semibold">+{preview.tokens}</span> Taker marketplace tokens available</p>
             {preview.requirementKey === 'follow_team' && (
-              <p className="text-sm text-gray-700">Follow {preview.requirementTeamName || preview.requirementTeamSlug} to unlock this token bonus.</p>
+              <div className="text-sm text-gray-700">
+                <p>Follow {preview.requirementTeamName || preview.requirementTeamSlug} to unlock this token bonus.</p>
+                {session?.user ? (
+                  followStatus == null ? (
+                    <p className="text-xs text-gray-500">Checking follow status…</p>
+                  ) : followStatus.followsTeam ? (
+                    <p className="text-xs text-green-600">You’re following this team. Ready to claim.</p>
+                  ) : (
+                    <p className="text-xs text-amber-600">You’re not following this team yet.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-gray-500">Log in to check your follow status.</p>
+                )}
+              </div>
             )}
             {preview.status !== 'available' ? (
               <p className="text-gray-500">This code is not available to claim.</p>
             ) : (
-              <button onClick={handleClaim} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 w-max">Claim</button>
+              (() => {
+                const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;
+                const label = needsFollow ? `Follow ${preview.requirementTeamName || preview.requirementTeamSlug}` : 'Claim';
+                const onClick = needsFollow ? followRequiredTeamAndRedeem : handleClaim;
+                const disabled = preview.requirementKey === 'follow_team' && !!session?.user && followStatus == null; // waiting for follow status
+                return (
+                  <button onClick={onClick} disabled={disabled} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 w-max">{label}</button>
+                );
+              })()
             )}
           </>
         )}

@@ -51,7 +51,7 @@ export default function AwardsAdminPage() {
           const filtered = teams.filter((t) => (String(t.teamType || '')).toLowerCase() !== 'league');
           const options = filtered
             .map((t) => {
-              const rawSlug = String(t.teamSlug || t.teamAbbreviation || t.teamID || '');
+              const rawSlug = String(t.teamSlug || '').toLowerCase();
               const league = String(t.teamLeague || t.teamType || t.league || '').toLowerCase();
               const label = String(t.teamNameFull || t.teamName || rawSlug || 'Team');
               return rawSlug ? { value: rawSlug, label, league } : null;

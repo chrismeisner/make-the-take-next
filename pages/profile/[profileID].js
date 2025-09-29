@@ -24,11 +24,13 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
   const [referralAwards, setReferralAwards] = useState([]);
+  const [awardBonuses, setAwardBonuses] = useState([]);
   // Notification preferences state (own profile only)
   const [notifLeagues, setNotifLeagues] = useState([]);
   const [availableLeagues, setAvailableLeagues] = useState([]);
   const [smsOptOutAll, setSmsOptOutAll] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [notifTeams, setNotifTeams] = useState([]);
   const [toastMessage, setToastMessage] = useState("");
 
   // Fetch the profile data
@@ -65,7 +67,8 @@ export default function ProfilePage() {
           setCreatorPacks(Array.isArray(data.creatorPacks) ? data.creatorPacks : []);
           setCreatorLeaderboard(Array.isArray(data.creatorLeaderboard) ? data.creatorLeaderboard : []);
           setCreatorLeaderboardUpdatedAt(data.creatorLeaderboardUpdatedAt || null);
-		  setReferralAwards(Array.isArray(data.referralAwards) ? data.referralAwards : []);
+          setReferralAwards(Array.isArray(data.referralAwards) ? data.referralAwards : []);
+          setAwardBonuses(Array.isArray(data.awardBonuses) ? data.awardBonuses : []);
 		  // Debug: Marketplace Taker Token bonuses summary
 		  try {
 			const awards = Array.isArray(data.referralAwards) ? data.referralAwards : [];
@@ -160,6 +163,24 @@ export default function ProfilePage() {
     return () => { aborted = true; };
   }, [profileID, session?.user?.profileID]);
 
+  // Load current user's team-level subscriptions
+  useEffect(() => {
+    if (!profileID || !session?.user || session.user.profileID !== profileID) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/notifications/teamPreferences');
+        const data = await res.json();
+        if (!aborted && data?.success) {
+          setNotifTeams(Array.isArray(data.teams) ? data.teams : []);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => { aborted = true; };
+  }, [profileID, session?.user?.profileID]);
+
   // calculateUserStats is no longer needed; stats computed inline after fetch
   if (loading) return <div className="p-4">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
@@ -245,11 +266,39 @@ export default function ProfilePage() {
 		<p className="mb-4 text-sm text-gray-700">No favorite team selected.</p>
 	  )}
 
+      {/* Award Bonuses (promo card redemptions) */}
+      {Array.isArray(awardBonuses) && awardBonuses.length > 0 && (
+        <div className="mt-6 border rounded p-4 bg-white">
+          <h3 className="text-xl font-bold mb-2">Bonuses</h3>
+          <p className="text-sm text-gray-600 mb-3">Promo card bonuses you’ve received.</p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2 pr-4">Name</th>
+                  <th className="py-2 pr-4">Tokens</th>
+                  <th className="py-2 pr-4">Redeemed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {awardBonuses.map((b, idx) => (
+                  <tr key={`${b.code || 'bonus'}-${idx}`} className="border-b last:border-b-0">
+                    <td className="py-2 pr-4">{b.name || b.code || 'Bonus'}</td>
+                    <td className="py-2 pr-4">{b.tokens}</td>
+                    <td className="py-2 pr-4">{b.redeemedAt ? new Date(b.redeemedAt).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Subscriptions (own profile only) */}
       {isOwnProfile && (
         <div className="mt-6 border rounded p-4 bg-white">
           <h3 className="text-xl font-bold mb-2">Subscriptions</h3>
-          <p className="text-sm text-gray-600 mb-3">Get SMS when packs open by league.</p>
+          <p className="text-sm text-gray-600 mb-3">Get SMS when packs open by league or specific teams.</p>
           <div className="mb-3 flex items-center gap-2">
             <input
               id="sms-pause-all"
@@ -282,6 +331,19 @@ export default function ProfilePage() {
               );
             })}
           </div>
+          {Array.isArray(notifTeams) && notifTeams.length > 0 && (
+            <div className="mt-4">
+              <div className="text-sm font-medium text-gray-700 mb-1">Followed Teams</div>
+              <div className="flex flex-wrap gap-2">
+                {notifTeams.map((t) => (
+                  <span key={t.id} className="inline-flex items-center gap-2 border rounded px-2 py-1 text-xs bg-gray-50">
+                    <span className="uppercase text-gray-600">{t.league}</span>
+                    <span className="text-gray-800">{t.abv || t.teamSlug || t.name}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-3">
             <button
               type="button"

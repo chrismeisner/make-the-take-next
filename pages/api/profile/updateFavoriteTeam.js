@@ -19,16 +19,43 @@ export default async function handler(req, res) {
   }
 
   // Expect either a team identifier appropriate for the backend
-  // - PG: team_id (UUID) or id
+  // - PG: teamId (UUID teams.id) or teamSlug (teams.team_slug)
   // - Airtable: selectedTeamRecordId (Airtable record id)
-  const { profileID, selectedTeamRecordId, teamId } = req.body;
+  const { profileID, selectedTeamRecordId, teamId, teamSlug } = req.body;
 
   const backend = getDataBackend();
 
   try {
     if (backend === 'postgres') {
-      // No-op in PG mode until favorite_team_id is added to schema
-      return res.status(200).json({ success: true, profile: {} });
+      // Resolve profile row id
+      if (!currentUser?.userId && !currentUser?.profileID) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+      }
+      // Resolve team id by either provided teamId or teamSlug
+      let teamUuid = teamId || null;
+      if (!teamUuid && teamSlug) {
+        const { rows } = await query('SELECT id FROM teams WHERE team_slug = $1 LIMIT 1', [String(teamSlug)]);
+        teamUuid = rows?.[0]?.id || null;
+      }
+      if (!teamUuid) {
+        return res.status(400).json({ success: false, error: 'Missing teamId or teamSlug' });
+      }
+      // Update favorite_team_id by profile_id
+      const { rows: profRows } = await query('SELECT id FROM profiles WHERE profile_id = $1 LIMIT 1', [currentUser.profileID]);
+      if (!profRows?.length) {
+        return res.status(404).json({ success: false, error: 'Profile not found' });
+      }
+      const profileRowId = profRows[0].id;
+      await query('UPDATE profiles SET favorite_team_id = $1 WHERE id = $2', [teamUuid, profileRowId]);
+      // Also upsert a team-level notification preference for pack_open
+      await query(
+        `INSERT INTO notification_preferences (profile_id, category, team_id, opted_in)
+           VALUES ($1, $2, $3, TRUE)
+         ON CONFLICT (profile_id, category, team_id)
+           DO UPDATE SET opted_in = EXCLUDED.opted_in, updated_at = NOW()`,
+        [profileRowId, 'pack_open', teamUuid]
+      );
+      return res.status(200).json({ success: true, profile: { id: profileRowId, favorite_team_id: teamUuid } });
     }
 
 	// Airtable path: lookup by profileID and update favoriteTeam link

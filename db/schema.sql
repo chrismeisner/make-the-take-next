@@ -1,6 +1,62 @@
 -- db/schema.sql
 -- Postgres schema for core entities
 
+-- H2H matchups (challenge mode)
+CREATE TABLE IF NOT EXISTS h2h_matchups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Linkage
+  pack_id UUID NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
+  profile_a_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  profile_b_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+
+  -- Public-by-link access token (no PII in URL)
+  token TEXT NOT NULL UNIQUE,
+
+  -- Lifecycle: 'pending' (created, awaiting accept), 'accepted' (both bound), 'final' (graded)
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','final')),
+
+  -- Results snapshot (set on finalize)
+  a_correct INT,
+  b_correct INT,
+  a_tokens INT,
+  b_tokens INT,
+  winner_profile_id UUID REFERENCES profiles(id),
+
+  -- Bonus config and outcome (display/log only in v1)
+  bonus_amount INT NOT NULL DEFAULT 10,
+  tie_policy TEXT NOT NULL DEFAULT 'split', -- 'split' | 'both' | 'none'
+  bonus_split_a INT,
+  bonus_split_b INT,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  accepted_at TIMESTAMPTZ,
+  finalized_at TIMESTAMPTZ
+);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_h2h_matchups_pack ON h2h_matchups (pack_id);
+CREATE INDEX IF NOT EXISTS idx_h2h_matchups_status ON h2h_matchups (status);
+CREATE INDEX IF NOT EXISTS idx_h2h_matchups_profiles ON h2h_matchups (profile_a_id, profile_b_id);
+
+-- Optional: prevent duplicate active challenges between same two users on same pack
+-- (allows multiple historical finals, but only one non-final at a time)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_active_h2h_per_pair'
+  ) THEN
+    CREATE UNIQUE INDEX uniq_active_h2h_per_pair
+      ON h2h_matchups (pack_id, profile_a_id, profile_b_id)
+      WHERE status IN ('pending','accepted');
+  END IF;
+END $$;
+
+-- Performance: lookups by profile per pack for latest takes
+CREATE INDEX IF NOT EXISTS idx_takes_latest_by_profile_pack
+  ON takes (profile_id, pack_id) WHERE take_status = 'latest';
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Teams

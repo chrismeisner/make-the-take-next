@@ -19,7 +19,12 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
     async function fetchItems() {
       try {
         const start = Date.now();
-        const res = await fetch('/api/items');
+        const q = new URLSearchParams();
+        // If on team page, pass teamSlug for team-specific images
+        const teamSlug = typeof router.query?.teamSlug === 'string' ? router.query.teamSlug : null;
+        if (teamSlug) q.set('teamSlug', teamSlug);
+        const url = q.toString() ? `/api/items?${q.toString()}` : '/api/items';
+        const res = await fetch(url);
         const text = await res.text();
         let data;
         try {
@@ -53,7 +58,7 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
     }
     fetchItems();
     return () => { isMounted = false; };
-  }, [limit, preferFeatured]);
+  }, [limit, preferFeatured, router.query?.teamSlug]);
 
   useEffect(() => {
     if (status !== 'authenticated') {

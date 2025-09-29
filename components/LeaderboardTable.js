@@ -16,7 +16,7 @@ import { useSession } from "next-auth/react";
  *   ...
  * }
  */
-export default function LeaderboardTable({ leaderboard }) {
+export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
   const { data: session } = useSession();
   const currentProfileID = session?.user?.profileID;
   const hasEntries = Array.isArray(leaderboard) && leaderboard.length > 0;
@@ -25,12 +25,13 @@ export default function LeaderboardTable({ leaderboard }) {
 	<div className="overflow-x-auto w-full">
 	  <table className="min-w-full border-collapse">
 		<thead>
-		  <tr className="border-b">
+          <tr className="border-b">
 			<th className="text-left py-2 px-3 w-10"></th>
 			<th className="text-left py-2 px-3">Taker</th>
 			<th className="text-left py-2 px-3">REC</th>
 			<th className="text-left py-2 px-3">PER</th>
 			<th className="text-left py-2 px-3">PTS</th>
+            <th className="text-right py-2 px-3">Compare</th>
 		  </tr>
 		</thead>
 		<tbody>
@@ -41,8 +42,8 @@ export default function LeaderboardTable({ leaderboard }) {
 			  </td>
 			</tr>
 		  ) : (
-			leaderboard.map((item, idx) => (
-			  <tr key={idx} className="border-b">
+            leaderboard.map((item, idx) => (
+              <tr key={idx} className="border-b">
 				<td className="py-2 px-3 w-10">{idx + 1}</td>
 				<td className="py-2 px-3">
 				  {item.profileID ? (
@@ -66,6 +67,19 @@ export default function LeaderboardTable({ leaderboard }) {
 				  })()}
 				</td>
 				<td className="py-2 px-3">{Math.round(item.points)}</td>
+                <td className="py-2 px-3 text-right">
+                  {(() => {
+                    const other = item.profileID;
+                    const can = other && currentProfileID && other !== currentProfileID;
+                    const slug = packSlugOrId || item.packURL || item.packID || null;
+                    if (!can || !slug) return null;
+                    return (
+                      <Link href={{ pathname: `/packs/[packURL]/h2h`, query: { u1: currentProfileID, u2: other, packURL: slug } }}>
+                        <span className="text-blue-600 underline">Compare</span>
+                      </Link>
+                    );
+                  })()}
+                </td>
 			  </tr>
 			))
 		  )}

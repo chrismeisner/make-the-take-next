@@ -359,7 +359,36 @@ export default async function handler(req, res) {
       }
     }
 
-	// 7) Tokens summary consistent with Marketplace
+    // 7) Award bonuses (non-referral) list for profile view
+    let awardBonuses = [];
+    if (isPG) {
+      try {
+        const { rows } = await query(
+          `SELECT a.code,
+                  a.name,
+                  a.tokens,
+                  ar.redeemed_at
+             FROM award_redemptions ar
+             JOIN award_cards a ON a.id = ar.award_card_id
+             JOIN profiles p ON p.id = ar.profile_id
+            WHERE p.profile_id = $1
+              AND (a.code IS NULL OR a.code NOT LIKE 'ref5:%')
+            ORDER BY ar.redeemed_at DESC
+            LIMIT 5000`,
+          [profileID]
+        );
+        awardBonuses = rows.map((r) => ({
+          code: r.code,
+          name: r.name,
+          tokens: Number(r.tokens) || 0,
+          redeemedAt: r.redeemed_at ? new Date(r.redeemed_at).toISOString() : null,
+        }));
+      } catch (pgBonusesErr) {
+        try { console.error('[profile][pg] Error fetching award bonuses =>', pgBonusesErr); } catch {}
+      }
+    }
+
+    // 8) Tokens summary consistent with Marketplace
 	let tokensSpent = 0;
     {
 	  try {
@@ -383,7 +412,7 @@ export default async function handler(req, res) {
     const creatorLeaderboard = [];
     const creatorLeaderboardUpdatedAt = null;
 
-	// 8) Return the aggregated data
+    // 9) Return the aggregated data
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
@@ -398,7 +427,8 @@ export default async function handler(req, res) {
 	  tokensSpent,
       tokensBalance,
       tokensAwarded,
-	  referralAwards,
+      referralAwards,
+      awardBonuses,
 	  creatorPacks,
 	  creatorLeaderboard,
 	  creatorLeaderboardUpdatedAt,

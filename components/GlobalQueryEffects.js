@@ -10,19 +10,66 @@ export default function GlobalQueryEffects() {
     if (!router.isReady) return;
     const q = router.query || {};
     const code = Array.isArray(q.card) ? q.card[0] : q.card;
-    if (code && typeof code === 'string') {
+    if (!code || typeof code !== 'string') return;
+    (async () => {
       try {
-        if (typeof window !== 'undefined') {
-          window.__MTT_SUPPRESS_GLOBAL_MODALS__ = true;
-          window.__MTT_SUPPRESS_URL_SYNC__ = true;
+        // If already on team page, open immediately (URL already correct)
+        if (router.pathname === '/teams/[teamSlug]') {
+          try {
+            if (typeof window !== 'undefined') {
+              window.__MTT_SUPPRESS_GLOBAL_MODALS__ = false;
+              window.__MTT_SUPPRESS_URL_SYNC__ = true;
+            }
+          } catch {}
+          openModal('awardClaim', { code });
+          const nextQuery = { ...q };
+          delete nextQuery.card;
+          router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+          return;
         }
-      } catch {}
-      openModal('awardClaim', { code });
-      const nextQuery = { ...q };
-      delete nextQuery.card;
-      router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
-    }
-  }, [router.isReady]);
+
+        // Fetch preview to determine required team slug if any
+        const res = await fetch(`/api/awards/preview?code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        const reqSlug = res.ok && data?.success ? (data.requirementTeamRouteSlug || data.requirementTeamSlug || null) : null;
+        const currentSlug = typeof router.query?.teamSlug === 'string' ? router.query.teamSlug : null;
+
+        if (reqSlug && router.pathname !== '/teams/[teamSlug]') {
+          // Forward to team page with the card param so modal opens there
+          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } });
+          return;
+        }
+        if (reqSlug && currentSlug && currentSlug !== reqSlug) {
+          // Already on a team page but not the required one: navigate
+          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } });
+          return;
+        }
+        // Open modal on current page (already on correct team page or no team requirement)
+        try {
+          if (typeof window !== 'undefined') {
+            window.__MTT_SUPPRESS_GLOBAL_MODALS__ = true;
+            window.__MTT_SUPPRESS_URL_SYNC__ = true;
+          }
+        } catch {}
+        openModal('awardClaim', { code });
+        const nextQuery = { ...q };
+        delete nextQuery.card;
+        router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+      } catch {
+        // Fallback: open modal on current page
+        try {
+          if (typeof window !== 'undefined') {
+            window.__MTT_SUPPRESS_GLOBAL_MODALS__ = false;
+            window.__MTT_SUPPRESS_URL_SYNC__ = true;
+          }
+        } catch {}
+        openModal('awardClaim', { code });
+        const nextQuery = { ...q };
+        delete nextQuery.card;
+        router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+      }
+    })();
+  }, [router.isReady, router.pathname, router.query?.card]);
 
   return null;
 }

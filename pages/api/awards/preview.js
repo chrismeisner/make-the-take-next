@@ -15,16 +15,27 @@ export default async function handler(req, res) {
     const isBefore = rec.valid_from ? new Date(rec.valid_from).getTime() > now : false;
     const isAfter = rec.valid_to ? new Date(rec.valid_to).getTime() < now : false;
     const status = isBefore || isAfter ? 'expired' : rec.status;
-    // Resolve requirement team name if applicable
+    // Resolve requirement team name and route slug if applicable
     let requirementTeamName = null;
-    if (rec.requirement_key === 'follow_team' && rec.requirement_team_slug) {
-      try {
-        const { query } = await import('../../../lib/db/postgres');
-        const { rows } = await query('SELECT name FROM teams WHERE team_slug = $1 LIMIT 1', [rec.requirement_team_slug]);
+    let requirementTeamRouteSlug = null;
+    try {
+      const { query } = await import('../../../lib/db/postgres');
+      if (rec.requirement_team_id) {
+        const { rows } = await query('SELECT name, team_slug FROM teams WHERE id = $1 LIMIT 1', [rec.requirement_team_id]);
         requirementTeamName = rows?.[0]?.name || null;
-      } catch {}
-    }
-    return res.status(200).json({ success: true, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: rec.image_url || null, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamName });
+        requirementTeamRouteSlug = rows?.[0]?.team_slug || null;
+      } else if (rec.requirement_team_slug) {
+        const { rows } = await query(
+          `SELECT name, team_slug FROM teams 
+             WHERE LOWER(team_slug) = LOWER($1) OR LOWER(abbreviation) = LOWER($1)
+             LIMIT 1`,
+          [rec.requirement_team_slug]
+        );
+        requirementTeamName = rows?.[0]?.name || null;
+        requirementTeamRouteSlug = rows?.[0]?.team_slug || null;
+      }
+    } catch {}
+    return res.status(200).json({ success: true, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: rec.image_url || null, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamId: rec.requirement_team_id || null, requirementTeamName, requirementTeamRouteSlug });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[awards/preview] error', err);

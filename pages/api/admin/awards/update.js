@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug } = req.body || {};
+  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId } = req.body || {};
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
   const updates = [];
   const params = [];
@@ -28,6 +28,18 @@ export default async function handler(req, res) {
   if (imageUrl !== undefined) { updates.push(`image_url = $${i++}`); params.push(imageUrl || null); }
   if (requirementKey !== undefined) { updates.push(`requirement_key = $${i++}`); params.push(requirementKey || null); }
   if (requirementTeamSlug !== undefined) { updates.push(`requirement_team_slug = $${i++}`); params.push(requirementTeamSlug || null); }
+  // Resolve requirementTeamId: prefer provided id, else lookup from slug if provided
+  let reqTeamId = requirementTeamId;
+  if (!reqTeamId && requirementTeamSlug) {
+    try {
+      const { rows } = await query('SELECT id FROM teams WHERE team_slug = $1 LIMIT 1', [requirementTeamSlug]);
+      reqTeamId = rows?.[0]?.id || null;
+    } catch {}
+  }
+  if (requirementTeamId !== undefined || requirementTeamSlug !== undefined) {
+    updates.push(`requirement_team_id = $${i++}`);
+    params.push(reqTeamId || null);
+  }
   if (updates.length === 0) return res.status(400).json({ success: false, error: 'No updates provided' });
   params.push(code);
   const sql = `UPDATE award_cards SET ${updates.join(', ')} WHERE code = $${i} RETURNING code`;
