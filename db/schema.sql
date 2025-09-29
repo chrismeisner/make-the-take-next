@@ -481,6 +481,9 @@ CREATE INDEX IF NOT EXISTS idx_award_cards_status ON award_cards (status);
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS redirect_team_slug TEXT;
 -- Image shown on claim/success modals
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS image_url TEXT;
+-- Redemption requirement fields (e.g., follow a specific team)
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_key TEXT; -- e.g., 'follow_team'
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_team_slug TEXT;
 
 -- Per-user award redemptions (allow many users, one redemption each)
 CREATE TABLE IF NOT EXISTS award_redemptions (

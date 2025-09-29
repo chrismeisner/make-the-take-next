@@ -8,7 +8,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   const { openModal } = useModal();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState(null); // { name, tokens, status, redirectTeamSlug, imageUrl }
+  const [preview, setPreview] = useState(null); // { name, tokens, status, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamName }
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
         if (!res.ok || !data.success) {
           setError(data.error || 'Invalid code');
         } else {
-          setPreview({ name: data.name, tokens: data.tokens, status: data.status, redirectTeamSlug: data.redirectTeamSlug || null, imageUrl: data.imageUrl || null });
+          setPreview({ name: data.name, tokens: data.tokens, status: data.status, redirectTeamSlug: data.redirectTeamSlug || null, imageUrl: data.imageUrl || null, requirementKey: data.requirementKey || null, requirementTeamSlug: data.requirementTeamSlug || null, requirementTeamName: data.requirementTeamName || null });
         }
       } catch (err) {
         if (!mounted) return;
@@ -93,7 +93,29 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
             if (res.ok && data.success) {
               openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: data.imageUrl || preview?.imageUrl || null });
             } else {
-              openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: data.error || 'Could not claim', imageUrl: preview?.imageUrl || null });
+              if (data?.code === 'requirement_follow_team') {
+                openModal('favoriteTeam', {
+                  onTeamSelected: async () => {
+                    try {
+                      const retry = await fetch('/api/awards/redeem', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code }),
+                      });
+                      const retryJson = await retry.json();
+                      if (retry.ok && retryJson.success) {
+                        openModal('awardSuccess', { name: retryJson.name, tokens: retryJson.tokens, redirectTeamSlug: retryJson.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: retryJson.imageUrl || preview?.imageUrl || null });
+                      } else {
+                        openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: retryJson.error || 'Could not claim', imageUrl: preview?.imageUrl || null });
+                      }
+                    } catch {
+                      openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: 'Could not claim', imageUrl: preview?.imageUrl || null });
+                    }
+                  }
+                });
+              } else {
+                openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: data.error || 'Could not claim', imageUrl: preview?.imageUrl || null });
+              }
             }
           } catch {
             openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: 'Could not claim', imageUrl: preview?.imageUrl || null });
@@ -112,7 +134,29 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
       if (res.ok && data.success) {
         openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview.redirectTeamSlug || null, imageUrl: data.imageUrl || preview.imageUrl || null });
       } else {
-        setError(data.error || 'Could not claim');
+        if (data?.code === 'requirement_follow_team') {
+          openModal('favoriteTeam', {
+            onTeamSelected: async () => {
+              try {
+                const retry = await fetch('/api/awards/redeem', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ code }),
+                });
+                const retryJson = await retry.json();
+                if (retry.ok && retryJson.success) {
+                  openModal('awardSuccess', { name: retryJson.name, tokens: retryJson.tokens, redirectTeamSlug: retryJson.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: retryJson.imageUrl || preview?.imageUrl || null });
+                } else {
+                  setError(retryJson.error || 'Could not claim');
+                }
+              } catch {
+                setError('Could not claim');
+              }
+            }
+          });
+        } else {
+          setError(data.error || 'Could not claim');
+        }
       }
     } catch (err) {
       setError('Could not claim');
@@ -135,6 +179,9 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
               </div>
             ) : null}
             <p className="text-gray-800">{preview.name} <span className="font-semibold">+{preview.tokens}</span> Taker marketplace tokens available</p>
+            {preview.requirementKey === 'follow_team' && (
+              <p className="text-sm text-gray-700">Follow {preview.requirementTeamName || preview.requirementTeamSlug} to unlock this token bonus.</p>
+            )}
             {preview.status !== 'available' ? (
               <p className="text-gray-500">This code is not available to claim.</p>
             ) : (

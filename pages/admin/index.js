@@ -416,7 +416,12 @@ export default function AdminPage({ superAdminSecret }) {
             </Link>
             <Link href="/admin/awards">
               <button className="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
-                Awards
+                Promo Cards
+              </button>
+            </Link>
+            <Link href="/admin/prop-referrals">
+              <button className="px-3 py-2 bg-emerald-700 text-white rounded hover:bg-emerald-800">
+                Prop Referrals
               </button>
             </Link>
             <Link href="/admin/players">

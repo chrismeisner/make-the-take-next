@@ -17,14 +17,26 @@ export default async function handler(req, res) {
   const limit = Math.min(500, Number.parseInt(String(req.query.limit || '200'), 10) || 200);
   try {
     const { rows } = await query(
-      `SELECT id, code, name, tokens, status, redeemed_at, valid_from, valid_to, redirect_team_slug, image_url, created_at,
-              requirement_key, requirement_team_slug
-         FROM award_cards
-        ORDER BY created_at DESC
+      `SELECT a.id,
+              a.code,
+              a.name,
+              a.tokens,
+              a.status,
+              a.valid_from,
+              a.valid_to,
+              a.created_at,
+              COALESCE((
+                SELECT COUNT(*)::int
+                FROM award_redemptions ar
+                WHERE ar.award_card_id = a.id
+              ), 0) AS redemption_count
+         FROM award_cards a
+        WHERE a.code LIKE 'ref5:%'
+        ORDER BY a.created_at DESC
         LIMIT $1`,
       [limit]
     );
-    return res.status(200).json({ success: true, awards: rows });
+    return res.status(200).json({ success: true, referrals: rows });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Query failed' });
   }
