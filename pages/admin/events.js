@@ -367,6 +367,11 @@ export default function AdminEventsPage() {
                       Create Prop
                     </button>
                   </Link>
+                  <Link href={`/admin/events/${ev.id}/wizard`}>
+                    <button className="px-2 py-1 text-purple-600 hover:underline mr-2">
+                      Wizard
+                    </button>
+                  </Link>
                   <Link href={`/admin/packs/new?eventId=${encodeURIComponent(ev.id)}`}>
                     <button className="px-2 py-1 text-indigo-600 hover:underline mr-2">
                       Create Pack
