@@ -26,15 +26,17 @@ export default function PackFeedScaffold({
     if (!router.isReady) return;
     
     const { day, date } = router.query;
-    const validDays = new Set(['today', 'yesterday']);
+    const validDays = new Set(['today', 'yesterday', 'tomorrow']);
     
+    // Allow `day` to be a known label, otherwise treat it as part of date parsing below
     if (typeof day === 'string' && validDays.has(day)) {
       setSelectedDay(day);
     }
     
-    const parseDateParam = (val) => {
+    const parseToIso = (val) => {
       if (!val || typeof val !== 'string') return null;
       const s = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already ISO
       let yyyy, mm, dd;
       if (/^\d{6}$/.test(s)) { // YYMMDD
         const yy = parseInt(s.slice(0, 2), 10);
@@ -45,8 +47,6 @@ export default function PackFeedScaffold({
         yyyy = parseInt(s.slice(0, 4), 10);
         mm = parseInt(s.slice(4, 6), 10);
         dd = parseInt(s.slice(6, 8), 10);
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { // YYYY-MM-DD
-        return s;
       } else {
         return null;
       }
@@ -56,23 +56,30 @@ export default function PackFeedScaffold({
       return d.toISOString().slice(0, 10);
     };
     
-    const iso = parseDateParam(typeof date === 'string' ? date : '');
+    // Prefer explicit `date`, otherwise allow numeric `day` to represent a date
+    const candidate = (typeof date === 'string' && date) ? date : (typeof day === 'string' ? day : '');
+    const iso = parseToIso(candidate);
     if (iso) setSelectedDate(iso); else setSelectedDate(null);
   }, [router.query.day, router.query.date, router.isReady]);
 
-  // Update URL when day changes (clear explicit date) or when no day parameter is present
+  // Update URL when day/date changes; preserve explicit date via `date=YYYY-MM-DD`
   useEffect(() => {
     if (!router.isReady) return;
     if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_URL_SYNC__) return;
-    const currentDay = (router.query.day || '').toString();
-    
-    // If no day parameter is present, or if day changed, or if there's a date parameter, update URL
-    if (!currentDay || currentDay !== selectedDay || router.query.date) {
-      const nextQuery = { ...router.query, day: selectedDay };
+    const nextQuery = { ...router.query };
+    if (selectedDate) {
+      nextQuery.date = selectedDate;
+      // Keep a stable day label for UI when an explicit date is set
+      nextQuery.day = 'today';
+    } else {
       delete nextQuery.date;
+      nextQuery.day = selectedDay;
+    }
+    const same = JSON.stringify(router.query) === JSON.stringify(nextQuery);
+    if (!same) {
       router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
     }
-  }, [selectedDay, router.isReady, router.pathname, router.query]);
+  }, [selectedDay, selectedDate, router.isReady, router.pathname, router.query]);
 
   return (
     <div className="w-full">

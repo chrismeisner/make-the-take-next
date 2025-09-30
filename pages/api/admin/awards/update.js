@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId } = req.body || {};
+  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesId, requirementSeriesSlug } = req.body || {};
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
   const updates = [];
   const params = [];
@@ -39,6 +39,22 @@ export default async function handler(req, res) {
   if (requirementTeamId !== undefined || requirementTeamSlug !== undefined) {
     updates.push(`requirement_team_id = $${i++}`);
     params.push(reqTeamId || null);
+  }
+  // Resolve series ID from slug if needed
+  let reqSeriesId = requirementSeriesId;
+  if (!reqSeriesId && requirementSeriesSlug) {
+    try {
+      const { rows } = await query('SELECT id FROM series WHERE series_id = $1 OR id::text = $1 LIMIT 1', [requirementSeriesSlug]);
+      reqSeriesId = rows?.[0]?.id || null;
+    } catch {}
+  }
+  if (requirementSeriesId !== undefined || requirementSeriesSlug !== undefined) {
+    updates.push(`requirement_series_id = $${i++}`);
+    params.push(reqSeriesId || null);
+  }
+  if (requirementSeriesSlug !== undefined) {
+    updates.push(`requirement_series_slug = $${i++}`);
+    params.push(requirementSeriesSlug || null);
   }
   if (updates.length === 0) return res.status(400).json({ success: false, error: 'No updates provided' });
   params.push(code);

@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   try {
     const { rows } = await query(
       `SELECT id, code, name, tokens, status, redeemed_at, valid_from, valid_to, redirect_team_slug, image_url, created_at,
-              requirement_key, requirement_team_slug, requirement_team_id
+              requirement_key, requirement_team_slug, requirement_team_id, requirement_series_id, requirement_series_slug
          FROM award_cards
         ORDER BY created_at DESC
         LIMIT $1`,

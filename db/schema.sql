@@ -305,6 +305,39 @@ CREATE TABLE IF NOT EXISTS contests_packs (
 
 
 
+-- Series: group of packs (packs can belong to multiple series)
+CREATE TABLE IF NOT EXISTS series (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  series_id TEXT UNIQUE,
+  title TEXT,
+  summary TEXT,
+  cover_url TEXT,
+  status TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Join table for packs in a series (many-to-many)
+CREATE TABLE IF NOT EXISTS series_packs (
+  series_id UUID REFERENCES series(id) ON DELETE CASCADE,
+  pack_id UUID REFERENCES packs(id) ON DELETE CASCADE,
+  PRIMARY KEY (series_id, pack_id)
+);
+CREATE INDEX IF NOT EXISTS idx_series_packs_series ON series_packs (series_id);
+CREATE INDEX IF NOT EXISTS idx_series_packs_pack ON series_packs (pack_id);
+
+
+-- Series followers: per-user follow relationship for series
+CREATE TABLE IF NOT EXISTS series_followers (
+  series_id UUID REFERENCES series(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (series_id, profile_id)
+);
+CREATE INDEX IF NOT EXISTS idx_series_followers_series ON series_followers (series_id);
+CREATE INDEX IF NOT EXISTS idx_series_followers_profile ON series_followers (profile_id);
+
+
+
 -- Items
 CREATE TABLE IF NOT EXISTS items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -540,6 +573,11 @@ ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS image_url TEXT;
 -- Redemption requirement fields (e.g., follow a specific team)
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_key TEXT; -- e.g., 'follow_team'
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_team_slug TEXT;
+-- Team requirement as foreign key (optional, resolves from slug when not provided)
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_team_id UUID REFERENCES teams(id);
+-- Series follow requirement (optional): either by UUID or text ID/slug
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_series_id UUID REFERENCES series(id);
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_series_slug TEXT;
 
 -- Per-user award redemptions (allow many users, one redemption each)
 CREATE TABLE IF NOT EXISTS award_redemptions (

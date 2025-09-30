@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useModal } from '../../contexts/ModalContext';
 
@@ -83,9 +83,12 @@ export default function CreatePropUnifiedPage() {
   const [playersById, setPlayersById] = useState({});
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playersError, setPlayersError] = useState('');
+  // When MLB, use roster-only map for dropdowns (no fallbacks/merges)
+  const [rosterPlayersById, setRosterPlayersById] = useState({});
   const [metricOptions, setMetricOptions] = useState([]);
   const [metricLoading, setMetricLoading] = useState(false);
   const [metricError, setMetricError] = useState('');
+  const [metricCatalog, setMetricCatalog] = useState({}); // key -> { key,label,source_key }
   const [selectedMetric, setSelectedMetric] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState([]);
   // Team Winner mapping (A/B -> home/away)
@@ -422,7 +425,7 @@ export default function CreatePropUnifiedPage() {
     }
   };
 
-  // Metric options loading: prefer catalog API; fallback to boxscore-derived keys for legacy
+  // Metric options loading: MLB derives keys from boxscore; NFL still tries catalog then boxscore
   useEffect(() => {
     if (!(autoGradeKey && event?.espnGameID)) return;
     const gid = String(event.espnGameID || '').trim();
@@ -436,47 +439,54 @@ export default function CreatePropUnifiedPage() {
     (async () => {
       try {
         const source = dataSource || 'major-mlb';
-        const entity = (autoGradeKey.startsWith('team_')) ? 'team' : 'player';
-        const scope = (autoGradeKey.includes('_multi_')) ? 'multi' : 'single';
-        // 1) Try catalog API
-        const catUrl = `/api/admin/metrics?league=${encodeURIComponent(source)}&entity=${encodeURIComponent(entity)}&scope=${encodeURIComponent(scope)}`;
-        const cat = await fetch(catUrl);
-        const catJson = await cat.json().catch(() => ({}));
-        let keys = Array.isArray(catJson?.metrics) && catJson.metrics.length ? catJson.metrics.map(m => m.key) : [];
-        // 2) Fallback to boxscore-derived keys for team metrics
-        if (!keys.length) {
-          try { console.log('[create-prop] fetch stat keys (fallback boxscore)', { source, gid, autoGradeKey }); } catch {}
-          const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(source)}&gameID=${encodeURIComponent(gid)}`);
-          const json = await resp.json();
-          keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
-          // MLB team metrics convenience keys
-          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && source === 'major-mlb') {
+        let keys = [];
+        // MLB: always derive from boxscore statKeys (these match normalized player.stats keys)
+        if (source === 'major-mlb') {
+          // Use curated DB metrics exclusively for MLB (pre-game and in-game)
+          const scope = autoGradeKey.includes('_multi_') ? 'multi' : 'single';
+          const catUrl = `/api/admin/metrics?league=${encodeURIComponent('mlb')}&entity=${encodeURIComponent(autoGradeKey.startsWith('team_') ? 'team' : 'player')}&scope=${encodeURIComponent(scope)}`;
+          const cat = await fetch(catUrl);
+          const catJson = await cat.json().catch(() => ({}));
+          const metrics = Array.isArray(catJson?.metrics) ? catJson.metrics : [];
+          const keysDb = metrics.map((m) => m.key);
+          setMetricCatalog(Object.fromEntries(metrics.map((m) => [m.key, m])));
+          keys = keysDb;
+          // Ensure classic team metrics present if team view
+          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h')) {
             keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
           }
-          // NFL team metrics from raw boxscore teams[].statistics[].name when Team Stat O/U or team multi-stat selected
-          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && source === 'nfl') {
-            try {
-              const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
-              const nflTeamKeys = [];
-              for (const t of teams) {
-                const stats = Array.isArray(t?.statistics) ? t.statistics : [];
-                for (const s of stats) {
-                  const name = String(s?.name || '').trim();
-                  if (name) nflTeamKeys.push(name);
+        } else {
+          // NFL: prefer catalog; fallback to boxscore and derive team metric names when needed
+          const entity = (autoGradeKey.startsWith('team_')) ? 'team' : 'player';
+          const scope = (autoGradeKey.includes('_multi_')) ? 'multi' : 'single';
+          const catUrl = `/api/admin/metrics?league=${encodeURIComponent(source)}&entity=${encodeURIComponent(entity)}&scope=${encodeURIComponent(scope)}`;
+          const cat = await fetch(catUrl);
+          const catJson = await cat.json().catch(() => ({}));
+          const list = Array.isArray(catJson?.metrics) && catJson.metrics.length ? catJson.metrics : [];
+          setMetricCatalog(Object.fromEntries(list.map((m) => [m.key, m])));
+          keys = list.map(m => m.key);
+          if (!keys.length) {
+            const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(source)}&gameID=${encodeURIComponent(gid)}`);
+            const json = await resp.json();
+            keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
+            if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h')) {
+              try {
+                const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
+                const nflTeamKeys = [];
+                for (const t of teams) {
+                  const stats = Array.isArray(t?.statistics) ? t.statistics : [];
+                  for (const s of stats) {
+                    const name = String(s?.name || '').trim();
+                    if (name) nflTeamKeys.push(name);
+                  }
                 }
-              }
-              if (nflTeamKeys.length) {
-                const uniq = Array.from(new Set(nflTeamKeys));
-                keys = uniq;
-              }
-            } catch {}
-            // Always include curated manual metrics and 'points' alongside dynamic options
-            keys = Array.from(new Set([...(keys || []), ...nflTeamMetricFallback, 'points']));
-            // Sort for stable UX
-            keys.sort((a, b) => String(a).localeCompare(String(b)));
+                if (nflTeamKeys.length) keys = Array.from(new Set(nflTeamKeys));
+              } catch {}
+              keys = Array.from(new Set([...(keys || []), ...nflTeamMetricFallback, 'points']));
+              keys.sort((a, b) => String(a).localeCompare(String(b)));
+            }
           }
         }
-        // MLB team metrics convenience keys
         setMetricOptions(keys);
         try { console.log('[create-prop] metric options set', { count: keys?.length || 0, sample: (keys || []).slice(0, 10) }); } catch {}
       } catch (e) {
@@ -563,6 +573,7 @@ export default function CreatePropUnifiedPage() {
 
         // Fetch boxscore normalized stats for selected source
         let normalized = { playersById: {}, statKeys: [] };
+        let rosterOnlyMap = {};
         let rawTeams = [];
         try {
           if (gid) {
@@ -613,8 +624,33 @@ export default function CreatePropUnifiedPage() {
                 }
               }
             } catch {}
+            // MLB roster: roster-only for dropdowns; do not merge into normalized for source of truth
+            try {
+              if (ds === 'major-mlb') {
+                const rawHome = event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam);
+                const rawAway = event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam);
+                const toAbvBestEffort = (val) => {
+                  const raw = String(val || '').toUpperCase();
+                  if (/^[A-Z]{2,4}$/.test(raw)) return raw;
+                  return (typeof abvResolver?.toAbv === 'function') ? abvResolver.toAbv(raw) : raw;
+                };
+                const homeAbvResolved = toAbvBestEffort(rawHome);
+                const awayAbvResolved = toAbvBestEffort(rawAway);
+                const abvs = [homeAbvResolved, awayAbvResolved].filter((s) => !!s && /^[A-Z]{2,4}$/.test(String(s)));
+                if (abvs.length) {
+                  const rosterUrl = `/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`;
+                  try { console.log('[create-prop] MLB roster primary fetch', { rosterUrl, abvs }); } catch {}
+                  const r = await fetch(rosterUrl);
+                  const j = await r.json().catch(() => ({}));
+                  if (r.ok && j?.playersById && typeof j.playersById === 'object') {
+                    rosterOnlyMap = j.playersById;
+                  }
+                }
+              }
+            } catch {}
           }
         } catch {}
+        setRosterPlayersById(ds === 'major-mlb' ? (rosterOnlyMap || {}) : {});
         setPreviewData({ source: ds, scoreboard, normalized, rawTeams, espnWeekly, endpoints: { boxscoreUrl, statusUrl, espnScoreboardUrl } });
         try { console.log('[create-prop] preview loaded', { source: ds, players: Object.keys(normalized?.playersById || {}).length, statKeys: (normalized?.statKeys || []).length }); } catch {}
       } catch (e) {
@@ -837,28 +873,35 @@ export default function CreatePropUnifiedPage() {
 
   const playersA = useMemo(() => {
     try {
-      const entries = Object.entries(previewData?.normalized?.playersById || {});
+      const entries = Object.entries((dataSource === 'major-mlb' ? rosterPlayersById : (previewData?.normalized?.playersById || {})) || {});
+      const ds = String(dataSource || 'major-mlb');
       return entries
         .filter(([, p]) => String(p?.teamAbv || '').toUpperCase() === String(teamAbvA || '').toUpperCase())
+        .filter(([id]) => (ds === 'major-mlb' ? /^\d+$/.test(String(id)) : true))
         .sort((a, b) => String(a[1]?.longName || a[0]).localeCompare(String(b[1]?.longName || b[0])));
     } catch { return []; }
-  }, [previewData?.normalized?.playersById, teamAbvA]);
+  }, [previewData?.normalized?.playersById, teamAbvA, dataSource, rosterPlayersById]);
 
   const playersB = useMemo(() => {
     try {
-      const entries = Object.entries(previewData?.normalized?.playersById || {});
+      const entries = Object.entries((dataSource === 'major-mlb' ? rosterPlayersById : (previewData?.normalized?.playersById || {})) || {});
+      const ds = String(dataSource || 'major-mlb');
       return entries
         .filter(([, p]) => String(p?.teamAbv || '').toUpperCase() === String(teamAbvB || '').toUpperCase())
+        .filter(([id]) => (ds === 'major-mlb' ? /^\d+$/.test(String(id)) : true))
         .sort((a, b) => String(a[1]?.longName || a[0]).localeCompare(String(b[1]?.longName || b[0])));
     } catch { return []; }
-  }, [previewData?.normalized?.playersById, teamAbvB]);
+  }, [previewData?.normalized?.playersById, teamAbvB, dataSource, rosterPlayersById]);
 
   const allPlayers = useMemo(() => {
     try {
-      const entries = Object.entries(previewData?.normalized?.playersById || {});
-      return entries.sort((a, b) => String(a[1]?.longName || a[0]).localeCompare(String(b[1]?.longName || b[0])));
+      const entries = Object.entries((dataSource === 'major-mlb' ? rosterPlayersById : (previewData?.normalized?.playersById || {})) || {});
+      const ds = String(dataSource || 'major-mlb');
+      return entries
+        .filter(([id]) => (ds === 'major-mlb' ? /^\d+$/.test(String(id)) : true))
+        .sort((a, b) => String(a[1]?.longName || a[0]).localeCompare(String(b[1]?.longName || b[0])));
     } catch { return []; }
-  }, [previewData?.normalized?.playersById]);
+  }, [previewData?.normalized?.playersById, dataSource, rosterPlayersById]);
 
   // Link Event modal for pack flow
   const openLinkEventModal = () => {
@@ -1653,23 +1696,39 @@ export default function CreatePropUnifiedPage() {
                         className="mt-1 block w-full border rounded px-2 py-1"
                         value={formulaPlayerId}
                         onChange={(e)=>{ const v=e.target.value; setFormulaPlayerId(v); upsertRootParam('playerId', v); upsertRootParam('entity', 'player'); }}
-                        disabled={!previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0}
+                        disabled={(dataSource === 'major-mlb' ? Object.keys(rosterPlayersById || {}).length === 0 : !previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0)}
                       >
-                        {(!previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0) ? (
+                        {(dataSource === 'major-mlb' ? Object.keys(rosterPlayersById || {}).length === 0 : (!previewData?.normalized || Object.keys(previewData?.normalized?.playersById || {}).length === 0)) ? (
                           <option value="">No players found</option>
                         ) : (
                           <>
                             <option value="">Select a player…</option>
-                            {Object.entries(previewData.normalized.playersById || {})
+                            {Object.entries(dataSource === 'major-mlb' ? (rosterPlayersById || {}) : (previewData.normalized.playersById || {}))
                               .filter(([id, p]) => {
+                                // Only include likely players (avoid any stray metric-like keys)
+                                const idIsNumeric = /^\d+$/.test(String(id));
+                                const hasName = Boolean((p && (p.firstName || p.lastName || p.longName)));
+                                if (!(idIsNumeric || hasName)) return false;
                                 const filt = abvResolver.toAbv(formulaTeamAbv);
                                 if (!filt) return true;
                                 return abvResolver.toAbv(p?.teamAbv) === filt;
                               })
-                              .sort(([, a], [, b]) => String(a?.longName || '').localeCompare(String(b?.longName || '')))
-                              .map(([id, p]) => (
-                                <option key={`statou-player-${id}`} value={id}>{p?.longName || id} ({p?.teamAbv || ''})</option>
-                              ))}
+                              .sort(([, a], [, b]) => {
+                                const lastA = (String(a?.lastName || '').trim()) || (String(a?.longName || '').trim().split(/\s+/).slice(-1)[0] || '');
+                                const lastB = (String(b?.lastName || '').trim()) || (String(b?.longName || '').trim().split(/\s+/).slice(-1)[0] || '');
+                                const cmp = String(lastA).localeCompare(String(lastB));
+                                if (cmp !== 0) return cmp;
+                                // Tie-breaker by full name to ensure stability
+                                return String(a?.longName || '').localeCompare(String(b?.longName || ''));
+                              })
+                              .map(([id, p]) => {
+                                const first = String(p?.firstName || '').trim();
+                                const last = String(p?.lastName || '').trim() || (String(p?.longName || '').trim().split(/\s+/).slice(-1)[0] || '');
+                                const label = last && first ? `${last}, ${first}` : (p?.longName || id);
+                                return (
+                                  <option key={`statou-player-${id}`} value={id}>{label} ({p?.teamAbv || ''})</option>
+                                );
+                              })}
                           </>
                         )}
                       </select>
@@ -2235,9 +2294,14 @@ export default function CreatePropUnifiedPage() {
                     <label className="block text-sm mt-2">Player</label>
                     <select className="mt-1 block w-full border rounded px-2 py-1" value={playerAId} onChange={(e) => { setPlayerAId(e.target.value); upsertRootParam('playerAId', e.target.value); upsertRootParam('entity', 'player'); }} disabled={!teamAbvA}>
                       <option value="">Select player…</option>
-                      {playersA.map(([id, p]) => (
-                        <option key={`pmsh2h-A-${id}`} value={id}>{p?.longName || id}</option>
-                      ))}
+                      {playersA.map(([id, p]) => {
+                        const first = String(p?.firstName || '').trim();
+                        const last = String(p?.lastName || '').trim() || (String(p?.longName || '').trim().split(/\s+/).slice(-1)[0] || '');
+                        const label = last && first ? `${last}, ${first}` : (p?.longName || id);
+                        return (
+                          <option key={`pmsh2h-A-${id}`} value={id}>{label}</option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div className="border rounded p-3 bg-gray-50">
@@ -2250,9 +2314,14 @@ export default function CreatePropUnifiedPage() {
                     <label className="block text-sm mt-2">Player</label>
                     <select className="mt-1 block w-full border rounded px-2 py-1" value={playerBId} onChange={(e) => { setPlayerBId(e.target.value); upsertRootParam('playerBId', e.target.value); upsertRootParam('entity', 'player'); }} disabled={!teamAbvB}>
                       <option value="">Select player…</option>
-                      {playersB.map(([id, p]) => (
-                        <option key={`pmsh2h-B-${id}`} value={id}>{p?.longName || id}</option>
-                      ))}
+                      {playersB.map(([id, p]) => {
+                        const first = String(p?.firstName || '').trim();
+                        const last = String(p?.lastName || '').trim() || (String(p?.longName || '').trim().split(/\s+/).slice(-1)[0] || '');
+                        const label = last && first ? `${last}, ${first}` : (p?.longName || id);
+                        return (
+                          <option key={`pmsh2h-B-${id}`} value={id}>{label}</option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -2321,7 +2390,12 @@ export default function CreatePropUnifiedPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div>
                         <div className="text-gray-600">Players</div>
-                        <div>{Object.keys(previewData.normalized?.playersById || {}).length}</div>
+                        <div>
+                          {Object.keys(previewData.normalized?.playersById || {}).length}
+                          {(autoGradeKey === 'stat_over_under' && formulaPlayerId) && (
+                            <span className="ml-2 text-gray-700">(selected: <span className="font-mono">{formulaPlayerId}</span>)</span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div className="text-gray-600">Stat Keys (sample)</div>
@@ -2344,13 +2418,108 @@ export default function CreatePropUnifiedPage() {
                             const getName = (id) => (players?.[id]?.longName || id);
                             const getStat = (id, metric) => {
                               try {
-                                const stats = players?.[id]?.stats || {};
-                                let v = stats?.[metric];
-                                if (v == null && typeof metric === 'string') {
-                                  v = stats?.[metric.toUpperCase()] ?? stats?.[metric.toLowerCase()];
+                                const player = players?.[id] || {};
+                                const stats = player?.stats || {};
+                                const m = String(metric || '').trim();
+                                const tryKeys = () => {
+                                  if (!m) return null;
+                                  // Direct match and case variants
+                                  let v = stats?.[m];
+                                  if (v == null) v = stats?.[m.toUpperCase()];
+                                  if (v == null) v = stats?.[m.toLowerCase()];
+                                  if (v != null) {
+                                    const n = Number(v);
+                                    return Number.isFinite(n) ? n : null;
+                                  }
+                                  // Use DB metricCatalog.source_key aliases when available
+                                  const meta = metricCatalog?.[m] || metricCatalog?.[m.toUpperCase()] || null;
+                                  const defaultAliases = {
+                                    H: ['hits'],
+                                    RBI: ['RBIs'],
+                                    HR: ['homeRuns'],
+                                    BB: ['walks'],
+                                    SO: ['strikeouts', 'K'],
+                                    SLG: ['slugAvg','sluggingPct','slg'],
+                                    OBP: ['onBasePct','obp'],
+                                    R: ['runs'],
+                                    AB: ['atBats'],
+                                  };
+                                  const aliases = Array.isArray(meta?.source_key?.mlb?.aliases)
+                                    ? meta.source_key.mlb.aliases
+                                    : (defaultAliases[m.toUpperCase()] || []);
+                                  const boxKey = meta?.source_key?.mlb?.boxscoreKey || null;
+                                  const targets = [...(boxKey ? [boxKey] : []), ...aliases];
+                                  for (const t of targets) {
+                                    if (stats?.[t] != null) {
+                                      const n = Number(stats[t]);
+                                      if (Number.isFinite(n)) return n;
+                                    }
+                                    const tl = String(t).toLowerCase();
+                                    if (stats?.[tl] != null) {
+                                      const n = Number(stats[tl]);
+                                      if (Number.isFinite(n)) return n;
+                                    }
+                                  }
+                                  return null;
+                                };
+                                let fromStats = tryKeys();
+                                if (fromStats != null) return fromStats;
+                                // Fallback to gameLine labels (batting) if present
+                                const gl = player?.gameLine || {};
+                                if (gl && m) {
+                                  const candidates = [m, m.toUpperCase(), m.toLowerCase()];
+                                  // Include alias labels as candidates
+                                  const labelAlias = {
+                                    R: ['R'], H: ['H'], RBI: ['RBI'], HR: ['HR'], SB: ['SB'], SO: ['SO','K'], BB: ['BB'], TB: ['TB']
+                                  };
+                                  const la = labelAlias[m.toUpperCase()] || [];
+                                  for (const k of [...candidates, ...la]) {
+                                    if (gl[k] != null) {
+                                      const n = Number(gl[k]);
+                                      if (Number.isFinite(n)) return n;
+                                      const parsed = parseFloat(String(gl[k]));
+                                      if (Number.isFinite(parsed)) return parsed;
+                                    }
+                                  }
                                 }
-                                const n = Number(v);
-                                return Number.isFinite(n) ? n : null;
+                                // If MLB and ID not found in normalized map, try name-based resolution from roster
+                                try {
+                                  if ((dataSource || 'major-mlb') === 'major-mlb' && !players?.[id]) {
+                                    const rosterP = (rosterPlayersById || {})[id];
+                                    const targetName = String(rosterP?.longName || `${rosterP?.firstName || ''} ${rosterP?.lastName || ''}`.trim() || '').trim();
+                                    if (targetName) {
+                                      const entry = Object.entries(players || {}).find(([, p]) => String(p?.longName || '').trim() === targetName);
+                                      if (entry) {
+                                        const altStats = entry[1]?.stats || {};
+                                        const direct = (() => {
+                                          let v = altStats?.[m] ?? altStats?.[m.toUpperCase()] ?? altStats?.[m.toLowerCase()];
+                                          if (v != null) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+                                          const meta = metricCatalog?.[m] || metricCatalog?.[m.toUpperCase()] || null;
+                                          const aliases = Array.isArray(meta?.source_key?.mlb?.aliases) ? meta.source_key.mlb.aliases : [];
+                                          const boxKey = meta?.source_key?.mlb?.boxscoreKey || null;
+                                          const targets = [...(boxKey ? [boxKey] : []), ...aliases];
+                                          for (const t of targets) {
+                                            if (altStats?.[t] != null) { const n = Number(altStats[t]); if (Number.isFinite(n)) return n; }
+                                            const tl = String(t).toLowerCase();
+                                            if (altStats?.[tl] != null) { const n = Number(altStats[tl]); if (Number.isFinite(n)) return n; }
+                                          }
+                                          return null;
+                                        })();
+                                        if (direct != null) return direct;
+                                        const altGl = entry[1]?.gameLine || {};
+                                        if (altGl && m) {
+                                          const candidates = [m, m.toUpperCase(), m.toLowerCase()];
+                                          const labelAlias = { R: ['R'], H: ['H'], RBI: ['RBI'], HR: ['HR'], SB: ['SB'], SO: ['SO','K'], BB: ['BB'], TB: ['TB'] };
+                                          const la = labelAlias[m.toUpperCase()] || [];
+                                          for (const k of [...candidates, ...la]) {
+                                            if (altGl[k] != null) { const n = Number(altGl[k]); if (Number.isFinite(n)) return n; const parsed = parseFloat(String(altGl[k])); if (Number.isFinite(parsed)) return parsed; }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                } catch {}
+                                return null;
                               } catch { return null; }
                             };
                             const sumTeam = (abv, metric) => {
@@ -2372,10 +2541,29 @@ export default function CreatePropUnifiedPage() {
                               return total;
                             };
                             const lines = [];
+                            const eventInFuture = (() => { try { return (event?.eventTime ? new Date(event.eventTime).getTime() : 0) > Date.now(); } catch { return false; } })();
                             if (autoGradeKey === 'stat_over_under') {
                               if (formulaPlayerId && selectedMetric) {
                                 const v = getStat(formulaPlayerId, selectedMetric);
-                                lines.push(`Player ${getName(formulaPlayerId)} ${selectedMetric} = ${v == null ? '—' : v}`);
+                                lines.push(`Player ${getName(formulaPlayerId)} [${formulaPlayerId}] ${selectedMetric} = ${v == null ? (eventInFuture ? 'event has not happened' : '—') : v}`);
+                                // Fire server log for debugging visibility
+                                try {
+                                  const endpoints = previewData?.endpoints || {};
+                                  fetch('/api/admin/logMetricPreview', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      dataSource: dataSource || 'major-mlb',
+                                      formulaKey: autoGradeKey,
+                                      eventId: event?.id || null,
+                                      espnGameID: event?.espnGameID || null,
+                                      playerId: formulaPlayerId,
+                                      metric: selectedMetric,
+                                      endpoints,
+                                      resolved: { value: v, eventInFuture },
+                                    }),
+                                  }).catch(() => {});
+                                } catch {}
                               } else {
                                 lines.push('Select a player and metric to preview.');
                               }
@@ -2383,8 +2571,25 @@ export default function CreatePropUnifiedPage() {
                               if (playerAId && playerBId && selectedMetric) {
                                 const a = getStat(playerAId, selectedMetric);
                                 const b = getStat(playerBId, selectedMetric);
-                                lines.push(`A: ${getName(playerAId)} ${selectedMetric} = ${a == null ? '—' : a}`);
-                                lines.push(`B: ${getName(playerBId)} ${selectedMetric} = ${b == null ? '—' : b}`);
+                                lines.push(`A: ${getName(playerAId)} [${playerAId}] ${selectedMetric} = ${a == null ? (eventInFuture ? 'event has not happened' : '—') : a}`);
+                                lines.push(`B: ${getName(playerBId)} [${playerBId}] ${selectedMetric} = ${b == null ? (eventInFuture ? 'event has not happened' : '—') : b}`);
+                                try {
+                                  const endpoints = previewData?.endpoints || {};
+                                  fetch('/api/admin/logMetricPreview', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      dataSource: dataSource || 'major-mlb',
+                                      formulaKey: autoGradeKey,
+                                      eventId: event?.id || null,
+                                      espnGameID: event?.espnGameID || null,
+                                      playerId: `${playerAId},${playerBId}`,
+                                      metric: selectedMetric,
+                                      endpoints,
+                                      resolved: { A: a, B: b, eventInFuture },
+                                    }),
+                                  }).catch(() => {});
+                                } catch {}
                               } else {
                                 lines.push('Select both players and a metric to preview.');
                               }
@@ -2393,7 +2598,24 @@ export default function CreatePropUnifiedPage() {
                               if (formulaPlayerId && list.length >= 2) {
                                 const vals = list.map((m) => getStat(formulaPlayerId, m)).map(v => (v==null?0:v));
                                 const sum = vals.reduce((a,b)=>a+b,0);
-                                lines.push(`Player ${getName(formulaPlayerId)} sum(${list.join('+')}) = ${sum}`);
+                                lines.push(`Player ${getName(formulaPlayerId)} [${formulaPlayerId}] sum(${list.join('+')}) = ${sum}`);
+                                try {
+                                  const endpoints = previewData?.endpoints || {};
+                                  fetch('/api/admin/logMetricPreview', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      dataSource: dataSource || 'major-mlb',
+                                      formulaKey: autoGradeKey,
+                                      eventId: event?.id || null,
+                                      espnGameID: event?.espnGameID || null,
+                                      playerId: formulaPlayerId,
+                                      metric: list,
+                                      endpoints,
+                                      resolved: { values: vals, sum },
+                                    }),
+                                  }).catch(() => {});
+                                } catch {}
                               } else {
                                 lines.push('Pick a player and at least 2 metrics to preview.');
                               }
@@ -2402,8 +2624,25 @@ export default function CreatePropUnifiedPage() {
                               if (playerAId && playerBId && list.length >= 2) {
                                 const sumFor = (pid) => list.map((m)=>getStat(pid,m)).map(v=> (v==null?0:v)).reduce((a,b)=>a+b,0);
                                 const a = sumFor(playerAId); const b = sumFor(playerBId);
-                                lines.push(`A: ${getName(playerAId)} sum(${list.join('+')}) = ${a}`);
-                                lines.push(`B: ${getName(playerBId)} sum(${list.join('+')}) = ${b}`);
+                                lines.push(`A: ${getName(playerAId)} [${playerAId}] sum(${list.join('+')}) = ${a}`);
+                                lines.push(`B: ${getName(playerBId)} [${playerBId}] sum(${list.join('+')}) = ${b}`);
+                                try {
+                                  const endpoints = previewData?.endpoints || {};
+                                  fetch('/api/admin/logMetricPreview', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      dataSource: dataSource || 'major-mlb',
+                                      formulaKey: autoGradeKey,
+                                      eventId: event?.id || null,
+                                      espnGameID: event?.espnGameID || null,
+                                      playerId: `${playerAId},${playerBId}`,
+                                      metric: list,
+                                      endpoints,
+                                      resolved: { A: a, B: b },
+                                    }),
+                                  }).catch(() => {});
+                                } catch {}
                               } else {
                                 lines.push('Pick both players and at least 2 metrics to preview.');
                               }

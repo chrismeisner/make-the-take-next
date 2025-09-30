@@ -17,6 +17,7 @@ async function handler(req, res) {
       const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
       const userPhone = token?.phone || null;
       const includeAll = String(req.query.includeAll || '').trim() === '1';
+      const seriesID = (req.query.seriesID ? String(req.query.seriesID) : '').trim() || null;
 
       // Ensure all timestamps returned to the client are ISO 8601 UTC strings
       const toIso = (t) => (t ? new Date(t).toISOString() : null);
@@ -41,7 +42,20 @@ async function handler(req, res) {
                   e.title AS event_title
            FROM packs p
            LEFT JOIN events e ON e.id = p.event_id
-            WHERE $2::boolean = TRUE OR p.pack_status IN ('active','open','graded','coming-soon','draft','live','pending-grade') OR p.pack_status IS NULL
+            WHERE (
+              $2::boolean = TRUE
+              OR p.pack_status IN ('active','open','graded','coming-soon','draft','live','pending-grade')
+              OR p.pack_status IS NULL
+            )
+            AND (
+              $3::text IS NULL
+              OR EXISTS (
+                SELECT 1
+                  FROM series s
+                  JOIN series_packs spx ON spx.series_id = s.id
+                 WHERE spx.pack_id = p.id AND (s.series_id = $3 OR s.id::text = $3)
+              )
+            )
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT CASE WHEN $2::boolean = TRUE THEN 500 ELSE 80 END
          ),
@@ -148,7 +162,7 @@ async function handler(req, res) {
            LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
            LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
            LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id`,
-        [userPhone, includeAll]
+        [userPhone, includeAll, seriesID]
       );
 
       const packsData = packRows.map((r) => ({

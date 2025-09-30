@@ -3,7 +3,7 @@ import { computeAvailableDays, getDayLabels } from '../lib/dayGrouping';
 
 export default function DaySelector({ selectedDay, onDayChange, packs = [], accent = 'blue' }) {
   const dayLabels = getDayLabels();
-  const daysToShow = ['today', 'yesterday'];
+  const daysToShow = ['today', 'yesterday', 'tomorrow'];
 
   const getPackCount = (day) => (Array.isArray(packs) ? packs : []).filter((p) => {
     return (p && (p.eventTime || p.packOpenTime || p.packCloseTime)) && (computeAvailableDays([p]).includes(day));

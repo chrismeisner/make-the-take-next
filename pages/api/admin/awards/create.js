@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { name, tokens, code, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId } = req.body || {};
+  const { name, tokens, code, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesSlug, requirementSeriesId } = req.body || {};
   if (!name || !tokens) return res.status(400).json({ success: false, error: 'Missing required fields' });
   const safeTokens = Number.parseInt(tokens, 10);
   if (!Number.isFinite(safeTokens) || safeTokens <= 0) return res.status(400).json({ success: false, error: 'Invalid tokens' });
@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   const genCode = providedCode || (Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)).slice(0, 12);
 
   let reqTeamId = requirementTeamId || null;
+  let reqSeriesId = requirementSeriesId || null;
   try {
     if (!reqTeamId && requirementTeamSlug) {
       const { rows } = await query('SELECT id FROM teams WHERE team_slug = $1 LIMIT 1', [requirementTeamSlug]);
@@ -34,11 +35,19 @@ export default async function handler(req, res) {
     }
   } catch {}
 
-  const sql = `INSERT INTO award_cards (code, name, tokens, valid_from, valid_to, redirect_team_slug, image_url, requirement_key, requirement_team_slug, requirement_team_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING code`;
+  // Resolve series by slug/id if provided
+  try {
+    if (!reqSeriesId && requirementSeriesSlug) {
+      const { rows } = await query('SELECT id FROM series WHERE series_id = $1 OR id::text = $1 LIMIT 1', [requirementSeriesSlug]);
+      reqSeriesId = rows?.[0]?.id || null;
+    }
+  } catch {}
+
+  const sql = `INSERT INTO award_cards (code, name, tokens, valid_from, valid_to, redirect_team_slug, image_url, requirement_key, requirement_team_slug, requirement_team_id, requirement_series_id, requirement_series_slug)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING code`;
 
   try {
-    const { rows } = await query(sql, [genCode, name, safeTokens, validFrom || null, validTo || null, redirectTeamSlug || null, imageUrl || null, requirementKey || null, requirementTeamSlug || null, reqTeamId]);
+    const { rows } = await query(sql, [genCode, name, safeTokens, validFrom || null, validTo || null, redirectTeamSlug || null, imageUrl || null, requirementKey || null, requirementTeamSlug || null, reqTeamId, reqSeriesId || null, requirementSeriesSlug || null]);
     return res.status(200).json({ success: true, code: rows[0].code });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Create failed' });

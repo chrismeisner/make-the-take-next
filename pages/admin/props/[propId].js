@@ -1150,16 +1150,27 @@ export default function EditPropPage() {
     setMetricOptions([]);
     (async () => {
       try {
-        const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(gid)}`);
+        const src = dataSource || 'major-mlb';
+        const resp = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(src)}&gameID=${encodeURIComponent(gid)}`);
         const json = await resp.json();
         if (resp.ok && json?.success) {
           let keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
+          // MLB curated fallback when no boxscore keys yet (pre-game)
+          if (src === 'major-mlb' && (!Array.isArray(keys) || keys.length === 0)) {
+            try {
+              const catUrl = `/api/admin/metrics?league=${encodeURIComponent('mlb')}&entity=${encodeURIComponent('player')}&scope=${encodeURIComponent(autoGradeKey.includes('_multi_') ? 'multi' : 'single')}`;
+              const cat = await fetch(catUrl);
+              const catJson = await cat.json().catch(() => ({}));
+              const curated = Array.isArray(catJson?.metrics) && catJson.metrics.length ? catJson.metrics.map(m => m.key) : [];
+              if (curated.length) keys = curated;
+            } catch {}
+          }
           // For team H2H and team OU ensure classic team metrics are present
-          if ((autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under') && (dataSource || 'major-mlb') === 'major-mlb') {
+          if ((autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'team_stat_over_under') && src === 'major-mlb') {
             keys = Array.from(new Set([...(keys || []), 'R', 'H', 'E']));
           }
           // NFL team single/multi stat metrics: derive from team statistics names and include points
-          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && (dataSource || 'major-mlb') === 'nfl') {
+          if ((autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_multi_stat_ou' || autoGradeKey === 'team_multi_stat_h2h') && src === 'nfl') {
             try {
               const teams = Array.isArray(json?.data?.teams) ? json.data.teams : [];
               const nflTeamKeys = [];
@@ -1249,12 +1260,17 @@ export default function EditPropPage() {
         const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
         const boxJson = await box.json();
         let map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
-        if (!Object.keys(map || {}).length && abvs.length) {
+        // Merge MLB RapidAPI roster identities into players map (preserve boxscore stats)
+        if (abvs.length) {
           try {
-            const roster = await fetch(`/api/admin/api-tester/players?teamAbv=${encodeURIComponent(abvs.join(','))}`);
+            const roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
             const rosterJson = await roster.json();
             if (roster.ok && rosterJson?.success && rosterJson.playersById) {
-              map = rosterJson.playersById;
+              const merged = { ...(map || {}) };
+              for (const [pid, rp] of Object.entries(rosterJson.playersById)) {
+                if (!merged[pid]) merged[pid] = rp; else merged[pid] = { ...rp, ...merged[pid] };
+              }
+              map = merged;
             }
           } catch {}
         }
@@ -1286,19 +1302,20 @@ export default function EditPropPage() {
     setPlayersById({});
     (async () => {
       try {
-        // 1) Try boxscore to get normalized players map
-        const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
-        const boxJson = await box.json();
-        let map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
-        // 2) Fallback to roster by team if boxscore map is empty
-        if (!Object.keys(map || {}).length && abvs.length) {
+        // MLB roster only for dropdowns; no boxscore merge
+        let map = {};
+        if ((dataSource || 'major-mlb') === 'major-mlb' && abvs.length) {
           try {
-            const roster = await fetch(`/api/admin/api-tester/players?teamAbv=${encodeURIComponent(abvs.join(','))}`);
+            const roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
             const rosterJson = await roster.json();
             if (roster.ok && rosterJson?.success && rosterJson.playersById) {
               map = rosterJson.playersById;
             }
           } catch {}
+        } else {
+          const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
+          const boxJson = await box.json();
+          map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
         }
         setPlayersById(map || {});
         if (!Object.keys(map || {}).length) setPlayersError('No players found for this event');
@@ -1732,6 +1749,7 @@ export default function EditPropPage() {
                           <option value="">Select a player…</option>
                           {Object.entries(playersById)
                             .filter(([id, p]) => {
+                              if ((dataSource || 'major-mlb') === 'major-mlb' && !/^\d+$/.test(String(id))) return false;
                               if (!formulaTeamAbv) return true;
                               return String(p.teamAbv || '').toUpperCase() === String(formulaTeamAbv || '').toUpperCase();
                             })

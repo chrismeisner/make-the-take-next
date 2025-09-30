@@ -20,6 +20,8 @@ export default function AIPropCreationWizardPage() {
   const [citations, setCitations] = useState([]);
   const [sources, setSources] = useState([]);
   const [numProps, setNumProps] = useState(10);
+  const [step1Prompt, setStep1Prompt] = useState('');
+  const [hasEditedStep1Prompt, setHasEditedStep1Prompt] = useState(false);
   const [step2Loading, setStep2Loading] = useState(false);
   const [step2Error, setStep2Error] = useState('');
   const [step2Result, setStep2Result] = useState('');
@@ -80,7 +82,7 @@ export default function AIPropCreationWizardPage() {
             const awayName = event?.awayTeamName || (Array.isArray(event?.awayTeam) ? event?.awayTeam?.[0] : null);
             const titleOrMatchup = (homeName && awayName) ? `${awayName} at ${homeName}` : (event?.eventTitle || 'this event');
             const time = event?.eventTime ? new Date(event.eventTime).toLocaleString() : 'the scheduled time';
-            const prompt = `Look into the storyline and narratives around the ${titleOrMatchup} at ${time}, create ${numProps} things that fans are looking for and watching for in the game, and for each have each be based on a "vegas style bet" ie a bet that would be made and graded in an app like draft kings, that would "settle" this narrative or storyline, making a list of top ${numProps} betting propositions around this game.\n\nFor the final output, only list the ${numProps} propositions in a format like (below are 3 examples, but all ${numProps} will follow this format): \n\n1. Which QB throws for more yards?\n2. Will Saquon Barkley score a touchdown at any time in the game?\n3. Will Chris Godwin record over 3.5 receptions in the game?\n\nprint ONLY the ${numProps} propositions numbered, NO additional text in the response`;
+            const defaultPrompt = `Look into the storyline and narratives around the ${titleOrMatchup} at ${time}, create ${numProps} things that fans are looking for and watching for in the game, and for each have each be based on a "vegas style bet" ie a bet that would be made and graded in an app like draft kings, that would "settle" this narrative or storyline, making a list of top ${numProps} betting propositions around this game.\n\nFor the final output, only list the ${numProps} propositions in a format like (below are 3 examples, but all ${numProps} will follow this format): \n\n1. Which QB throws for more yards?\n2. Will Saquon Barkley score a touchdown at any time in the game?\n3. Will Chris Godwin record over 3.5 receptions in the game?\n\nprint ONLY the ${numProps} propositions numbered, NO additional text in the response`;
             return (
               <div>
                 <div className="mb-2 flex items-center gap-2">
@@ -99,8 +101,8 @@ export default function AIPropCreationWizardPage() {
                 <textarea
                   className="w-full border rounded px-3 py-2 text-sm"
                   rows={6}
-                  readOnly
-                  value={prompt}
+                  value={hasEditedStep1Prompt ? step1Prompt : defaultPrompt}
+                  onChange={(e) => { setHasEditedStep1Prompt(true); setStep1Prompt(e.target.value); }}
                 />
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <label className="text-sm text-gray-700">Model</label>
@@ -173,7 +175,8 @@ export default function AIPropCreationWizardPage() {
                     disabled={!event}
                     onClick={async () => {
                       try {
-                        await navigator.clipboard.writeText(prompt);
+                        const effectivePrompt = hasEditedStep1Prompt ? step1Prompt : defaultPrompt;
+                        await navigator.clipboard.writeText(effectivePrompt);
                         setCopied(true);
                         setTimeout(() => setCopied(false), 1500);
                       } catch (e) {
@@ -193,10 +196,11 @@ export default function AIPropCreationWizardPage() {
                         setGenLoading(true);
                         setGenError('');
                         setGenResult('');
+                        const effectivePrompt = hasEditedStep1Prompt ? step1Prompt : defaultPrompt;
                         const r = await fetch('/api/admin/testAI', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ prompt, useWebSearch: true, model: selectedModel, temperature, max_tokens: maxTokens })
+                          body: JSON.stringify({ prompt: effectivePrompt, useWebSearch: true, model: selectedModel, temperature, max_tokens: maxTokens })
                         });
                         const j = await r.json();
                         if (!r.ok || !j?.success) throw new Error(j?.error || 'AI request failed');
