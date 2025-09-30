@@ -31,17 +31,19 @@ export default function GlobalQueryEffects() {
         // Fetch preview to determine required team slug if any
         const res = await fetch(`/api/awards/preview?code=${encodeURIComponent(code)}`);
         const data = await res.json();
-        const reqSlug = res.ok && data?.success ? (data.requirementTeamRouteSlug || data.requirementTeamSlug || null) : null;
+        const reqSlug = res.ok && data?.success ? (data.requirementTeamRouteSlug || data.requirementTeamSlug || data.redirectTeamSlug || null) : null;
         const currentSlug = typeof router.query?.teamSlug === 'string' ? router.query.teamSlug : null;
 
         if (reqSlug && router.pathname !== '/teams/[teamSlug]') {
           // Forward to team page with the card param so modal opens there
-          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } });
+          const asPath = `/teams/${encodeURIComponent(reqSlug)}`;
+          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } }, asPath);
           return;
         }
         if (reqSlug && currentSlug && currentSlug !== reqSlug) {
           // Already on a team page but not the required one: navigate
-          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } });
+          const asPath = `/teams/${encodeURIComponent(reqSlug)}`;
+          router.replace({ pathname: '/teams/[teamSlug]', query: { teamSlug: reqSlug, card: code } }, asPath);
           return;
         }
         // Open modal on current page (already on correct team page or no team requirement)
