@@ -188,7 +188,4 @@ export async function getServerSideProps(ctx) {
   };
 }
 
-// pages/packs/[packURL]/h2h.js
-export { default, getServerSideProps } from '../[packID]/h2h';
-
 
