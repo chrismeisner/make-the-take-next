@@ -35,6 +35,17 @@ export default function InlineCardProgressFooter() {
     return Boolean(chosen);
   })();
 
+  // Compute overall takes made across the pack (include existing takes as well as new selections)
+  const takenCount = Array.isArray(packData.props)
+    ? packData.props.reduce((acc, p) => {
+        const chosen = selectedChoices[p.propID] ?? userTakesByProp[p.propID]?.side;
+        return acc + (chosen ? 1 : 0);
+      }, 0)
+    : 0;
+  const submitVariant = takenCount <= 0 ? 'none' : (takenCount >= totalProps ? 'full' : 'partial');
+  const submitBgColor = submitVariant === 'none' ? '#cccccc' : submitVariant === 'partial' ? '#93c5fd' : '#1d4ed8';
+  const submitTextColor = '#ffffff';
+
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -170,8 +181,8 @@ export default function InlineCardProgressFooter() {
             onClick={handleSubmit}
             disabled={!canSubmit}
             style={{
-              backgroundColor: canSubmit ? "#2196f3" : "#ccc",
-              color: "#fff",
+              backgroundColor: submitBgColor,
+              color: submitTextColor,
               padding: "0.25rem 0.75rem",
               border: "none",
               borderRadius: "3px",

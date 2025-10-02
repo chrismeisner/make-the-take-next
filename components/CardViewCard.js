@@ -2,7 +2,7 @@ import { usePackContext } from "../contexts/PackContext";
 import { useModal } from "../contexts/ModalContext";
 import { PropChoices } from "./VerificationWidget";
 import { useState, useEffect } from "react";
-import useCountdown from '../hooks/useCountdown';
+ 
 
 export default function CardViewCard({ prop, currentReceiptId }) {
   const {
@@ -74,8 +74,6 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   const isGraded = statusLc.startsWith('graded');
   // Show prop-specific event title and date/time if available
   const eventTimeRaw = prop.propEventTimeLookup;
-  // Live countdown until eventTimeRaw
-  const countdown = useCountdown(eventTimeRaw);
   const eventTitleRaw = prop.propEventMatchup;
   let eventDateTime = null;
   if (eventTimeRaw) {
@@ -172,15 +170,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
               )}
             </div>
           )}
-          {/* Countdown display if event is upcoming */}
-          {eventTimeRaw && !countdown.isCompleted && (
-            <p className="text-sm text-gray-500 mb-2">
-              {countdown.days > 0 && `${countdown.days}d `}
-              {`${String(countdown.hours).padStart(2,'0')}h `}
-              {`${String(countdown.minutes).padStart(2,'0')}m `}
-              {`${String(countdown.seconds).padStart(2,'0')}s`}
-            </p>
-          )}
+          
         </div>
         {prop.propCover && prop.propCover.length > 0 ? (
           <img

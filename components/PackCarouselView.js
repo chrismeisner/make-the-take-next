@@ -15,6 +15,7 @@ import Link from "next/link";
 import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import { useModal } from "../contexts/ModalContext";
+import Countdown from "./Countdown";
 
 // Add a swipeable cover card as the first slide
 function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
@@ -170,22 +171,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [handleChoiceSelect, packData.props, totalSlides]);
-  // Countdown timer for event
-  const [timeLeft, setTimeLeft] = useState(() => {
-    if (!packData.eventTime) return null;
-    return new Date(packData.eventTime).getTime() - Date.now();
-  });
-  useEffect(() => {
-    if (!packData.eventTime) return;
-    const target = new Date(packData.eventTime).getTime();
-    const updateTimer = () => {
-      const diff = target - Date.now();
-      setTimeLeft(diff);
-    };
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [packData.eventTime]);
+  // Use pack close time for the single countdown
  
   // Compute and apply a uniform card height across all slides
   const adjustCardHeight = () => {
@@ -302,6 +288,11 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             Back
           </button>
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
+          {packData.packCloseTime && (
+            <div className="mt-1 text-sm text-gray-600">
+              <Countdown targetTime={packData.packCloseTime} prefix="Closes in:" />
+            </div>
+          )}
           {(packData.packPrize || packData.firstPlace) && (
             <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
               <span aria-hidden>🏆</span>
@@ -359,6 +350,11 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 Back
               </button>
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
+              {packData.packCloseTime && (
+                <div className="mt-1 text-sm text-gray-600">
+                  <Countdown targetTime={packData.packCloseTime} prefix="Closes in:" />
+                </div>
+              )}
               {(packData.packPrize || packData.firstPlace) && (
                 <div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
                   <span aria-hidden>🏆</span>

@@ -267,7 +267,11 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   return (
     <GlobalModal isOpen={isOpen} onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <h2 className="text-2xl font-bold">Claim your bonus</h2>
+        <h2 className="text-2xl font-bold">{
+          (preview?.requirementKey === 'follow_team' && (!session?.user || (followStatus != null && !followStatus.followsTeam)))
+            ? `Get notified when ${(preview?.requirementTeamName || preview?.requirementTeamSlug)} packs drop`
+            : 'Claim your bonus'
+        }</h2>
         {loading && <p>Loading…</p>}
         {!loading && checking && <p>Checking your redemption…</p>}
         {!loading && error && <p className="text-red-600">{error}</p>}
@@ -279,29 +283,31 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
                 <img src={preview.imageUrl} alt={preview.name || 'Award'} className="max-h-40 object-contain rounded" />
               </div>
             ) : null}
-            <p className="text-gray-800">{preview.name} <span className="font-semibold">+{preview.tokens}</span> Taker marketplace tokens available</p>
-            {preview.requirementKey === 'follow_team' && (
-              <div className="text-sm text-gray-700">
-                <p>Follow {preview.requirementTeamName || preview.requirementTeamSlug} to unlock this token bonus.</p>
-                {session?.user ? (
-                  followStatus == null ? (
-                    <p className="text-xs text-gray-500">Checking follow status…</p>
-                  ) : followStatus.followsTeam ? (
-                    <p className="text-xs text-green-600">You’re following this team. Ready to claim.</p>
-                  ) : (
-                    <p className="text-xs text-amber-600">You’re not following this team yet.</p>
-                  )
-                ) : (
-                  <p className="text-xs text-gray-500">Log in to check your follow status.</p>
-                )}
-              </div>
-            )}
+            {(() => {
+              const team = preview.requirementTeamName || preview.requirementTeamSlug;
+              const needsFollowUnknown = preview.requirementKey === 'follow_team' && !session?.user;
+              const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;
+              const isFollowing = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && followStatus.followsTeam;
+              if (needsFollow || needsFollowUnknown) {
+                return (
+                  <p className="text-gray-800">Claim a <span className="font-semibold">+{preview.tokens}</span> when you sign up for {team} pack drops.</p>
+                );
+              }
+              if (isFollowing) {
+                return (
+                  <p className="text-gray-800">Claim this <span className="font-semibold">+{preview.tokens}</span>.</p>
+                );
+              }
+              return (
+                <p className="text-gray-800">{preview.name} <span className="font-semibold">+{preview.tokens}</span> Taker marketplace tokens available</p>
+              );
+            })()}
             {preview.status !== 'available' ? (
               <p className="text-gray-500">This code is not available to claim.</p>
             ) : (
               (() => {
                 const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;
-                const label = needsFollow ? `Follow ${preview.requirementTeamName || preview.requirementTeamSlug}` : 'Claim';
+                const label = needsFollow ? `Follow ${preview.requirementTeamName || preview.requirementTeamSlug}` : 'Claim Bonus';
                 const onClick = needsFollow ? followRequiredTeamAndRedeem : handleClaim;
                 const disabled = preview.requirementKey === 'follow_team' && !!session?.user && followStatus == null; // waiting for follow status
                 return (
