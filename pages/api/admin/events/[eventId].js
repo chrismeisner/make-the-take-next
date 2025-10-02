@@ -158,5 +158,42 @@ export default async function handler(req, res) {
     }
   }
 
+  if (req.method === 'DELETE') {
+    try {
+      const backend = getDataBackend();
+      if (backend === 'postgres') {
+        // Safety: clear references from packs, props, and join table before delete
+        // 1) Remove join rows in packs_events for this event
+        await query(
+          `DELETE FROM packs_events WHERE event_id::text = $1`,
+          [eventId]
+        );
+        // 2) Null out direct FKs from packs and props
+        await query(
+          `UPDATE packs SET event_id = NULL WHERE event_id::text = $1`,
+          [eventId]
+        );
+        await query(
+          `UPDATE props SET event_id = NULL WHERE event_id::text = $1`,
+          [eventId]
+        );
+        // 3) Finally delete the event
+        const { rowCount } = await query(
+          `DELETE FROM events WHERE id::text = $1`,
+          [eventId]
+        );
+        if (!rowCount) {
+          return res.status(404).json({ success: false, error: 'Event not found' });
+        }
+        return res.status(200).json({ success: true });
+      }
+      // Airtable removed; Postgres-only
+      return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
+    } catch (err) {
+      console.error('[api/admin/events/[eventId] DELETE] Error =>', err);
+      return res.status(500).json({ success: false, error: 'Failed to delete event' });
+    }
+  }
+
   return res.status(405).json({ success: false, error: 'Method not allowed' });
 }

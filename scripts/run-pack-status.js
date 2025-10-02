@@ -53,8 +53,39 @@ const twilioClient = twilio(
   process.env.TWILIO_AUTH_TOKEN
 );
 
+// Dry run toggle (no DB updates, no SMS; API calls pass dryRun)
+const DRY_RUN = (() => {
+  const v = String(process.env.CRON_DRY_RUN || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+})();
+
 async function query(text, params) {
   return pool.query(text, params);
+}
+
+// Lightweight audit logger for admin events
+async function auditLog({ eventKey, severity = 'info', source = 'cron:run-pack-status', packId = null, packUrl = null, propId = null, eventId = null, profileId = null, message = null, details = null }) {
+  try {
+    await query(
+      `INSERT INTO admin_event_audit_log (
+         event_key, severity, source, pack_id, pack_url, prop_id, event_id, profile_id, message, details
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        String(eventKey || 'unknown'),
+        String(severity || 'info'),
+        String(source || 'cron:run-pack-status'),
+        packId || null,
+        packUrl || null,
+        propId || null,
+        eventId || null,
+        profileId || null,
+        message || null,
+        details ? JSON.stringify(details) : null,
+      ]
+    );
+  } catch (_) {
+    // swallow audit errors
+  }
 }
 
 async function sendSMS({ to, message }) {
@@ -227,6 +258,7 @@ async function run() {
     const { rows: propsClosed } = await query(propCloseSql);
     const propCloseMs = Date.now() - propCloseStart;
     console.log('🔒 [prop-status] CLOSED (from open)', { durationMs: propCloseMs, closedCount: (propsClosed || []).length });
+    try { await auditLog({ eventKey: 'props_closed', message: 'Closed open props past close_time', details: { closedCount: (propsClosed || []).length, durationMs: propCloseMs } }); } catch {}
 
     const openSql = `
       UPDATE packs
@@ -245,6 +277,7 @@ async function run() {
     const { rows: opened } = await query(openSql);
     const openMs = Date.now() - openStart;
     console.log('🟢 [pack-status] OPEN (from coming-soon)', { durationMs: openMs, openCount: opened.length, sample: opened.slice(0, 10).map(r => r.pack_url) });
+    try { if (opened.length) await auditLog({ eventKey: 'packs_opened', message: 'Packs transitioned to open', details: { count: opened.length, sample: opened.slice(0,5).map(r=>r.pack_url), durationMs: openMs } }); } catch {}
 
     // Send SMS notifications for newly opened packs
     if (opened.length > 0) {
@@ -362,6 +395,7 @@ async function run() {
     const { rows: closed } = await query(closeSql);
     const closeMs = Date.now() - closeStart;
     console.log('🔴 [pack-status] LIVE (from open/active)', { durationMs: closeMs, liveCount: closed.length, sample: closed.slice(0, 10).map(r => r.pack_url) });
+    try { if (closed.length) await auditLog({ eventKey: 'packs_went_live', message: 'Packs moved to live (close reached)', details: { count: closed.length, sample: closed.slice(0,5).map(r=>r.pack_url), durationMs: closeMs } }); } catch {}
 
     // Step 3: live → pending-grade when ESPN reports the linked event(s) are complete
     async function getEspnPathForLeague(league) {
@@ -504,7 +538,34 @@ async function run() {
               body: JSON.stringify({ airtableId: prop.id, dryRun: false }),
             });
             let json = null; try { json = await resp.json(); } catch {}
-            if (resp.ok && json && json.success) propsGraded++;
+            if (resp.ok && json && json.success) {
+              propsGraded++;
+              try {
+                await auditLog({
+                  eventKey: 'prop_grade_success',
+                  severity: 'info',
+                  source: 'cron:run-pack-status',
+                  packId,
+                  packUrl: packUrl || null,
+                  propId: prop.id,
+                  message: 'Prop graded via cron',
+                  details: { status: resp.status, response: json }
+                });
+              } catch {}
+            } else {
+              try {
+                await auditLog({
+                  eventKey: 'prop_grade_failure',
+                  severity: 'warn',
+                  source: 'cron:run-pack-status',
+                  packId,
+                  packUrl: packUrl || null,
+                  propId: prop.id,
+                  message: (json && json.error) ? String(json.error) : `HTTP ${resp.status}`,
+                  details: { status: resp.status, response: json }
+                });
+              } catch {}
+            }
           } catch {}
         }
       }
@@ -626,7 +687,8 @@ async function run() {
     const liveProcessStart = Date.now();
     const liveAgg = await processLiveReadyPacks();
     const liveProcessMs = Date.now() - liveProcessStart;
-    console.log('🟠 [pack-status] LIVE processed for immediate grading', { durationMs: liveProcessMs, ...liveAgg });
+      console.log('🟠 [pack-status] LIVE processed for immediate grading', { durationMs: liveProcessMs, ...liveAgg });
+      try { await auditLog({ eventKey: 'live_scan_results', message: 'Scanned live packs ready for grading', details: { durationMs: liveProcessMs, ...liveAgg } }); } catch {}
 
     // Step 4: For packs in pending-grade, auto-grade their auto props via API
     async function gradePropsForPendingPacks() {
@@ -691,6 +753,31 @@ async function run() {
               // 409/404 are acceptable (not ready or not found) → skip and retry next run
               if (resp.ok && json && json.success) {
                 propsGraded++;
+                try {
+                  await auditLog({
+                    eventKey: 'prop_grade_success',
+                    severity: 'info',
+                    source: 'cron:run-pack-status',
+                    packId: pack.id,
+                    packUrl: pack.pack_url || null,
+                    propId: prop.id,
+                    message: 'Prop graded via cron (pending-grade set)',
+                    details: { status: resp.status, response: json }
+                  });
+                } catch {}
+              } else {
+                try {
+                  await auditLog({
+                    eventKey: 'prop_grade_failure',
+                    severity: 'warn',
+                    source: 'cron:run-pack-status',
+                    packId: pack.id,
+                    packUrl: pack.pack_url || null,
+                    propId: prop.id,
+                    message: (json && json.error) ? String(json.error) : `HTTP ${resp.status}`,
+                    details: { status: resp.status, response: json }
+                  });
+                } catch {}
               }
             } catch (e) {
               // swallow and continue; will retry on next run
@@ -773,6 +860,7 @@ async function run() {
     const agg = await gradePropsForPendingPacks();
     const pendingGradeMs = Date.now() - pendingGradeStart;
     console.log('🧮 [pack-status] PENDING-GRADE processed', { durationMs: pendingGradeMs, ...agg });
+    try { await auditLog({ eventKey: 'pending_grade_processed', message: 'Processed pending-grade packs auto-grading', details: { durationMs: pendingGradeMs, ...agg } }); } catch {}
 
     // Step 5: closed → graded when no props remain open for the pack
     const gradeSql = `
@@ -836,6 +924,7 @@ async function run() {
     }
     
     console.log('🟣 [pack-status] GRADED (from closed)', { durationMs: gradeMs, gradedCount: graded.length, sample: graded.slice(0, 10).map(r => r.pack_url) });
+    try { if (graded.length) await auditLog({ eventKey: 'packs_graded', message: 'Packs marked graded (from closed)', details: { durationMs: gradeMs, count: graded.length, sample: graded.slice(0,5).map(r=>r.pack_url) } }); } catch {}
 
     console.log('✅ [pack-status] DONE', {
       propsClosed: (propsClosed || []).length,
@@ -850,6 +939,7 @@ async function run() {
     });
   } catch (err) {
     console.error('❌ [pack-status] ERROR', { message: err?.message, stack: err?.stack });
+    try { await auditLog({ eventKey: 'cron_error', severity: 'error', message: err?.message || String(err) }); } catch {}
     process.exitCode = 1;
   } finally {
     try { await pool.end(); } catch {}

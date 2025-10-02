@@ -619,3 +619,22 @@ ALTER TABLE award_redemptions ADD COLUMN IF NOT EXISTS referred_take_id UUID REF
 -- Helpful indexes for profile view and analytics
 CREATE INDEX IF NOT EXISTS idx_award_redemptions_profile_redeemed ON award_redemptions (profile_id, redeemed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_award_redemptions_pack_referred ON award_redemptions (pack_id, referred_profile_id);
+
+-- Admin Event Audit Log (generic, lightweight)
+CREATE TABLE IF NOT EXISTS admin_event_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  event_key TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info',
+  source TEXT,
+  pack_id UUID,
+  pack_url TEXT,
+  prop_id UUID,
+  event_id UUID,
+  profile_id UUID,
+  message TEXT,
+  details JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_admin_event_audit_log_created ON admin_event_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_event_audit_log_event_key ON admin_event_audit_log (event_key);
+CREATE INDEX IF NOT EXISTS idx_admin_event_audit_log_pack ON admin_event_audit_log (pack_id);

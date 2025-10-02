@@ -1240,8 +1240,45 @@ export default async function handler(req, res) {
       if (!player) {
         return res.status(404).json({ success: false, error: `Player ${playerId} not found in boxscore` });
       }
-      const valueRaw = player?.stats?.[metric];
-      const valueNumber = Number(valueRaw);
+      // Resolve metric with aliases similar to create page preview (SO -> strikeouts/K, etc.)
+      const resolvePlayerMetric = (pl, mRaw) => {
+        try {
+          const stats = pl?.stats || {};
+          const gl = pl?.gameLine || {};
+          const m = String(mRaw || '').trim();
+          // Direct
+          let v = stats?.[m] ?? stats?.[m.toUpperCase()] ?? stats?.[m.toLowerCase()];
+          if (v != null) { const n = Number(v); if (Number.isFinite(n)) return n; }
+          // Aliases
+          const defaultAliases = {
+            H: ['hits'],
+            RBI: ['RBIs'],
+            HR: ['homeRuns'],
+            BB: ['walks'],
+            SO: ['strikeouts','K'],
+            SLG: ['slugAvg','sluggingPct','slg'],
+            OBP: ['onBasePct','obp'],
+            R: ['runs'],
+            AB: ['atBats'],
+          };
+          const aliases = defaultAliases[m.toUpperCase()] || [];
+          for (const t of aliases) {
+            const cand = stats?.[t] ?? stats?.[String(t).toUpperCase()] ?? stats?.[String(t).toLowerCase()];
+            if (cand != null) { const n = Number(cand); if (Number.isFinite(n)) return n; }
+          }
+          // Fallback to gameLine labels (common for batting line displays)
+          const labelAlias = { R: ['R'], H: ['H'], RBI: ['RBI'], HR: ['HR'], SB: ['SB'], SO: ['SO','K'], BB: ['BB'], TB: ['TB'] };
+          const candidates = [m, m.toUpperCase(), m.toLowerCase(), ...(labelAlias[m.toUpperCase()] || [])];
+          for (const k of candidates) {
+            if (gl && gl[k] != null) {
+              const n = Number(gl[k]); if (Number.isFinite(n)) return n;
+              const parsed = parseFloat(String(gl[k])); if (Number.isFinite(parsed)) return parsed;
+            }
+          }
+          return NaN;
+        } catch { return NaN; }
+      };
+      const valueNumber = resolvePlayerMetric(player, metric);
       if (!Number.isFinite(valueNumber)) {
         return res.status(409).json({ success: false, error: `Metric ${metric} not available for player ${playerId}` });
       }
@@ -1288,9 +1325,32 @@ export default async function handler(req, res) {
       const pB = playersById?.[playerBId];
       if (!pA) return res.status(404).json({ success: false, error: `Player A ${playerAId} not found in boxscore` });
       if (!pB) return res.status(404).json({ success: false, error: `Player B ${playerBId} not found in boxscore` });
-
-      const vA = Number(pA?.stats?.[metric]);
-      const vB = Number(pB?.stats?.[metric]);
+      const resolvePlayerMetric = (pl, mRaw) => {
+        try {
+          const stats = pl?.stats || {};
+          const gl = pl?.gameLine || {};
+          const m = String(mRaw || '').trim();
+          let v = stats?.[m] ?? stats?.[m.toUpperCase()] ?? stats?.[m.toLowerCase()];
+          if (v != null) { const n = Number(v); if (Number.isFinite(n)) return n; }
+          const defaultAliases = { H:['hits'], RBI:['RBIs'], HR:['homeRuns'], BB:['walks'], SO:['strikeouts','K'], SLG:['slugAvg','sluggingPct','slg'], OBP:['onBasePct','obp'], R:['runs'], AB:['atBats'] };
+          const aliases = defaultAliases[m.toUpperCase()] || [];
+          for (const t of aliases) {
+            const cand = stats?.[t] ?? stats?.[String(t).toUpperCase()] ?? stats?.[String(t).toLowerCase()];
+            if (cand != null) { const n = Number(cand); if (Number.isFinite(n)) return n; }
+          }
+          const labelAlias = { R:['R'], H:['H'], RBI:['RBI'], HR:['HR'], SB:['SB'], SO:['SO','K'], BB:['BB'], TB:['TB'] };
+          const candidates = [m, m.toUpperCase(), m.toLowerCase(), ...(labelAlias[m.toUpperCase()] || [])];
+          for (const k of candidates) {
+            if (gl && gl[k] != null) {
+              const n = Number(gl[k]); if (Number.isFinite(n)) return n;
+              const parsed = parseFloat(String(gl[k])); if (Number.isFinite(parsed)) return parsed;
+            }
+          }
+          return NaN;
+        } catch { return NaN; }
+      };
+      const vA = resolvePlayerMetric(pA, metric);
+      const vB = resolvePlayerMetric(pB, metric);
       if (!Number.isFinite(vA)) return res.status(409).json({ success: false, error: `Metric ${metric} not available for player A ${playerAId}` });
       if (!Number.isFinite(vB)) return res.status(409).json({ success: false, error: `Metric ${metric} not available for player B ${playerBId}` });
 

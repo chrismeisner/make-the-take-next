@@ -333,6 +333,7 @@ export default function AdminEventsPage() {
               <th className="px-4 py-2 border">Time</th>
               <th className="px-4 py-2 border">League</th>
               <th className="px-4 py-2 border">Props</th>
+              <th className="px-4 py-2 border">Packs</th>
               <th className="px-4 py-2 border">Actions</th>
             </tr>
           </thead>
@@ -356,6 +357,7 @@ export default function AdminEventsPage() {
                 <td className="px-4 py-2 border">{new Date(ev.eventTime).toLocaleString()}</td>
                 <td className="px-4 py-2 border">{ev.eventLeague}</td>
                 <td className="px-4 py-2 border">{ev.propCount ?? 0}</td>
+                <td className="px-4 py-2 border">{ev.packCount ?? 0}</td>
                 <td className="px-4 py-2 border">
                   <Link href={`/admin/events/${ev.id}`}>
                     <button className="px-2 py-1 text-blue-600 hover:underline mr-2">
@@ -377,7 +379,24 @@ export default function AdminEventsPage() {
                       Create Pack
                     </button>
                   </Link>
-                  <button className="px-2 py-1 text-red-600 hover:underline">
+                  <button
+                    className="px-2 py-1 text-red-600 hover:underline"
+                    onClick={async () => {
+                      try {
+                        const confirmDelete = window.confirm('Delete this event? This will unlink it from packs and props.');
+                        if (!confirmDelete) return;
+                        const res = await fetch(`/api/admin/events/${encodeURIComponent(ev.id)}`, { method: 'DELETE' });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data?.success) {
+                          throw new Error(data?.error || 'Failed to delete');
+                        }
+                        setEvents((prev) => prev.filter((e0) => e0.id !== ev.id));
+                      } catch (err) {
+                        console.error('Delete event failed', err?.message || err);
+                        alert(err?.message || 'Failed to delete event');
+                      }
+                    }}
+                  >
                     Delete
                   </button>
                 </td>

@@ -246,7 +246,7 @@ export default function TeamRootPage({ team, packsData, leaderboard }) {
           forceTeamSlugFilter={team.teamSlug}
           hideLeagueChips={true}
           initialDay='today'
-          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
+          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} showSeeAll={true} />}
         />
       </div>
     </div>

@@ -318,6 +318,7 @@ export default function AdminPropsPage() {
               <th className="px-4 py-2 border text-left">Question</th>
               <th className="px-4 py-2 border text-left">Event</th>
               <th className="px-4 py-2 border whitespace-nowrap w-40">Time</th>
+              <th className="px-4 py-2 border whitespace-nowrap w-40">Created</th>
               <th className="px-4 py-2 border">League</th>
               <th className="px-4 py-2 border">Status</th>
               <th className="px-4 py-2 border">Packs</th>
@@ -337,6 +338,7 @@ export default function AdminPropsPage() {
                   <div>{p.eventTitle || ''}</div>
                 </td>
                 <td className="px-4 py-2 border align-top text-sm whitespace-nowrap w-40">{renderEventTime(p.eventTime)}</td>
+                <td className="px-4 py-2 border align-top text-sm whitespace-nowrap w-40">{renderEventTime(p.createdAt)}</td>
                 <td className="px-4 py-2 border align-top text-sm">{p.eventLeague || ''}</td>
                 <td className="px-4 py-2 border align-top">
                   <div className="flex items-center gap-2">

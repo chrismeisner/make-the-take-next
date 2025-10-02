@@ -27,10 +27,23 @@ export default async function handler(req, res) {
                   e.tv          AS "tv",
                   e.week        AS "week",
                   e.cover_url   AS "eventCoverURL",
-                  COALESCE(COUNT(p.id), 0) AS "propCount"
+                  COALESCE(COUNT(p.id), 0) AS "propCount",
+                  COALESCE(pc.pack_count, 0) AS "packCount"
              FROM events e
         LEFT JOIN props p ON p.event_id = e.id
-         GROUP BY e.id, e.title, e.event_time, e.league, e.city, e.state, e.venue, e.tv, e.week, e.cover_url
+        LEFT JOIN (
+              SELECT ep.event_id, COUNT(DISTINCT ep.pack_id) AS pack_count
+              FROM (
+                   SELECT p2.event_id, p2.id AS pack_id
+                     FROM packs p2
+                    WHERE p2.event_id IS NOT NULL
+                   UNION ALL
+                   SELECT pe.event_id, pe.pack_id
+                     FROM packs_events pe
+              ) ep
+              GROUP BY ep.event_id
+        ) pc ON pc.event_id = e.id
+         GROUP BY e.id, e.title, e.event_time, e.league, e.city, e.state, e.venue, e.tv, e.week, e.cover_url, pc.pack_count
          ORDER BY e.event_time ASC`
         ));
       } catch (e) {
@@ -45,10 +58,23 @@ export default async function handler(req, res) {
                   e.tv          AS "tv",
                   e.week        AS "week",
                   NULL::text    AS "eventCoverURL",
-                  COALESCE(COUNT(p.id), 0) AS "propCount"
+                  COALESCE(COUNT(p.id), 0) AS "propCount",
+                  COALESCE(pc.pack_count, 0) AS "packCount"
              FROM events e
         LEFT JOIN props p ON p.event_id = e.id
-         GROUP BY e.id, e.title, e.event_time, e.league, e.city, e.state, e.venue, e.tv, e.week
+        LEFT JOIN (
+              SELECT ep.event_id, COUNT(DISTINCT ep.pack_id) AS pack_count
+              FROM (
+                   SELECT p2.event_id, p2.id AS pack_id
+                     FROM packs p2
+                    WHERE p2.event_id IS NOT NULL
+                   UNION ALL
+                   SELECT pe.event_id, pe.pack_id
+                     FROM packs_events pe
+              ) ep
+              GROUP BY ep.event_id
+        ) pc ON pc.event_id = e.id
+         GROUP BY e.id, e.title, e.event_time, e.league, e.city, e.state, e.venue, e.tv, e.week, pc.pack_count
          ORDER BY e.event_time ASC`
         ));
       }

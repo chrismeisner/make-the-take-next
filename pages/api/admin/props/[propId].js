@@ -3,9 +3,6 @@ import { getDataBackend } from '../../../../lib/runtimeConfig';
 import { query } from '../../../../lib/db/postgres';
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
-  }
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -13,6 +10,40 @@ export default async function handler(req, res) {
   const { propId } = req.query;
   if (!propId) {
     return res.status(400).json({ success: false, error: 'Missing propId' });
+  }
+
+  if (req.method === 'DELETE') {
+    if (getDataBackend() === 'postgres') {
+      try {
+        // Resolve internal UUID for the prop via flexible lookup
+        const { rows } = await query(
+          `SELECT id FROM props WHERE id::text = $1 OR prop_id = $1 LIMIT 1`,
+          [String(propId)]
+        );
+        if (!rows || rows.length === 0) {
+          return res.status(404).json({ success: false, error: 'Prop not found' });
+        }
+        const internalId = rows[0].id;
+
+        // Remove dependent takes first (props_teams cascades on prop delete)
+        try {
+          await query(`DELETE FROM takes WHERE prop_id = $1 OR prop_id_text = $2`, [internalId, String(propId)]);
+        } catch {}
+
+        // Delete the prop itself
+        const del = await query(`DELETE FROM props WHERE id = $1`, [internalId]);
+        return res.status(200).json({ success: true, deleted: del?.rowCount || 0 });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[api/admin/props/[propId] DELETE PG] error =>', err);
+        return res.status(500).json({ success: false, error: 'Failed to delete prop' });
+      }
+    }
+    return res.status(400).json({ success: false, error: 'Unsupported in Postgres mode' });
+  }
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   // Postgres backend

@@ -11,6 +11,8 @@ export default function AdminEventDetail() {
   const [event, setEvent] = useState(null);
   const [propsList, setPropsList] = useState([]);
   const [loadingProps, setLoadingProps] = useState(false);
+  const [packs, setPacks] = useState([]);
+  const [loadingPacks, setLoadingPacks] = useState(false);
   const [generating, setGenerating] = useState(false);
   const { openModal } = useModal();
   
@@ -46,6 +48,24 @@ export default function AdminEventDetail() {
       setLoadingProps(false);
     };
     fetchProps();
+  }, [status, eventId]);
+
+  // Fetch packs for this event
+  useEffect(() => {
+    if (status !== 'authenticated' || !eventId) return;
+    const fetchPacks = async () => {
+      setLoadingPacks(true);
+      try {
+        const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/packs`);
+        const data = await res.json();
+        if (data.success) setPacks(Array.isArray(data.packs) ? data.packs : []);
+        else console.error(data.error);
+      } catch (err) {
+        console.error('Error fetching packs:', err);
+      }
+      setLoadingPacks(false);
+    };
+    fetchPacks();
   }, [status, eventId]);
 
   if (status === 'loading') {
@@ -248,6 +268,24 @@ export default function AdminEventDetail() {
                     <Link href={`/admin/gradeProps?ids=${p.airtableId}`}>
                       <button className="ml-2 px-2 py-1 text-blue-600 hover:underline">Grade</button>
                     </Link>
+                    <button
+                      className="ml-2 px-2 py-1 text-red-600 hover:underline"
+                      onClick={async () => {
+                        try {
+                          const ok = window.confirm('Delete this prop? This will remove its takes.');
+                          if (!ok) return;
+                          const r = await fetch(`/api/admin/props/${encodeURIComponent(p.airtableId)}`, { method: 'DELETE' });
+                          const j = await r.json().catch(() => ({}));
+                          if (!r.ok || !j?.success) throw new Error(j?.error || 'Failed to delete prop');
+                          setPropsList((prev) => prev.filter((x) => x.airtableId !== p.airtableId));
+                        } catch (e) {
+                          console.error('Delete prop failed:', e);
+                          alert(e?.message || 'Failed to delete prop');
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -255,6 +293,52 @@ export default function AdminEventDetail() {
           </table>
         ) : (
           <p>No props found for this event.</p>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-2">Packs for this event</h2>
+        {loadingPacks ? (
+          <p>Loading packs...</p>
+        ) : Array.isArray(packs) && packs.length ? (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Title</th>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">URL</th>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Status</th>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Props</th>
+                <th className="px-2 py-1 text-left text-sm font-medium text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {packs.map((pk) => (
+                <tr key={pk.id}>
+                  <td className="px-2 py-1 text-sm">{pk.title}</td>
+                  <td className="px-2 py-1 text-sm">{pk.packURL}</td>
+                  <td className="px-2 py-1 text-sm">{pk.packStatus || '—'}</td>
+                  <td className="px-2 py-1 text-sm">{pk.propsCount ?? 0}</td>
+                  <td className="px-2 py-1 text-sm">
+                    <Link href={`/admin/packs/${pk.id}`}>
+                      <button className="px-2 py-1 text-blue-600 hover:underline">Admin</button>
+                    </Link>
+                    {pk.packURL && (
+                      <a
+                        href={`/packs/${pk.packURL}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 px-2 py-1 text-indigo-600 hover:underline"
+                      >
+                        Public
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p>No packs found for this event.</p>
         )}
       </div>
     </div>

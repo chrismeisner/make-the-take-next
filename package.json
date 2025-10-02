@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "cron:run-pack-status": "node scripts/run-pack-status.js"
+    "cron:run-pack-status": "node scripts/run-pack-status.js",
+    "migrate:audit-log": "node scripts/migrate-admin-event-audit-log.mjs"
   },
   "dependencies": {
     "@react-spring/web": "^9.7.5",

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import AutoGradeConfigurator from '../../components/admin/AutoGradeConfigurator';
 import { useRouter } from 'next/router';
 import { useModal } from '../../contexts/ModalContext';
 

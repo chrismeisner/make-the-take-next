@@ -81,7 +81,7 @@ export default function LandingPage({ packsData = [] }) {
           hideLeagueChips={true}
           initialDay='today'
           showLeaderboard={false}
-          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
+          sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} showSeeAll={true} />}
         />
       </div>
     </div>

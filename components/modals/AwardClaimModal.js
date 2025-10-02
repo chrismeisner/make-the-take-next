@@ -11,7 +11,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   const [preview, setPreview] = useState(null); // { name, tokens, status, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamName }
   const [checking, setChecking] = useState(false);
   const [followStatus, setFollowStatus] = useState(null); // { followsTeam: boolean } or null
-  const [smsConsent, setSmsConsent] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -291,7 +291,9 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
               const isFollowing = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && followStatus.followsTeam;
               if (needsFollow || needsFollowUnknown) {
                 return (
-                  <p className="text-gray-800">Claim a <span className="font-semibold">+{preview.tokens}</span> when you sign up for {team} pack drops.</p>
+                  <p className="text-gray-800">
+                    Claim <span className="font-semibold">+{preview.tokens}</span> <a href="/marketplace" target="_blank" rel="noopener noreferrer" className="underline text-blue-700">Marketplace Tokens</a> when you sign up for {team} pack drops.
+                  </p>
                 );
               }
               if (isFollowing) {

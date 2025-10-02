@@ -1,11 +1,12 @@
 // File: components/MarketplacePreview.js
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import { useModal } from '../contexts/ModalContext';
 
-export default function MarketplacePreview({ limit = 6, title = 'Marketplace', variant = 'default', preferFeatured = false }) {
+export default function MarketplacePreview({ limit = 6, title = 'Marketplace', variant = 'default', preferFeatured = false, showSeeAll = false }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -103,6 +104,9 @@ export default function MarketplacePreview({ limit = 6, title = 'Marketplace', v
   const Header = () => (
     <div className={isSidebar ? "flex items-center justify-between mb-3" : "flex items-center justify-between mb-4"}>
       <h2 className={isSidebar ? "text-lg font-bold" : "text-xl sm:text-2xl font-bold"}>{title}</h2>
+      {showSeeAll ? (
+        <Link href="/marketplace" className="text-sm text-blue-700 hover:underline">See all</Link>
+      ) : null}
     </div>
   );
 

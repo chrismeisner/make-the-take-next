@@ -44,16 +44,12 @@ export default function AdminPacksPage() {
   }, [status]);
 
   // Initialize default visible statuses once real statuses are loaded
-  // Default: show archived, draft, graded, and live on page load
+  // Default: show ALL statuses on page load
   useEffect(() => {
     if (visibleStatuses != null) return;
-    const hasRealStatuses = statusOptions.some((s) => String(s).toLowerCase() !== 'live');
-    if (!hasRealStatuses) return;
-    const initial = statusOptions.filter((s) => {
-      const lower = String(s).toLowerCase();
-      return ['archived', 'draft', 'graded', 'live'].includes(lower);
-    });
-    setVisibleStatuses(initial);
+    const hasStatuses = statusOptions.length > 0;
+    if (!hasStatuses) return;
+    setVisibleStatuses(statusOptions);
   }, [statusOptions, visibleStatuses]);
 
   const refetchPacks = async () => {
@@ -91,11 +87,8 @@ export default function AdminPacksPage() {
   if (!session) {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
-  // When none explicitly selected, default to archived, draft, graded, and live
-  const defaultInitialStatuses = statusOptions.filter((s) => {
-    const lower = String(s).toLowerCase();
-    return ['archived', 'draft', 'graded', 'live'].includes(lower);
-  });
+  // When none explicitly selected, default to ALL statuses
+  const defaultInitialStatuses = statusOptions;
   const effectiveVisibleStatuses = visibleStatuses == null ? defaultInitialStatuses : visibleStatuses;
   // Filter out packs by selected statuses (or show all)
   const filteredPacks = packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
