@@ -172,7 +172,9 @@ export default function HeaderGlobe({ href }) {
             zIndex: 3,
             pointerEvents: "auto",
           }}
-        />
+        >
+          <span aria-hidden="true" />
+        </Link>
       ) : null}
       <noscript>
         <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">

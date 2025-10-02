@@ -26,12 +26,16 @@ export default async function handler(req, res) {
               p.pack_status,
               p.pack_open_time,
               p.pack_close_time,
+              p.pack_open_sms_template,
               p.created_at,
+              p.creator_profile_id,
+              pr.profile_id AS creator_profile_handle,
               e.title AS event_title,
               e.event_time AS event_time,
               (SELECT COUNT(*)::int FROM props pr WHERE pr.pack_id = p.id) AS props_count
          FROM packs p
     LEFT JOIN events e ON e.id = p.event_id
+    LEFT JOIN profiles pr ON pr.id = p.creator_profile_id
         WHERE p.id::text = $1 OR p.pack_id = $1 OR p.pack_url = $1
         LIMIT 1`,
       [String(packId)]
@@ -68,7 +72,10 @@ export default async function handler(req, res) {
       packStatus: r.pack_status || '',
       packOpenTime: toIso(r.pack_open_time) || null,
       packCloseTime: toIso(r.pack_close_time) || null,
+      packOpenSmsTemplate: r.pack_open_sms_template || null,
       createdAt: toIso(r.created_at) || null,
+      creatorProfileId: r.creator_profile_id || null,
+      creatorProfileHandle: r.creator_profile_handle || null,
       eventTitle: r.event_title || null,
       eventTime: toIso(r.event_time) || null,
       propsCount: Number(r.props_count || 0),

@@ -21,7 +21,8 @@ export default function AdminCreatePackPage() {
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(null);
   const [coverUploading, setCoverUploading] = useState(false);
   const [packStatus, setPackStatus] = useState('coming-soon');
-  const [statusOptions, setStatusOptions] = useState([]);
+  const DEFAULT_STATUS_OPTIONS = ['active', 'live', 'draft', 'closed', 'coming-soon', 'archived', 'graded', 'completed'];
+  const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUS_OPTIONS);
   const [leagues, setLeagues] = useState([]);
   const [propsList, setPropsList] = useState([]);
   const [packOpenTime, setPackOpenTime] = useState('');
@@ -30,6 +31,8 @@ export default function AdminCreatePackPage() {
   const [packEventIds, setPackEventIds] = useState([]);
   const [packEventTimeISO, setPackEventTimeISO] = useState('');
   const [eventInfoById, setEventInfoById] = useState({});
+  const [packOpenSmsTemplate, setPackOpenSmsTemplate] = useState('');
+  const [smsPreview, setSmsPreview] = useState('');
 
   // Load leagues
   useEffect(() => {
@@ -57,9 +60,10 @@ export default function AdminCreatePackPage() {
         if (!statuses.includes('coming-soon')) statuses.push('coming-soon');
         if (!statuses.includes('live')) statuses.push('live');
         if (!statuses.includes('archived')) statuses.push('archived');
-        setStatusOptions(Array.from(new Set(statuses)).sort());
+        setStatusOptions(Array.from(new Set([...DEFAULT_STATUS_OPTIONS, ...statuses])).sort());
       } catch (e) {
         console.error(e);
+        setStatusOptions(DEFAULT_STATUS_OPTIONS);
       }
     })();
   }, []);
@@ -103,6 +107,62 @@ export default function AdminCreatePackPage() {
     };
     loadEventTime();
   }, [packEventId]);
+
+  // Seed default SMS template from rules when league is chosen
+  useEffect(() => {
+    (async () => {
+      try {
+        const lg = (packLeague || '').toLowerCase();
+        if (!lg) { setPackOpenSmsTemplate(''); setSmsPreview(''); return; }
+        // Admin-only endpoint requires auth; fall back to generic default if unauthorized
+        const res = await fetch('/api/admin/sms/rules');
+        if (!res.ok) { setPackOpenSmsTemplate('{packTitle} is open; {timeLeft} to make your takes {packUrl}'); return; }
+        const data = await res.json();
+        if (!data.success || !Array.isArray(data.rules)) { setPackOpenSmsTemplate('{packTitle} is open; {timeLeft} to make your takes {packUrl}'); return; }
+        const rules = data.rules.filter(r => r.trigger_type === 'pack_open' && (r.league === lg || r.league == null) && r.active);
+        const chosen = rules.sort((a,b) => (a.league == null) - (b.league == null) || 0)[0];
+        const tpl = (chosen && chosen.template) || '{packTitle} is open; {timeLeft} to make your takes {packUrl}';
+        setPackOpenSmsTemplate(tpl);
+      } catch {
+        setPackOpenSmsTemplate('{packTitle} is open; {timeLeft} to make your takes {packUrl}');
+      }
+    })();
+  }, [packLeague]);
+
+  useEffect(() => {
+    try {
+      const site = (typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL || 'https://makethetake.com')).replace(/\/$/, '');
+      const url = packURL ? `${site}/packs/${packURL}` : '{packUrl}';
+      const league = (packLeague || '').toLowerCase();
+      const humanizeTimeDelta = (toTs) => {
+        try {
+          const now = Date.now();
+          const target = new Date(toTs).getTime();
+          if (!Number.isFinite(target)) return '';
+          let diffMs = target - now;
+          if (diffMs <= 0) return 'now';
+          const minutes = Math.floor(diffMs / 60000);
+          const days = Math.floor(minutes / (60 * 24));
+          const hours = Math.floor((minutes % (60 * 24)) / 60);
+          const mins = Math.floor(minutes % 60);
+          if (days >= 2) return `${days} days`;
+          if (days === 1) return hours > 0 ? `1 day ${hours}h` : '1 day';
+          if (hours >= 2) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+          if (hours === 1) return mins > 0 ? `1h ${mins}m` : '1h';
+          if (mins >= 1) return `${mins}m`;
+          return 'soon';
+        } catch { return ''; }
+      };
+      const toTs = packCloseTime || packOpenTime || null;
+      const timeLeft = toTs ? humanizeTimeDelta(toTs) : 'now';
+      const msg = String(packOpenSmsTemplate || '')
+        .replaceAll('{packTitle}', packTitle || 'New Pack')
+        .replaceAll('{packUrl}', url)
+        .replaceAll('{league}', league)
+        .replaceAll('{timeLeft}', timeLeft);
+      setSmsPreview(msg);
+    } catch { setSmsPreview(''); }
+  }, [packOpenSmsTemplate, packTitle, packURL, packLeague, packOpenTime, packCloseTime]);
 
   useEffect(() => {
     const ids = Array.from(new Set([...(packEventIds || []), packEventId].filter(Boolean)));
@@ -296,6 +356,7 @@ export default function AdminCreatePackPage() {
       if (packStatus) payload.packStatus = packStatus;
       if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
       if (packCloseTime) payload.packCloseTime = new Date(packCloseTime).toISOString();
+      if (packOpenSmsTemplate) payload.packOpenSmsTemplate = packOpenSmsTemplate;
       if (propsList.length) payload.props = propsList.map(p => p.airtableId);
       if (Array.isArray(packEventIds) && packEventIds.length > 0) {
         payload.events = packEventIds;
@@ -611,6 +672,25 @@ export default function AdminCreatePackPage() {
             >
               Generate AI Content
             </button>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Pack drop SMS (optional)</label>
+          <textarea
+            rows={3}
+            value={packOpenSmsTemplate}
+            onChange={(e) => setPackOpenSmsTemplate(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+            placeholder="{packTitle} is open; {timeLeft} to make your takes {packUrl}"
+          />
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+            <span>Preview:</span>
+            <span className="px-2 py-1 bg-gray-100 rounded border truncate max-w-full">{smsPreview}</span>
+            <button
+              type="button"
+              className="ml-auto px-2 py-1 bg-gray-200 rounded"
+              onClick={() => setPackOpenSmsTemplate('{packTitle} is open; {timeLeft} to make your takes {packUrl}')}
+            >Reset to default</button>
           </div>
         </div>
         <div>

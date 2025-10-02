@@ -6,10 +6,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method Not Allowed' });
   }
 
-  const { teamAbv } = req.query || {};
-  try { console.log('[api-tester/mlbPlayers] start', { teamAbv }); } catch {}
-  if (!teamAbv) {
-    return res.status(400).json({ success: false, error: 'teamAbv query param is required (comma-separated for multiple teams)' });
+  const { teamAbv, teamId } = req.query || {};
+  try { console.log('[api-tester/mlbPlayers] start', { teamAbv, teamId }); } catch {}
+  if (!teamAbv && !teamId) {
+    return res.status(400).json({ success: false, error: 'teamAbv or teamId query param is required (comma-separated for multiple values)' });
   }
 
   const src = resolveSourceConfig('mlb');
@@ -17,7 +17,8 @@ export default async function handler(req, res) {
   if (!src.ok) return res.status(500).json({ success: false, error: src.error || 'Missing RapidAPI config' });
 
   try {
-    const abvs = String(teamAbv).split(',').map((t) => t.trim()).filter(Boolean).map((t) => t.toUpperCase());
+    const abvs = teamAbv ? String(teamAbv).split(',').map((t) => t.trim()).filter(Boolean).map((t) => t.toUpperCase()) : [];
+    const ids = teamId ? String(teamId).split(',').map((t) => t.trim()).filter(Boolean) : [];
 
     // Build abbreviation -> teamId mapping from Postgres Teams table (preferred)
     const abvToId = new Map();
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
       }
     } catch {}
 
-    async function fetchRosterForTeam(abvUpper) {
+    async function fetchRosterForAbv(abvUpper) {
       const teamId = abvToId.get(abvUpper);
       if (!teamId) return { ok: false, abv: abvUpper, status: 400, data: { error: `Unknown teamId for ${abvUpper}` } };
       const url = new URL(`https://${src.host}${src.endpoints.teamPlayers || '/players/id'}`);
@@ -51,7 +52,28 @@ export default async function handler(req, res) {
       return { ok: true, abv: abvUpper, teamId, data: json };
     }
 
-    const fetches = await Promise.all(abvs.map(fetchRosterForTeam));
+    async function fetchRosterForId(idValue) {
+      const url = new URL(`https://${src.host}${src.endpoints.teamPlayers || '/players/id'}`);
+      url.searchParams.set('teamId', String(idValue));
+      try { console.log('[api-tester/mlbPlayers] fetching roster by id', { teamId: String(idValue), url: url.toString() }); } catch {}
+      const resp = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+      const text = await resp.text();
+      let json = {};
+      try { json = JSON.parse(text); } catch { json = { raw: text }; }
+      try { console.log('[api-tester/mlbPlayers] roster response by id', { teamId: String(idValue), ok: resp.ok, status: resp.status }); } catch {}
+      if (!resp.ok) {
+        return { ok: false, teamId: String(idValue), status: resp.status, data: json };
+      }
+      // Best-effort: infer abv from DB mapping
+      let abv = null; try { for (const [a, id] of abvToId.entries()) { if (String(id) === String(idValue)) { abv = a; break; } } } catch {}
+      return { ok: true, abv, teamId: String(idValue), data: json };
+    }
+
+    const seen = new Set();
+    const tasks = [];
+    for (const a of abvs) { const id = abvToId.get(a); const key = id ? `id:${id}` : `abv:${a}`; if (!seen.has(key)) { seen.add(key); tasks.push(fetchRosterForAbv(a)); } }
+    for (const i of ids) { const key = `id:${i}`; if (!seen.has(key)) { seen.add(key); tasks.push(fetchRosterForId(i)); } }
+    const fetches = await Promise.all(tasks);
     const failures = fetches.filter((r) => !r.ok);
 
     // Build mapping: playerID -> { id, longName, firstName, lastName, teamAbv }
@@ -109,7 +131,8 @@ export default async function handler(req, res) {
 
     const count = Object.keys(playersById).length;
     try { console.log('[api-tester/mlbPlayers] collected players', { count }); } catch {}
-    return res.status(200).json({ success: true, teams: abvs, count, playersById });
+    const teamsReturned = fetches.filter(f => f.ok).map(f => ({ abv: f.abv || null, teamId: f.teamId || null }));
+    return res.status(200).json({ success: true, teams: teamsReturned, count, playersById });
   } catch (e) {
     try { console.error('[api-tester/mlbPlayers] error', e); } catch {}
     return res.status(500).json({ success: false, error: e.message || 'Unknown error' });

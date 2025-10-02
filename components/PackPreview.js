@@ -24,6 +24,10 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 
   const [eventScores, setEventScores] = useState({});
   const [scoresLoading, setScoresLoading] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [willNotify, setWillNotify] = useState(false);
+  const [userLeagues, setUserLeagues] = useState([]);
+  const [notifyLoading, setNotifyLoading] = useState(false);
 
   // Derive sorted, de-duplicated event times (ms) from rollup or single string
   function parseEventTimesToMs(input) {
@@ -214,6 +218,101 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
     };
   }, [pack?.events, pack?.packLeague]);
 
+  // Load user notification preferences to determine if we should show a
+  // "you'll be notified" message for coming-soon packs
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+    async function loadPrefs() {
+      try {
+        setPrefsLoaded(false);
+        setWillNotify(false);
+        if (!session?.user) return;
+        if (!isComingSoon) return;
+        const [prefRes, teamRes] = await Promise.all([
+          fetch('/api/notifications/preferences', { signal: controller.signal }),
+          fetch('/api/notifications/teamPreferences', { signal: controller.signal }),
+        ]);
+        const [prefJson, teamJson] = await Promise.all([
+          prefRes.ok ? prefRes.json() : Promise.resolve(null),
+          teamRes.ok ? teamRes.json() : Promise.resolve(null),
+        ]);
+        if (!isActive) return;
+        const packLeague = String(pack?.packLeague || '').toLowerCase();
+        const leagues = Array.isArray(prefJson?.leagues) ? prefJson.leagues.map((l) => String(l || '').toLowerCase()) : [];
+        setUserLeagues(leagues);
+        const smsOptOutAll = Boolean(prefJson?.smsOptOutAll);
+        const leagueMatch = !!packLeague && leagues.includes(packLeague);
+        let teamMatch = false;
+        try {
+          const linked = Array.isArray(pack?.linkedTeams) ? pack.linkedTeams : [];
+          const userTeams = Array.isArray(teamJson?.teams) ? teamJson.teams : [];
+          const userTeamSlugs = new Set(userTeams.map((t) => String(t?.teamSlug || '').toLowerCase()).filter(Boolean));
+          teamMatch = linked.some((t) => userTeamSlugs.has(String(t?.slug || '').toLowerCase()));
+        } catch {}
+        setWillNotify(!smsOptOutAll && (leagueMatch || teamMatch));
+      } catch (_) {
+        if (!isActive) return;
+        setWillNotify(false);
+      } finally {
+        if (isActive) setPrefsLoaded(true);
+      }
+    }
+    loadPrefs();
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [session, isComingSoon, pack?.packLeague, pack?.linkedTeams]);
+
+  async function handleNotifyClick(e) {
+    try {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    } catch {}
+    // If not logged in, prompt login/signup
+    if (!session?.user) {
+      try {
+        const league = pack?.packLeague || '';
+        const teams = Array.isArray(pack?.linkedTeams) ? pack.linkedTeams : [];
+        const series = pack?.series || (Array.isArray(pack?.seriesList) && pack.seriesList.length === 1 ? pack.seriesList[0] : null);
+        const seriesList = Array.isArray(pack?.seriesList) ? pack.seriesList : [];
+        openModal('login', {
+          reason: 'notify',
+          packTitle: pack?.packTitle || '',
+          packURL: pack?.packURL || '',
+          subscribeCategory: 'pack_open',
+          subscribeLeague: league,
+          subscribeTeams: teams,
+          subscribeSeries: series,
+          subscribeSeriesList: seriesList,
+        });
+      } catch {}
+      return;
+    }
+    // Logged in: open Subscribe modal with league/teams/series choices
+    try {
+      setNotifyLoading(true);
+      const league = pack?.packLeague || '';
+      const teams = Array.isArray(pack?.linkedTeams) ? pack.linkedTeams : [];
+      const series = pack?.series || (Array.isArray(pack?.seriesList) && pack.seriesList.length === 1 ? pack.seriesList[0] : null);
+      const seriesList = Array.isArray(pack?.seriesList) ? pack.seriesList : [];
+      openModal('subscribe', {
+        category: 'pack_open',
+        league,
+        teams,
+        series,
+        seriesList,
+        onSubscribed: () => {
+          setWillNotify(true);
+        },
+      });
+    } catch (_) {
+    } finally {
+      setNotifyLoading(false);
+    }
+  }
+
   // Determine target href safely
   const hasValidSuperProp = Boolean(
     pack.hasSuperProp && Array.isArray(pack.superProps) && pack.superProps.length > 0
@@ -252,6 +351,29 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
+            {Array.isArray(pack.seriesList) && pack.seriesList.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {pack.seriesList.slice(0, 3).map((s, idx) => (
+                    <span
+                      key={(s.id || s.series_id || String(idx))}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-300 text-xs text-indigo-800 bg-indigo-50"
+                    >
+                      <span>Series:</span>
+                      <span className="font-medium">{s.title || s.series_id || 'Untitled'}</span>
+                    </span>
+                  ))}
+                </div>
+            )}
+			{(pack?.creatorProfileHandle || pack?.creatorProfileId) && (
+				<div className="mt-0.5 text-xs text-gray-500">
+					<span>by </span>
+					{pack.creatorProfileHandle ? (
+						<Link href={`/profile/${pack.creatorProfileHandle}`} className="hover:underline">@{pack.creatorProfileHandle}</Link>
+					) : (
+						<span className="font-mono">{String(pack.creatorProfileId).slice(0, 8)}</span>
+					)}
+				</div>
+			)}
 			{(() => {
 				const summary = (pack?.packSummary || "").toString().trim();
 				if (!summary) return null;
@@ -289,6 +411,12 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					</span>
 				</div>
 			)}
+            {isComingSoon && prefsLoaded && willNotify && (
+              <div className="mt-1 inline-flex items-center gap-1 bg-blue-50 text-blue-800 border border-blue-200 text-xs font-medium px-2 py-1 rounded">
+                <span aria-hidden>🔔</span>
+                <span>You'll be notified when this pack drops</span>
+              </div>
+            )}
 			{pack.packPrize && (
 				<div className="mt-2 inline-flex items-center gap-1 bg-yellow-100 text-yellow-900 text-xs font-medium px-2 py-1 rounded">
 					<span aria-hidden>🏆</span>
@@ -380,18 +508,63 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					<div className={`${primaryBtnBase} ${primaryBtnColor}`}>
 						Play this pack
 					</div>
-						<span
+					<span
 							role="button"
 							tabIndex={0}
-							onClick={(e) => { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); }}
-							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${pack.packURL}` : '' }); } }}
+						onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+						onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
 							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
 						>
 							Share
 						</span>
 					</div>
 				)}
-				{/* Notify me button removed */}
+				{isComingSoon && (!prefsLoaded || !willNotify) && (
+					<div className="mt-3 flex items-center gap-2">
+						<button
+							onClick={handleNotifyClick}
+							disabled={notifyLoading}
+							className={`inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded ${notifyLoading ? 'bg-gray-300 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'} text-xs md:text-sm font-medium`}
+						>
+							{notifyLoading ? 'Adding…' : 'Notify me when this Pack drops'}
+						</button>
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
+							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+						>
+							Share
+						</span>
+					</div>
+				)}
+				{isComingSoon && prefsLoaded && willNotify && (
+					<div className="mt-3 flex items-center gap-2">
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
+							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+						>
+							Share
+						</span>
+					</div>
+				)}
+				{!isOpenLike && !isComingSoon && (
+					<div className="mt-3 flex items-center gap-2">
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
+							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+						>
+							Share
+						</span>
+					</div>
+				)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">
 				{pack.packStatus === "graded" && winnerID && (
 					<p>
@@ -404,27 +577,27 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 	  </div>
   );
 
-  if (isComingSoon) {
-      return (
-          <Link
-              href={targetHref}
-              aria-label={(pack.packTitle || "Pack") + " preview"}
-              aria-disabled={disabled}
-              className={`group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
-          >
-              {content}
-          </Link>
-      );
-  }
+	// Stable top-level wrapper to avoid SSR/CSR tag mismatches
+	const wrapperClasses = `group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black ${!isComingSoon ? 'transition-shadow hover:shadow-md' : ''} ${className}`;
 
-  return (
-	  <Link
-		  href={targetHref}
-		  aria-label={(pack.packTitle || "Pack") + " preview"}
-		  aria-disabled={disabled}
-		  className={`group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black transition-shadow hover:shadow-md ${className}`}
-	  >
-		  {content}
-	  </Link>
-  );
+	return (
+		<div
+			role="group"
+			aria-label={(pack.packTitle || "Pack") + " preview"}
+			aria-disabled={isComingSoon || disabled}
+			className={wrapperClasses}
+		>
+			{isComingSoon ? (
+				content
+			) : (
+				<Link
+					href={targetHref}
+					className="block"
+					aria-disabled={disabled}
+				>
+					{content}
+				</Link>
+			)}
+		</div>
+	);
 }

@@ -97,6 +97,8 @@ export default async function handler(req, res) {
 	let userTakes = [];
 	let userPackIDs = [];
 	let totalPoints = 0;
+	let winsCount = 0;
+	let lossesCount = 0;
 
     // 2) Fetch takes (Postgres)
     {
@@ -184,6 +186,12 @@ export default async function handler(req, res) {
 			  teamSlugs: Array.from(new Set(chosenSlugs)),
 			  teamNames: Array.from(new Set(chosenNames)),
 			});
+			// Track wins/losses for rating
+			if (r.take_result) {
+			  const resLower = String(r.take_result).toLowerCase();
+			  if (resLower === 'won') winsCount += 1;
+			  else if (resLower === 'lost') lossesCount += 1;
+			}
 		  }
 		}
 	  } catch (fallbackErr) {
@@ -407,12 +415,55 @@ export default async function handler(req, res) {
     }
 	const tokensBalance = tokensEarned + tokensAwarded - tokensSpent;
 
-    // Creator packs/leaderboard removed for Postgres-only path
-    const creatorPacks = [];
-    const creatorLeaderboard = [];
-    const creatorLeaderboardUpdatedAt = null;
+	// 9) Compute server-side Rating (0-10), baseline 5.00 for new users
+	const decisions = winsCount + lossesCount;
+	const winPct = decisions > 0 ? (winsCount / decisions) : 0.5;
+	const avgPtsPerDecision = decisions > 0 ? (totalPoints / decisions) : 0;
+	const pointsNorm = Math.min(avgPtsPerDecision / 20, 1);
+	const confidence = 1 - Math.exp(-(decisions || 0) / 20);
+	const baseScore = 5;
+	const variation = ((winPct - 0.5) * 6) + ((pointsNorm - 0.5) * 4);
+	const rating = Math.max(0, Math.min(10, baseScore + confidence * variation));
 
-    // 9) Return the aggregated data
+	// Creator leaderboard placeholders (no cache)
+	const creatorLeaderboard = [];
+	const creatorLeaderboardUpdatedAt = null;
+
+	// 10) Creator packs for this profile (Postgres)
+	let creatorPacks = [];
+	try {
+	  // profiles.id (UUID) was stored in profRec.id above
+	  const creatorUUID = profRec?.id || null;
+	  if (creatorUUID) {
+		const { rows } = await query(
+		  `SELECT p.id,
+		          p.pack_id,
+		          p.pack_url,
+		          p.title,
+		          p.cover_url,
+		          p.pack_status,
+		          e.event_time
+		     FROM packs p
+		LEFT JOIN events e ON e.id = p.event_id
+		    WHERE p.creator_profile_id = $1
+		 ORDER BY p.created_at DESC NULLS LAST
+		    LIMIT 200`,
+		  [creatorUUID]
+		);
+		creatorPacks = rows.map((r) => ({
+		  packID: r.pack_id || r.id,
+		  packURL: r.pack_url || '',
+		  packTitle: r.title || '',
+		  packStatus: r.pack_status || '',
+		  packCover: r.cover_url || null,
+		  eventTime: r.event_time ? new Date(r.event_time).toISOString() : null,
+		}));
+	  }
+	} catch (pgCreatorErr) {
+	  try { console.warn('[profile][pg] creatorPacks fetch failed =>', pgCreatorErr?.message || pgCreatorErr); } catch {}
+	}
+
+	// 11) Return the aggregated data
 	return res.status(200).json({
 	  success: true,
 	  profile: profileData,
@@ -425,10 +476,11 @@ export default async function handler(req, res) {
 	  achievements,
 	  tokensEarned,
 	  tokensSpent,
-      tokensBalance,
-      tokensAwarded,
-      referralAwards,
-      awardBonuses,
+	      tokensBalance,
+	      tokensAwarded,
+	  rating,
+	      referralAwards,
+	      awardBonuses,
 	  creatorPacks,
 	  creatorLeaderboard,
 	  creatorLeaderboardUpdatedAt,

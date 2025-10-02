@@ -63,6 +63,45 @@ export default function AdminPackDetail() {
     ? (pack.packCover[0]?.url || null)
     : (pack?.packCover || null);
 
+  // Helpers to mirror SMS rendering used by the queue endpoint
+  function humanizeTimeDelta(toTs) {
+    try {
+      const now = Date.now();
+      const target = new Date(toTs).getTime();
+      if (!Number.isFinite(target)) return '';
+      let diffMs = target - now;
+      if (diffMs <= 0) return 'now';
+      const minutes = Math.floor(diffMs / 60000);
+      const days = Math.floor(minutes / (60 * 24));
+      const hours = Math.floor((minutes % (60 * 24)) / 60);
+      const mins = Math.floor(minutes % 60);
+      if (days >= 2) return `${days} days`;
+      if (days === 1) return hours > 0 ? `1 day ${hours}h` : '1 day';
+      if (hours >= 2) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+      if (hours === 1) return mins > 0 ? `1h ${mins}m` : '1h';
+      if (mins >= 1) return `${mins}m`;
+      return 'soon';
+    } catch { return ''; }
+  }
+  function renderTemplate(tpl, vars) {
+    let out = String(tpl || '');
+    Object.keys(vars || {}).forEach((k) => {
+      out = out.replaceAll(`{${k}}`, String(vars[k] ?? ''));
+    });
+    return out;
+  }
+  const site = (typeof window !== 'undefined' ? window.location.origin : '').replace(/\/$/, '');
+  const packSlug = pack.packURL || pack.packID || '';
+  const packUrl = packSlug ? `${site}/packs/${encodeURIComponent(packSlug)}` : site || '';
+  const timeLeft = pack.packCloseTime ? humanizeTimeDelta(pack.packCloseTime) : 'now';
+  const smsTemplate = pack.packOpenSmsTemplate || '{packTitle} is open; {timeLeft} to make your takes {packUrl}';
+  const resolvedSms = renderTemplate(smsTemplate, {
+    packTitle: pack.packTitle || 'New Pack',
+    packUrl,
+    league: (pack.packLeague || '').toLowerCase(),
+    timeLeft,
+  });
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
@@ -179,6 +218,18 @@ export default function AdminPackDetail() {
           <dd>{pack.airtableId}</dd>
         </div>
         <div>
+          <dt className="font-medium">Creator</dt>
+          <dd>
+            {pack.creatorProfileHandle ? (
+              <a href={`/profile/${pack.creatorProfileHandle}`} className="text-blue-600 hover:underline">{pack.creatorProfileHandle}</a>
+            ) : pack.creatorProfileId ? (
+              <span className="text-gray-700">{pack.creatorProfileId}</span>
+            ) : (
+              '-'
+            )}
+          </dd>
+        </div>
+        <div>
           <dt className="font-medium">URL</dt>
           <dd>{pack.packURL}</dd>
         </div>
@@ -203,6 +254,31 @@ export default function AdminPackDetail() {
           <dd>{pack.packSummary}</dd>
         </div>
       </dl>
+      {/* Pack drop SMS (resolved preview) */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-3">Pack drop SMS</h2>
+        <div className="text-sm text-gray-600 mb-2">This is the SMS copy that will be sent when the pack opens.</div>
+        <textarea
+          readOnly
+          value={resolvedSms}
+          className="w-full px-3 py-2 border rounded text-sm h-28"
+          onFocus={(e) => e.target.select()}
+        />
+        <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
+          <span>{resolvedSms.length} chars</span>
+          <button
+            className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded hover:bg-gray-200"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(resolvedSms); } catch {}
+            }}
+          >
+            Copy SMS
+          </button>
+        </div>
+        {!pack.packOpenSmsTemplate && (
+          <div className="mt-2 text-xs text-gray-500">Using default rule template (no custom template saved for this pack).</div>
+        )}
+      </div>
       {String(pack.packStatus || '').toLowerCase() === 'graded' && (
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-3">Winner</h2>

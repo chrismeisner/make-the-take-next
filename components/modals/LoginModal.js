@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import InputMask from "react-input-mask";
 import { signIn, getSession } from "next-auth/react";
 import GlobalModal from "./GlobalModal";
+import { useModal } from "../../contexts/ModalContext";
 
 // A reusable login modal for simple phone -> code auth.
 // Props:
@@ -10,7 +11,8 @@ import GlobalModal from "./GlobalModal";
 // - title?: string
 // - ctaLabel?: string
 // - onSuccess?: (session) => void
-export default function LoginModal({ isOpen, onClose, title = "Log In", ctaLabel = "Verify & Continue", onSuccess }) {
+export default function LoginModal({ isOpen, onClose, title = "Log In", ctaLabel = "Verify & Continue", onSuccess, reason, subscribeCategory, subscribeLeague, subscribeTeams, subscribeSeries, subscribeSeriesList }) {
+  const { openModal } = useModal();
   const [step, setStep] = useState("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -64,7 +66,24 @@ export default function LoginModal({ isOpen, onClose, title = "Log In", ctaLabel
       setError("Session not found after login");
       return;
     }
-    try { onSuccess?.(session); } finally {
+    try {
+      onSuccess?.(session);
+      if (reason === 'notify') {
+        openModal('subscribe', {
+          category: subscribeCategory || 'pack_open',
+          league: subscribeLeague || '',
+          teams: Array.isArray(subscribeTeams) ? subscribeTeams : [],
+          series: subscribeSeries || null,
+          seriesList: Array.isArray(subscribeSeriesList) ? subscribeSeriesList : [],
+        });
+      } else {
+        // Default: show success confirmation modal
+        openModal("loginSuccess", {
+          title: "Success",
+          message: "You are now signed in.",
+        });
+      }
+    } finally {
       setIsLoading(false);
     }
   };

@@ -6,7 +6,7 @@ export default function AdminPacksPage() {
   const { data: session, status } = useSession();
   const [packs, setPacks] = useState([]);
   const [sortOrder, setSortOrder] = useState('desc');
-  const [headerSort, setHeaderSort] = useState({ field: 'packOpenTime', order: 'asc' });
+  const [headerSort, setHeaderSort] = useState({ field: 'packOpenTime', order: 'desc' });
   const [visibleStatuses, setVisibleStatuses] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hideGraded, setHideGraded] = useState(false);
@@ -44,14 +44,14 @@ export default function AdminPacksPage() {
   }, [status]);
 
   // Initialize default visible statuses once real statuses are loaded
-  // Default: show only "coming-soon" status on page load
+  // Default: show archived, draft, graded, and live on page load
   useEffect(() => {
     if (visibleStatuses != null) return;
     const hasRealStatuses = statusOptions.some((s) => String(s).toLowerCase() !== 'live');
     if (!hasRealStatuses) return;
     const initial = statusOptions.filter((s) => {
       const lower = String(s).toLowerCase();
-      return lower === 'coming-soon';
+      return ['archived', 'draft', 'graded', 'live'].includes(lower);
     });
     setVisibleStatuses(initial);
   }, [statusOptions, visibleStatuses]);
@@ -91,8 +91,12 @@ export default function AdminPacksPage() {
   if (!session) {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
-  // When none explicitly selected, default to showing only "coming-soon" status
-  const effectiveVisibleStatuses = visibleStatuses == null ? ['coming-soon'] : visibleStatuses;
+  // When none explicitly selected, default to archived, draft, graded, and live
+  const defaultInitialStatuses = statusOptions.filter((s) => {
+    const lower = String(s).toLowerCase();
+    return ['archived', 'draft', 'graded', 'live'].includes(lower);
+  });
+  const effectiveVisibleStatuses = visibleStatuses == null ? defaultInitialStatuses : visibleStatuses;
   // Filter out packs by selected statuses (or show all)
   const filteredPacks = packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
   // Optionally hide graded packs
@@ -263,6 +267,7 @@ export default function AdminPacksPage() {
               <th className="px-4 py-2 border">Title</th>
               <th className="px-4 py-2 border">URL</th>
               <th className="px-4 py-2 border">Event</th>
+              <th className="px-4 py-2 border">Creator</th>
               <th
                 className="px-4 py-2 border cursor-pointer select-none"
                 onClick={() => toggleHeaderSort('packOpenTime')}
@@ -290,6 +295,7 @@ export default function AdminPacksPage() {
                 <td className="px-4 py-2 border">{pack.packTitle}</td>
                 <td className="px-4 py-2 border">{pack.packURL}</td>
                 <td className="px-4 py-2 border">{pack.eventTitle || '-'}</td>
+                  <td className="px-4 py-2 border">{pack.creatorProfileHandle || (pack.creatorProfileId ? pack.creatorProfileId.slice(0,8) : '-')}</td>
                 <td className="px-4 py-2 border">{pack.packOpenTime ? new Date(pack.packOpenTime).toLocaleString() : '-'}</td>
                 <td className="px-4 py-2 border">{pack.packCloseTime ? new Date(pack.packCloseTime).toLocaleString() : '-'}</td>
                 <td className="px-4 py-2 border">

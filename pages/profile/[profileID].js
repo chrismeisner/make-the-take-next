@@ -190,6 +190,17 @@ export default function ProfilePage() {
   const totalDecisions = (userStats?.wins || 0) + (userStats?.losses || 0);
   const winningPer = totalDecisions > 0 ? ((userStats.wins / totalDecisions) * 100) : 0;
 
+  // Computed Rating (0-10): starts at 5.00 for new users (0 decisions)
+  const winsCount = userStats?.wins || 0;
+  const decisions = winsCount + (userStats?.losses || 0);
+  const winPct = decisions > 0 ? (winsCount / decisions) : 0.5; // neutral when no data
+  const avgPtsPerDecision = decisions > 0 ? (userStats.points / decisions) : 0;
+  const pointsNorm = Math.min(avgPtsPerDecision / 20, 1); // saturate around 20 pts/decision
+  const confidence = 1 - Math.exp(-(decisions || 0) / 20); // grows with more takes
+  const baseScore = 5;
+  const variation = ((winPct - 0.5) * 6) + ((pointsNorm - 0.5) * 4);
+  const rating = Math.max(0, Math.min(10, baseScore + confidence * variation));
+
   // Build team filter options from takes (PG: teamSlugs/teamNames; fallback: parse matchup)
   const normalizeKey = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const extractMatchupTeams = (matchup) => {
@@ -403,7 +414,11 @@ export default function ProfilePage() {
 
 	  {/* Quick Stats */}
 	  <h3 className="text-xl font-bold mt-6 mb-2">Quick Stats</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+        <div className="border rounded p-4 text-center">
+          <span className="text-2xl font-bold">{rating.toFixed(2)}</span>
+          <div className="text-sm text-gray-600 mt-1">Rating</div>
+        </div>
 		<div className="border rounded p-4 text-center">
 		  <span className="text-2xl font-bold">{userStats.points}</span>
 		  <div className="text-sm text-gray-600 mt-1">Points</div>
@@ -426,28 +441,30 @@ export default function ProfilePage() {
         </div>
       </div>
 
-	  {/* Creator Packs */}
+	  {/* Created Packs */}
 	  {Array.isArray(creatorPacks) && creatorPacks.length > 0 && (
 	    <div className="mt-8">
-	      <h3 className="text-xl font-bold mb-2">Packs</h3>
+	      <h3 className="text-xl font-bold mb-2">Created Packs</h3>
 	      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 	        {creatorPacks.map((p) => (
-	          <Link key={p.packID} href={`/packs/${encodeURIComponent(p.packURL || p.packID)}`} className="block border rounded overflow-hidden bg-white hover:shadow">
-	            <div className="w-full aspect-square relative bg-gray-100">
-	              {/* eslint-disable-next-line @next/next/no-img-element */}
-	              {p.packCover ? (
-	                <img src={p.packCover} alt="Pack cover" className="absolute inset-0 w-full h-full object-cover" />
-	              ) : (
-	                <div className="absolute inset-0 w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
-	              )}
-	            </div>
-	            <div className="p-3">
-	              <div className="font-medium truncate">{p.packTitle || p.packURL || 'Untitled Pack'}</div>
-	              <div className="text-xs text-gray-600 mt-1">{p.packStatus || ''}</div>
-	              {p.eventTime && (
-	                <div className="text-xs text-gray-600">{new Date(p.eventTime).toLocaleString()}</div>
-	              )}
-	            </div>
+	          <Link key={p.packID} href={`/packs/${encodeURIComponent(p.packURL || p.packID)}`} legacyBehavior>
+	            <a className="block border rounded overflow-hidden bg-white hover:shadow">
+	              <div className="w-full aspect-square relative bg-gray-100">
+	                {/* eslint-disable-next-line @next/next/no-img-element */}
+	                {p.packCover ? (
+	                  <img src={Array.isArray(p.packCover) ? (p.packCover[0]?.url || '') : p.packCover} alt="Pack cover" className="absolute inset-0 w-full h-full object-cover" />
+	                ) : (
+	                  <div className="absolute inset-0 w-full h-full flex items-center justify-center text-xs text-gray-500">No Cover</div>
+	                )}
+	              </div>
+	              <div className="p-3">
+	                <div className="font-medium truncate">{p.packTitle || p.packURL || 'Untitled Pack'}</div>
+	                <div className="text-xs text-gray-600 mt-1">{p.packStatus || ''}</div>
+	                {p.eventTime && (
+	                  <div className="text-xs text-gray-600">{new Date(p.eventTime).toLocaleString()}</div>
+	                )}
+	              </div>
+	            </a>
 	          </Link>
 	        ))}
 	      </div>

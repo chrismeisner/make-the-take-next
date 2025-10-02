@@ -32,9 +32,11 @@ import AISummaryModal from "./modals/AISummaryModal";
 import LoginModal from "./modals/LoginModal";
 import AwardClaimModal from "./modals/AwardClaimModal";
 import AwardSuccessModal from "./modals/AwardSuccessModal";
+import LoginSuccessModal from "./modals/LoginSuccessModal";
 import ReferralChallengeModal from "./modals/ReferralChallengeModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 import NewInventoryModal from "./modals/NewInventoryModal";
+import SubscribeModal from "./modals/SubscribeModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -44,6 +46,15 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "subscribe": {
+      return (
+        <SubscribeModal
+          isOpen={true}
+          onClose={closeModal}
+          {...modalConfig.modalProps}
+        />
+      );
+    }
     case "newInventory": {
       const { items, onAdded } = modalConfig.modalProps;
       return (
@@ -104,15 +115,23 @@ export default function GlobalModalRenderer() {
         />
       );
     }
+    case "loginSuccess": {
+      const { title, message } = modalConfig.modalProps;
+      return (
+        <LoginSuccessModal
+          isOpen={true}
+          onClose={closeModal}
+          title={title}
+          message={message}
+        />
+      );
+    }
     case "login": {
-      const { title, ctaLabel, onSuccess } = modalConfig.modalProps;
       return (
         <LoginModal
           isOpen={true}
           onClose={closeModal}
-          title={title}
-          ctaLabel={ctaLabel}
-          onSuccess={onSuccess}
+          {...modalConfig.modalProps}
         />
       );
     }
@@ -163,7 +182,7 @@ export default function GlobalModalRenderer() {
       );
     }
     case "sharePack": {
-      const { packTitle, packSummary, packUrl } = modalConfig.modalProps;
+      const { packTitle, packSummary, packUrl, packLeague, packCloseTime, packOpenSmsTemplate } = modalConfig.modalProps;
       return (
         <SharePackModal
           isOpen={true}
@@ -171,6 +190,9 @@ export default function GlobalModalRenderer() {
           packTitle={packTitle}
           packSummary={packSummary}
           packUrl={packUrl}
+          packLeague={packLeague}
+          packCloseTime={packCloseTime}
+          packOpenSmsTemplate={packOpenSmsTemplate}
         />
       );
     }

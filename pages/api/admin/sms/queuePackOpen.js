@@ -12,6 +12,26 @@ function renderTemplate(tpl, vars) {
   return out;
 }
 
+function humanizeTimeDelta(toTs) {
+  try {
+    const now = Date.now();
+    const target = new Date(toTs).getTime();
+    if (!Number.isFinite(target)) return '';
+    let diffMs = target - now;
+    if (diffMs <= 0) return 'now';
+    const minutes = Math.floor(diffMs / 60000);
+    const days = Math.floor(minutes / (60 * 24));
+    const hours = Math.floor((minutes % (60 * 24)) / 60);
+    const mins = Math.floor(minutes % 60);
+    if (days >= 2) return `${days} days`;
+    if (days === 1) return hours > 0 ? `1 day ${hours}h` : '1 day';
+    if (hours >= 2) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    if (hours === 1) return mins > 0 ? `1h ${mins}m` : '1h';
+    if (mins >= 1) return `${mins}m`;
+    return 'soon';
+  } catch { return ''; }
+}
+
 export default async function handler(req, res) {
   const backend = getDataBackend();
   if (backend !== 'postgres') {
@@ -35,7 +55,7 @@ export default async function handler(req, res) {
     }
 
     const { rows: packRows } = await query(
-      `SELECT id, pack_id, pack_url, title, league FROM packs WHERE pack_id = $1 OR pack_url = $1 LIMIT 1`,
+      `SELECT id, pack_id, pack_url, title, league, pack_open_sms_template, pack_open_time, pack_close_time FROM packs WHERE pack_id = $1 OR pack_url = $1 LIMIT 1`,
       [packInput]
     );
     if (!packRows.length) {
@@ -49,11 +69,12 @@ export default async function handler(req, res) {
       `SELECT template FROM sms_rules WHERE trigger_type = 'pack_open' AND active = TRUE AND (league = $1 OR league IS NULL) ORDER BY league NULLS LAST, updated_at DESC LIMIT 1`,
       [league]
     );
-    const template = ruleRows.length ? ruleRows[0].template : 'Pack {packTitle} is open! {packUrl}';
+    const template = pack.pack_open_sms_template || (ruleRows.length ? ruleRows[0].template : '{packTitle} is open; {timeLeft} to make your takes {packUrl}');
     const site = (process.env.SITE_URL || 'https://makethetake.com').replace(/\/$/, '');
     const packPath = `/packs/${pack.pack_url || pack.pack_id}`;
     const packUrl = `${site}${packPath}`;
-    const message = renderTemplate(template, { packTitle: pack.title || 'New Pack', packUrl, league });
+    const timeLeft = pack.pack_close_time ? humanizeTimeDelta(pack.pack_close_time) : 'now';
+    const message = renderTemplate(template, { packTitle: pack.title || 'New Pack', packUrl, league, timeLeft });
 
     // Find recipients
     const { rows: recRows } = await query(

@@ -149,6 +149,10 @@ CREATE TABLE IF NOT EXISTS packs (
 );
 CREATE INDEX IF NOT EXISTS idx_packs_event ON packs (event_id);
 
+-- Track which profile created the pack
+ALTER TABLE packs ADD COLUMN IF NOT EXISTS creator_profile_id UUID REFERENCES profiles(id);
+CREATE INDEX IF NOT EXISTS idx_packs_creator ON packs (creator_profile_id);
+
 -- Optional: Many-to-many relation between packs and events
 CREATE TABLE IF NOT EXISTS packs_events (
   pack_id UUID REFERENCES packs(id) ON DELETE CASCADE,
@@ -167,6 +171,8 @@ UPDATE packs
 -- Add pack-level open/close windows if not present
 ALTER TABLE packs ADD COLUMN IF NOT EXISTS pack_open_time TIMESTAMPTZ;
 ALTER TABLE packs ADD COLUMN IF NOT EXISTS pack_close_time TIMESTAMPTZ;
+-- Per-pack override for the pack-open SMS template
+ALTER TABLE packs ADD COLUMN IF NOT EXISTS pack_open_sms_template TEXT;
 -- For debugging timezone issues: store close time as raw text to preserve exact input
 -- Safe no-op if already TEXT
 DO $$ BEGIN
@@ -534,6 +540,21 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
 );
 CREATE INDEX IF NOT EXISTS idx_notif_prefs_category_league_optin
   ON notification_preferences (category, league, opted_in);
+
+-- Extend notification preferences to support team and series subscriptions
+ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
+ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS series_id UUID REFERENCES series(id);
+
+-- Helpful indexes for lookups
+CREATE INDEX IF NOT EXISTS idx_notif_prefs_profile_cat ON notification_preferences (profile_id, category);
+CREATE INDEX IF NOT EXISTS idx_notif_prefs_team ON notification_preferences (team_id) WHERE team_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_notif_prefs_series ON notification_preferences (series_id) WHERE series_id IS NOT NULL;
+
+-- Ensure uniqueness for team and series rows separately (allowing NULLs for others)
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_notif_prefs_profile_cat_team
+  ON notification_preferences (profile_id, category, team_id) WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_notif_prefs_profile_cat_series
+  ON notification_preferences (profile_id, category, series_id) WHERE series_id IS NOT NULL;
 
 -- SMS rules: simple templates per trigger/league
 CREATE TABLE IF NOT EXISTS sms_rules (

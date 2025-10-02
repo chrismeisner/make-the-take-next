@@ -29,12 +29,14 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
   // Logged out => simple login button
   function LoginButton() {
     return (
-      <Link
-        href={`/login?redirect=${encodeURIComponent(router.asPath)}`}
-        className={linkBaseStyles}
-      >
-        Log in
-      </Link>
+		  <div>
+			<Link
+				href={`/login?redirect=${encodeURIComponent(router.asPath)}`}
+				className={linkBaseStyles}
+			>
+				Log in
+			</Link>
+		  </div>
     );
   }
 

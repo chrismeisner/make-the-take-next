@@ -301,6 +301,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 packTitle: packData.packTitle,
                 packSummary: packData.packSummary,
                 packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                packLeague: packData.packLeague,
+                packCloseTime: packData.packCloseTime,
+                packOpenSmsTemplate: packData.packOpenSmsTemplate,
               })}
               className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
             >
@@ -355,6 +358,9 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                     packTitle: packData.packTitle,
                     packSummary: packData.packSummary,
                     packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                    packLeague: packData.packLeague,
+                    packCloseTime: packData.packCloseTime,
+                    packOpenSmsTemplate: packData.packOpenSmsTemplate,
                   })}
                   className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
                 >

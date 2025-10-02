@@ -9,6 +9,7 @@ export default function AdminSeriesIndex() {
   const [form, setForm] = useState({ seriesID: '', title: '', summary: '', coverUrl: '', status: '' });
   const [coverPreview, setCoverPreview] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -132,6 +133,30 @@ export default function AdminSeriesIndex() {
                 <div className="flex items-center gap-3">
                   <Link className="text-blue-600 underline" href={`/admin/series/${s.series_id || s.id}`}>Edit</Link>
                   <Link className="text-gray-600 underline" href={`/series/${s.series_id || s.id}`}>View</Link>
+                  <button
+                    type="button"
+                    disabled={deletingId === (s.id || s.series_id)}
+                    onClick={async () => {
+                      try {
+                        const ident = s.series_id || s.id;
+                        if (!ident) return;
+                        const ok = window.confirm(`Delete series "${s.title || ident}"? This cannot be undone.`);
+                        if (!ok) return;
+                        setDeletingId(s.id || s.series_id);
+                        const res = await fetch(`/api/admin/series/${encodeURIComponent(ident)}` , { method: 'DELETE' });
+                        const data = await res.json().catch(() => ({ success: res.ok }));
+                        if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to delete');
+                        setList(curr => curr.filter(item => (item.id || item.series_id) !== (s.id || s.series_id)));
+                      } catch (e) {
+                        alert(e?.message || 'Failed to delete');
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    }}
+                    className={`underline ${deletingId === (s.id || s.series_id) ? 'text-gray-400' : 'text-red-600'}`}
+                  >
+                    {deletingId === (s.id || s.series_id) ? 'Deleting…' : 'Delete'}
+                  </button>
                 </div>
               </li>
             ))}

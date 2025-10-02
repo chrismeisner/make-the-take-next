@@ -166,6 +166,123 @@ export default function CreatePropUnifiedPage() {
     }
   };
 
+  // CSV upload helpers
+  const csvInputRef = useRef(null);
+  const triggerCsvUpload = () => {
+    try { csvInputRef.current && csvInputRef.current.click(); } catch {}
+  };
+  const parseCsv = (text) => {
+    const rows = [];
+    let i = 0;
+    const len = text.length;
+    let field = '';
+    let row = [];
+    let inQuotes = false;
+    while (i < len) {
+      const char = text[i];
+      if (inQuotes) {
+        if (char === '"') {
+          if (i + 1 < len && text[i + 1] === '"') { // escaped quote
+            field += '"';
+            i += 2;
+            continue;
+          } else {
+            inQuotes = false;
+            i += 1;
+            continue;
+          }
+        } else {
+          field += char;
+          i += 1;
+          continue;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+          i += 1;
+          continue;
+        }
+        if (char === ',') {
+          row.push(field);
+          field = '';
+          i += 1;
+          continue;
+        }
+        if (char === '\n') {
+          row.push(field);
+          rows.push(row);
+          row = [];
+          field = '';
+          i += 1;
+          continue;
+        }
+        if (char === '\r') { // handle CRLF
+          i += 1;
+          continue;
+        }
+        field += char;
+        i += 1;
+      }
+    }
+    // flush last field/row
+    row.push(field);
+    rows.push(row);
+    // remove empty trailing rows
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  };
+  const normalizeKey = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+  const handleCsvFileChange = async (e) => {
+    try {
+      const file = e?.target?.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (!rows || rows.length === 0) return;
+      const header = rows[0].map(h => String(h || '').trim());
+      const body = rows.slice(1).find(r => r && r.some(c => String(c).trim() !== '')) || [];
+      const keyToIndex = Object.fromEntries(header.map((h, idx) => [normalizeKey(h), idx]));
+      const get = (key) => {
+        const idx = keyToIndex[normalizeKey(key)];
+        if (idx == null) return '';
+        const v = body[idx];
+        return v == null ? '' : String(v).trim();
+      };
+      const getAny = (...keys) => {
+        for (const k of keys) {
+          const val = get(k);
+          if (String(val).trim() !== '') return val;
+        }
+        return '';
+      };
+      // Support both friendly labels and internal field names
+      const csvShort = getAny('Short Label', 'propShort');
+      const csvSummary = getAny('Summary', 'propSummary');
+      const csvAShort = getAny('Side A Label', 'propSideAShort');
+      const csvATake = getAny('Side A Take', 'propSideATake');
+      const csvAMl = getAny('Side A Moneyline', 'propSideAMoneyline');
+      const csvBShort = getAny('Side B Label', 'propSideBShort');
+      const csvBTake = getAny('Side B Take', 'propSideBTake');
+      const csvBMl = getAny('Side B Moneyline', 'propSideBMoneyline');
+      if (csvShort) setPropShort(csvShort);
+      if (csvSummary) setPropSummary(csvSummary);
+      if (csvAShort) setPropSideAShort(csvAShort);
+      if (csvATake) setPropSideATake(csvATake);
+      if (csvAMl) {
+        setPropValueModel('vegas');
+        setPropSideAMoneyline(csvAMl);
+      }
+      if (csvBShort) setPropSideBShort(csvBShort);
+      if (csvBTake) setPropSideBTake(csvBTake);
+      if (csvBMl) {
+        setPropValueModel('vegas');
+        setPropSideBMoneyline(csvBMl);
+      }
+      try { e.target.value = ''; } catch {}
+    } catch {
+      // noop
+    }
+  };
+
   // Load event if eventId provided in route
   useEffect(() => {
     if (!eventId) return;
@@ -627,19 +744,18 @@ export default function CreatePropUnifiedPage() {
             // MLB roster: roster-only for dropdowns; do not merge into normalized for source of truth
             try {
               if (ds === 'major-mlb') {
-                const rawHome = event?.homeTeamAbbreviation || (Array.isArray(event?.homeTeam) ? event.homeTeam[0] : event?.homeTeam);
-                const rawAway = event?.awayTeamAbbreviation || (Array.isArray(event?.awayTeam) ? event.awayTeam[0] : event?.awayTeam);
-                const toAbvBestEffort = (val) => {
-                  const raw = String(val || '').toUpperCase();
-                  if (/^[A-Z]{2,4}$/.test(raw)) return raw;
-                  return (typeof abvResolver?.toAbv === 'function') ? abvResolver.toAbv(raw) : raw;
-                };
-                const homeAbvResolved = toAbvBestEffort(rawHome);
-                const awayAbvResolved = toAbvBestEffort(rawAway);
-                const abvs = [homeAbvResolved, awayAbvResolved].filter((s) => !!s && /^[A-Z]{2,4}$/.test(String(s)));
-                if (abvs.length) {
-                  const rosterUrl = `/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`;
-                  try { console.log('[create-prop] MLB roster primary fetch', { rosterUrl, abvs }); } catch {}
+                // Prefer resolving by linked team records to obtain canonical team_id from DB
+                const homeLink = Array.isArray(event?.homeTeamLink) && event.homeTeamLink.length ? String(event.homeTeamLink[0]) : null;
+                const awayLink = Array.isArray(event?.awayTeamLink) && event.awayTeamLink.length ? String(event.awayTeamLink[0]) : null;
+                const homeTeamRec = homeLink ? teamOptions.find((t) => String(t.recordId) === homeLink) : null;
+                const awayTeamRec = awayLink ? teamOptions.find((t) => String(t.recordId) === awayLink) : null;
+                const homeId = homeTeamRec?.teamID ? String(homeTeamRec.teamID) : '';
+                const awayId = awayTeamRec?.teamID ? String(awayTeamRec.teamID) : '';
+                const ids = [homeId, awayId].filter(Boolean);
+
+                if (ids.length) {
+                  const rosterUrl = `/api/admin/api-tester/mlbPlayers?teamId=${encodeURIComponent(ids.join(','))}`;
+                  try { console.log('[create-prop] MLB roster fetch', { rosterUrl, teamIds: ids }); } catch {}
                   const r = await fetch(rosterUrl);
                   const j = await r.json().catch(() => ({}));
                   if (r.ok && j?.playersById && typeof j.playersById === 'object') {
@@ -2895,7 +3011,26 @@ export default function CreatePropUnifiedPage() {
         </>
       )}
 
-      <h1 className="text-2xl font-bold mb-4">Create a Prop</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Create a Prop</h1>
+        <div className="flex items-center gap-2">
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleCsvFileChange}
+          />
+          <button
+            type="button"
+            className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            onClick={triggerCsvUpload}
+            title="Upload CSV to populate fields"
+          >
+            Upload CSV
+          </button>
+        </div>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="propShort" className="block text-sm font-medium text-gray-700">Short Label</label>

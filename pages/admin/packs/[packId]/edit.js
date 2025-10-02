@@ -31,6 +31,8 @@ export default function AdminEditPackPage() {
   const [packEventIds, setPackEventIds] = useState([]);
   const [packEventTimeISO, setPackEventTimeISO] = useState('');
   const [eventInfoById, setEventInfoById] = useState({});
+  const [packOpenSmsTemplate, setPackOpenSmsTemplate] = useState('');
+  const [smsPreview, setSmsPreview] = useState('');
   // AI summary helpers
   const [aiContext, setAiContext] = useState('');
   const [aiModel, setAiModel] = useState('');
@@ -73,6 +75,7 @@ export default function AdminEditPackPage() {
         setPackCoverUrl(cover);
         if (cover) setCoverPreviewUrl(cover);
         setPackStatus(normalizedFoundStatus || 'active');
+        if (found.packOpenSmsTemplate) setPackOpenSmsTemplate(found.packOpenSmsTemplate);
         // Initialize open time if present on detail payload
         if (found.packURL || found.url) {
           try {
@@ -151,6 +154,41 @@ export default function AdminEditPackPage() {
       }
     })();
   }, [status, packId]);
+
+  useEffect(() => {
+    try {
+      const site = (typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL || 'https://makethetake.com')).replace(/\/$/, '');
+      const url = (packURL ? `${site}/packs/${packURL}` : '{packUrl}');
+      const league = (packLeague || '').toLowerCase();
+      const humanizeTimeDelta = (toTs) => {
+        try {
+          const now = Date.now();
+          const target = new Date(toTs).getTime();
+          if (!Number.isFinite(target)) return '';
+          let diffMs = target - now;
+          if (diffMs <= 0) return 'now';
+          const minutes = Math.floor(diffMs / 60000);
+          const days = Math.floor(minutes / (60 * 24));
+          const hours = Math.floor((minutes % (60 * 24)) / 60);
+          const mins = Math.floor(minutes % 60);
+          if (days >= 2) return `${days} days`;
+          if (days === 1) return hours > 0 ? `1 day ${hours}h` : '1 day';
+          if (hours >= 2) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+          if (hours === 1) return mins > 0 ? `1h ${mins}m` : '1h';
+          if (mins >= 1) return `${mins}m`;
+          return 'soon';
+        } catch { return ''; }
+      };
+      const toTs = packCloseTime || packOpenTime || null;
+      const timeLeft = toTs ? humanizeTimeDelta(toTs) : 'now';
+      const msg = String(packOpenSmsTemplate || '')
+        .replaceAll('{packTitle}', packTitle || 'New Pack')
+        .replaceAll('{packUrl}', url)
+        .replaceAll('{league}', league)
+        .replaceAll('{timeLeft}', timeLeft);
+      setSmsPreview(msg);
+    } catch { setSmsPreview(''); }
+  }, [packOpenSmsTemplate, packTitle, packURL, packLeague, packOpenTime, packCloseTime]);
 
   useEffect(() => {
     const loadEventTime = async () => {
@@ -408,6 +446,7 @@ export default function AdminEditPackPage() {
       if (packStatus) payload.packStatus = packStatus;
       if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
       if (packCloseTime) payload.packCloseTime = new Date(packCloseTime).toISOString();
+      if (packOpenSmsTemplate) payload.packOpenSmsTemplate = packOpenSmsTemplate;
       // Always include props array to allow server to sync membership (including unlinking all)
       payload.props = propsList.map(p => p.airtableId);
       if (Array.isArray(packEventIds) && packEventIds.length > 0) {
@@ -711,6 +750,20 @@ export default function AdminEditPackPage() {
             {!packEventId && (
               <div className="text-xs text-gray-500">Link an event to enable AI summary.</div>
             )}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Pack drop SMS (optional)</label>
+          <textarea
+            rows={3}
+            value={packOpenSmsTemplate}
+            onChange={(e) => setPackOpenSmsTemplate(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+            placeholder="Pack {packTitle} is open! {packUrl}"
+          />
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+            <span>Preview:</span>
+            <span className="px-2 py-1 bg-gray-100 rounded border truncate max-w-full">{smsPreview}</span>
           </div>
         </div>
         <div>

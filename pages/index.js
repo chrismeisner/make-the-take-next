@@ -140,6 +140,7 @@ export async function getServerSideProps(context) {
                   p.pack_open_time,
                   p.pack_close_time,
                   p.event_id,
+                  p.creator_profile_id,
                   e.event_time,
                   e.title AS event_title
              FROM packs p
@@ -148,6 +149,18 @@ export async function getServerSideProps(context) {
                OR p.pack_status IS NULL
             ORDER BY p.created_at DESC NULLS LAST
             LIMIT 80
+         ),
+         series_for_pack AS (
+           SELECT sp.id AS pack_id,
+                  json_agg(DISTINCT jsonb_build_object(
+                    'id', s.id,
+                    'seriesId', s.series_id,
+                    'title', s.title
+                  )) FILTER (WHERE s.id IS NOT NULL) AS series
+             FROM selected_packs sp
+             LEFT JOIN series_packs spx ON spx.pack_id = sp.id
+             LEFT JOIN series s ON s.id = spx.series_id
+            GROUP BY sp.id
          ),
          events_for_pack AS (
            SELECT sp.id AS pack_id,
@@ -270,11 +283,14 @@ export async function getServerSideProps(context) {
                 sp.event_id,
                 sp.event_time::text AS event_time,
                 sp.event_title,
-               efp.events AS events,
-               tfp.teams AS linked_teams,
+                sp.creator_profile_id,
+                pr.profile_id AS creator_profile_handle,
+                efp.events AS events,
+                tfp.teams AS linked_teams,
+                sfp.series AS series,
                 COALESCE(pa.props_count, 0) AS props_count,
                 COALESCE(ta.total_count, 0) AS total_take_count,
-                COALESCE(ta.user_count, 0) AS user_take_count,
+                COALESCE(ta.user_count, 0) AS user_count,
                 CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN tp.points ELSE NULL END AS winner_points,
                 CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN prf.profile_id ELSE NULL END AS winner_profile_id
            FROM selected_packs sp
@@ -284,7 +300,9 @@ export async function getServerSideProps(context) {
            LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
            LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
            LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id
-           LEFT JOIN teams_for_pack tfp ON tfp.pack_id = sp.id`,
+           LEFT JOIN teams_for_pack tfp ON tfp.pack_id = sp.id
+           LEFT JOIN series_for_pack sfp ON sfp.pack_id = sp.id
+           LEFT JOIN profiles pr ON pr.id = sp.creator_profile_id`,
         [userPhone]
       );
       const toIso = (t) => (t ? new Date(t).toISOString() : null);
@@ -308,6 +326,8 @@ export async function getServerSideProps(context) {
         eventTime: toIso(r.event_time),
         firstPlace: "",
         createdAt: toIso(r.created_at) || null,
+        creatorProfileId: r.creator_profile_id || null,
+        creatorProfileHandle: r.creator_profile_handle || null,
         propsCount: Number(r.props_count || 0),
         winnerProfileID: r.winner_profile_id || null,
         winnerPoints: (r.winner_points == null ? null : Number(r.winner_points)),
@@ -329,6 +349,9 @@ export async function getServerSideProps(context) {
               name: t.name || null,
               logoUrl: t.logoUrl || null,
             })).filter((t) => t.slug)
+          : [],
+        seriesList: Array.isArray(r.series)
+          ? r.series.map((s) => ({ id: s.id || null, series_id: s.seriesId || null, title: s.title || null }))
           : [],
       }));
     } else {

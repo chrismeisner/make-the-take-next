@@ -3,6 +3,7 @@
 import { getToken } from "next-auth/jwt";
 import { query } from "../../../lib/db/postgres";
 import { createRepositories } from "../../../lib/dal/factory";
+import { getCurrentUser } from "../../../lib/auth";
 import { withRouteTiming } from "../../../lib/timing";
 
 // Ensure all timestamps are serialized as ISO 8601 UTC strings
@@ -37,7 +38,9 @@ async function handler(req, res) {
                   p.pack_status,
                   p.pack_open_time,
                   p.pack_close_time,
+                  p.pack_open_sms_template,
                   p.event_id,
+                  p.creator_profile_id,
                   e.event_time,
                   e.title AS event_title
            FROM packs p
@@ -82,6 +85,18 @@ async function handler(req, res) {
                  JOIN events e ON e.id = p.event_id
              ) ev ON ev.pack_id = sp.id
              LEFT JOIN events e ON e.id = ev.id
+            GROUP BY sp.id
+         ),
+         series_for_pack AS (
+           SELECT sp.id AS pack_id,
+                  json_agg(DISTINCT jsonb_build_object(
+                    'id', s.id,
+                    'seriesId', s.series_id,
+                    'title', s.title
+                  )) FILTER (WHERE s.id IS NOT NULL) AS series
+             FROM selected_packs sp
+             LEFT JOIN series_packs spx ON spx.pack_id = sp.id
+             LEFT JOIN series s ON s.id = spx.series_id
             GROUP BY sp.id
          ),
          takes_agg AS (
@@ -146,9 +161,12 @@ async function handler(req, res) {
                 sp.pack_status,
                 COALESCE(sp.pack_open_time::text, pa.open_time::text) AS pack_open_time,
                 COALESCE(sp.pack_close_time::text, pa.close_time::text) AS pack_close_time,
+                sp.pack_open_sms_template,
                 sp.event_id,
                 sp.event_time::text AS event_time,
                 sp.event_title,
+                sp.creator_profile_id,
+                pr.profile_id AS creator_profile_handle,
                efp.events AS events,
                 COALESCE(pa.props_count, 0) AS props_count,
                 COALESCE(ta.total_count, 0) AS total_take_count,
@@ -161,7 +179,9 @@ async function handler(req, res) {
            LEFT JOIN top_taker tt ON tt.pack_id = sp.id AND tt.rn = 1
            LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
            LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
-           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id`,
+           LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id
+           LEFT JOIN series_for_pack sfp ON sfp.pack_id = sp.id
+           LEFT JOIN profiles pr ON pr.id = sp.creator_profile_id`,
         [userPhone, includeAll, seriesID]
       );
 
@@ -182,9 +202,12 @@ async function handler(req, res) {
         packStatus: r.pack_status || "",
         packOpenTime: toIso(r.pack_open_time) || null,
         packCloseTime: toIso(r.pack_close_time) || null,
+        packOpenSmsTemplate: r.pack_open_sms_template || null,
         eventTime: toIso(r.event_time),
         firstPlace: "",
         createdAt: toIso(r.created_at) || null,
+        creatorProfileId: r.creator_profile_id || null,
+        creatorProfileHandle: r.creator_profile_handle || null,
         propsCount: Number(r.props_count || 0),
         winnerProfileID: r.winner_profile_id || null,
         winnerPoints: (r.winner_points == null ? null : Number(r.winner_points)),
@@ -199,6 +222,9 @@ async function handler(req, res) {
               title: e.title || null,
               eventTime: toIso(e.eventTime) || null,
             }))
+          : [],
+        seriesList: Array.isArray(r.series)
+          ? r.series.map((s) => ({ id: s.id || null, series_id: s.seriesId || null, title: s.title || null }))
           : [],
       }));
 
@@ -410,7 +436,11 @@ async function handler(req, res) {
   }
   if (req.method === "POST") {
     try {
-      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace } = req.body;
+      const currentUser = await getCurrentUser(req);
+      if (!currentUser?.userId) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace, packOpenSmsTemplate } = req.body;
       // Prize can be provided directly or aliased from firstPlace
       const prize = (req.body && (req.body.prize || firstPlace)) || null;
       if (!packTitle || !packURL) {
@@ -444,8 +474,10 @@ async function handler(req, res) {
         packStatus,
         packOpenTime, packCloseTime, packCoverUrl,
         prize,
+        packOpenSmsTemplate,
         eventId: finalEventId,
         events, props,
+        creatorProfileId: currentUser.userId,
       });
       // Removed Airtable dual-write
       return res.status(200).json({ success: true, record: created });

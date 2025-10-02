@@ -56,7 +56,7 @@ export default async function handler(req, res) {
         try {
           // Get pack details including league for SMS targeting
           const { rows: packDetails } = await query(
-            `SELECT id, pack_id, pack_url, title, league FROM packs WHERE id = $1 LIMIT 1`,
+            `SELECT id, pack_id, pack_url, title, league, pack_open_sms_template, pack_close_time FROM packs WHERE id = $1 LIMIT 1`,
             [pack.id]
           );
           
@@ -69,14 +69,36 @@ export default async function handler(req, res) {
             `SELECT template FROM sms_rules WHERE trigger_type = 'pack_open' AND active = TRUE AND (league = $1 OR league IS NULL) ORDER BY league NULLS LAST, updated_at DESC LIMIT 1`,
             [league]
           );
-          const template = ruleRows.length ? ruleRows[0].template : 'Pack {packTitle} is open! {packUrl}';
+          const template = packInfo.pack_open_sms_template || (ruleRows.length ? ruleRows[0].template : '{packTitle} is open; {timeLeft} to make your takes {packUrl}');
           
           // Render template with variables
           const packUrl = `/packs/${packInfo.pack_url || packInfo.pack_id}`;
+          // Compute timeLeft if close time exists
+          const humanizeTimeDelta = (toTs) => {
+            try {
+              const now = Date.now();
+              const target = new Date(toTs).getTime();
+              if (!Number.isFinite(target)) return '';
+              let diffMs = target - now;
+              if (diffMs <= 0) return 'now';
+              const minutes = Math.floor(diffMs / 60000);
+              const days = Math.floor(minutes / (60 * 24));
+              const hours = Math.floor((minutes % (60 * 24)) / 60);
+              const mins = Math.floor(minutes % 60);
+              if (days >= 2) return `${days} days`;
+              if (days === 1) return hours > 0 ? `1 day ${hours}h` : '1 day';
+              if (hours >= 2) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+              if (hours === 1) return mins > 0 ? `1h ${mins}m` : '1h';
+              if (mins >= 1) return `${mins}m`;
+              return 'soon';
+            } catch { return ''; }
+          };
+          const timeLeft = packInfo.pack_close_time ? humanizeTimeDelta(packInfo.pack_close_time) : 'now';
           const message = template
             .replace(/{packTitle}/g, packInfo.title || 'New Pack')
             .replace(/{packUrl}/g, packUrl)
-            .replace(/{league}/g, league);
+            .replace(/{league}/g, league)
+            .replace(/{timeLeft}/g, timeLeft);
 
           // Find recipients who opted in for this league
           const { rows: recRows } = await query(
