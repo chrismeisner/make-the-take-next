@@ -886,6 +886,11 @@ export default function CreatePropUnifiedPage() {
         assign('compare', 'h2h');
         if (!obj.metric) obj.metric = (source === 'nfl' ? 'points' : 'R');
         if (!obj.winnerRule) obj.winnerRule = 'higher';
+      } else if (autoGradeKey === 'spread') {
+        assign('entity', 'team');
+        assign('statScope', 'single');
+        assign('compare', 'spread');
+        if (obj.spread == null) obj.spread = -6.5;
       } else if (autoGradeKey === 'stat_over_under') {
         assign('entity', 'player');
         assign('statScope', 'single');
@@ -923,6 +928,44 @@ export default function CreatePropUnifiedPage() {
         assign('compare', 'h2h');
         if (!obj.winnerRule) obj.winnerRule = 'higher';
       }
+  // Validate MLB Spread before submit
+  if (autoGradeKey === 'spread') {
+    try {
+      const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+      const eff = { ...(obj || {}) };
+      // Ensure MLB source
+      if ((dataSource || eff.dataSource || 'major-mlb') !== 'major-mlb') {
+        setError('Spread is MLB-only. Set Auto Grade Source to MLB.'); return;
+      }
+      // Ensure IDs/time
+      if (!eff.espnGameID) {
+        const gid = String(event?.espnGameID || '').trim();
+        if (gid) eff.espnGameID = gid;
+      }
+      if (!eff.gameDate && event?.eventTime) {
+        const d = new Date(event.eventTime);
+        eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+      }
+      eff.entity = 'team';
+      eff.statScope = 'single';
+      eff.compare = 'spread';
+      eff.dataSource = 'major-mlb';
+      // Favorite required
+      if (!eff.favoriteTeamAbv) { setError('Please select the Favorite Team for Spread.'); return; }
+      // Validate spread
+      const spreadVal = Number(eff.spread);
+      if (!Number.isFinite(spreadVal)) { setError('Please enter a numeric negative spread (e.g., -6.5)'); return; }
+      if (!(spreadVal < 0)) { setError('Spread must be negative (favorite handicap), e.g., -6.5'); return; }
+      // Encourage .5 values
+      const twice = spreadVal * 2;
+      const isHalf = Math.abs(twice - Math.round(twice)) < 1e-6 && (Math.round(twice) % 2 === 1);
+      if (!isHalf) { setError('Spread should end with .5 to avoid pushes (e.g., -6.5)'); return; }
+      if (!eff.espnGameID) { setError('Missing ESPN game ID on event'); return; }
+      if (!eff.gameDate) { setError('Missing game date on event'); return; }
+      finalFormulaParamsText = JSON.stringify(eff, null, 2);
+      setFormulaParamsText(finalFormulaParamsText);
+    } catch {}
+  }
       // Always ensure identity and source details are present when event/dataSource known
       if (event) {
         const gid = String(event?.espnGameID || '').trim();
@@ -1742,11 +1785,43 @@ export default function CreatePropUnifiedPage() {
               <option value="player_multi_stat_h2h">Player Multi Stat H2H</option>
               <option value="team_multi_stat_ou">Team Multi Stat O/U</option>
               <option value="team_multi_stat_h2h">Team Multi Stat H2H</option>
+              {dataSource === 'major-mlb' && (
+                <option value="spread">Spread (MLB Total O/U)</option>
+              )}
               {/* Team Winner supports NFL and MLB */}
               <option value="who_wins">Team Winner</option>
             </select>
             {/* Minimal params UI for common cases */}
             {false && <div />}
+            {autoGradeKey === 'spread' && (
+              <div className="mt-3 space-y-2">
+                <div className="text-sm font-medium text-gray-700">Spread (favorite covers negative spread)</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Favorite Team</label>
+                    <select
+                      className="mt-1 block w-full border rounded px-2 py-1"
+                      value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return o.favoriteTeamAbv||''; } catch { return ''; } })()}
+                      onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.favoriteTeamAbv = e.target.value; setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                    >
+                      <option value="">Select favorite…</option>
+                      {teamOptionsH2H.map((abv) => (<option key={`spread-fav-${abv}`} value={abv}>{abv}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Spread (negative, x.5)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      className="mt-1 block w-full border rounded px-2 py-1"
+                      value={(function(){ try { const o=JSON.parse(formulaParamsText||'{}'); return (o.spread ?? ''); } catch { return ''; } })()}
+                      onChange={(e)=>{ try { const o = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {}; o.spread = Number(e.target.value); setFormulaParamsText(JSON.stringify(o, null, 2)); } catch {} }}
+                    />
+                    <div className="text-xs text-gray-600 mt-1">e.g., -6.5 (favorite must win by 7+). Side A = Favorite covers; Side B = Favorite fails to cover.</div>
+                  </div>
+                </div>
+              </div>
+            )}
             {autoGradeKey === 'who_wins' && (
               <div className="mt-3 space-y-2">
                 <div className="text-sm font-medium text-gray-700">Map takes to teams</div>

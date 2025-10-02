@@ -362,6 +362,63 @@ export default async function handler(req, res) {
         return await finish(newStatus, propResult);
       }
 
+      if (formulaKey === 'spread') {
+        const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
+        let gameDate = String(params?.gameDate || '').trim();
+        if (!gameDate && r.event_time) {
+          try {
+            const d = new Date(r.event_time);
+            const yr = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const da = String(d.getDate()).padStart(2, '0');
+            gameDate = `${yr}${mo}${da}`;
+          } catch {}
+        }
+        const spreadVal = Number(params?.spread);
+        const favoriteTeamAbv = String(params?.favoriteTeamAbv || '').toUpperCase();
+        if (!espnGameID || !gameDate || !Number.isFinite(spreadVal) || !favoriteTeamAbv) {
+          return res.status(400).json({ success: false, error: 'Missing required params for spread (espnGameID, gameDate, spread, favoriteTeamAbv)' });
+        }
+        // MLB-only to start
+        const src = resolveSourceConfig('major-mlb');
+        if (!src.ok) return res.status(500).json({ success: false, error: 'Major MLB source not configured' });
+        const yyyy = gameDate.slice(0, 4);
+        const mm = gameDate.slice(4, 6);
+        const dd = gameDate.slice(6, 8);
+        const url = new URL(`https://${src.host}${src.endpoints.scoreboard}`);
+        url.searchParams.set('year', yyyy);
+        url.searchParams.set('month', mm);
+        url.searchParams.set('day', dd);
+        const upstream = await fetch(url.toString(), { method: 'GET', headers: src.headers });
+        const data = await upstream.json().catch(() => ({}));
+        const raw = data?.body || data || {};
+        const games = normalizeMajorMlbScoreboard(raw) || [];
+        const game = games.find((g) => String(g?.id || '').trim() === espnGameID);
+        if (!game) return res.status(404).json({ success: false, error: `Game not found for espnGameID=${espnGameID} on ${gameDate}` });
+        const homeR = Number(game?.lineScore?.home?.R ?? NaN);
+        const awayR = Number(game?.lineScore?.away?.R ?? NaN);
+        if (!Number.isFinite(homeR) || !Number.isFinite(awayR)) {
+          return res.status(409).json({ success: false, error: 'Score not available yet. Try again later.' });
+        }
+        const homeAbv = String(game?.home || '').toUpperCase();
+        const awayAbv = String(game?.away || '').toUpperCase();
+        const favoriteIsHome = homeAbv === favoriteTeamAbv;
+        const favoriteIsAway = awayAbv === favoriteTeamAbv;
+        if (!favoriteIsHome && !favoriteIsAway) {
+          return res.status(400).json({ success: false, error: `favoriteTeamAbv ${favoriteTeamAbv} not found in game (home=${homeAbv}, away=${awayAbv})` });
+        }
+        const favoriteScore = favoriteIsHome ? homeR : awayR;
+        const underdogScore = favoriteIsHome ? awayR : homeR;
+        const margin = favoriteScore - underdogScore;
+        const propResult = `${homeAbv} ${homeR} - ${awayAbv} ${awayR} (favorite ${favoriteTeamAbv} margin ${margin}, spread ${spreadVal})`;
+        // Side A = Favorite covers, Side B = Favorite fails to cover
+        let newStatus = 'push';
+        if (margin > Math.abs(spreadVal)) newStatus = 'gradedA';
+        else if (margin < Math.abs(spreadVal)) newStatus = 'gradedB';
+        else newStatus = 'push';
+        return await finish(newStatus, propResult);
+      }
+
       if (formulaKey === 'player_multi_stat_ou') {
         const espnGameID = String(params?.espnGameID || r.espn_game_id || '').trim();
         // Prefer param gameDate; fallback to event_time

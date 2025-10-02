@@ -1,6 +1,6 @@
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function NewMarketplaceItemPage() {
   const router = useRouter();
@@ -296,6 +296,11 @@ export default function NewMarketplaceItemPage() {
       </form>
     </div>
   );
+}
+
+
+export async function getServerSideProps() {
+  return { props: {} };
 }
 
 
