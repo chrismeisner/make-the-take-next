@@ -211,9 +211,24 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     // Delay slightly to allow images/text to render
     const timer = setTimeout(adjustCardHeight, 100);
     window.addEventListener('resize', adjustCardHeight);
+    // Wire global events for footer Prev/Next buttons
+    const handlePrev = () => {
+      if (!swiperRef.current) return;
+      const idx = swiperRef.current.activeIndex ?? 0;
+      if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
+    };
+    const handleNext = () => {
+      if (!swiperRef.current) return;
+      const idx = swiperRef.current.activeIndex ?? 0;
+      if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
+    };
+    window.addEventListener('packCarouselPrev', handlePrev);
+    window.addEventListener('packCarouselNext', handleNext);
     return () => {
       clearTimeout(timer);
       window.removeEventListener('resize', adjustCardHeight);
+      window.removeEventListener('packCarouselPrev', handlePrev);
+      window.removeEventListener('packCarouselNext', handleNext);
     };
   }, [swiperReady, props]);
   function formatTime(ms) {
@@ -561,7 +576,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 ) : (
                   <Swiper
                     initialSlide={initialSlide}
-                    onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.activeIndex || 0); }}
+                    onSwiper={(swiper) => { swiperRef.current = swiper; setSwiperReady(true); setCurrentSlide(swiper.activeIndex || 0); try { window.__packCarouselActiveIndex = swiper.activeIndex || 0; window.dispatchEvent(new CustomEvent('packCarouselSlide', { detail: { index: swiper.activeIndex || 0, total: totalSlides } })); } catch {} }}
                     style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}
                     className="pb-24 sm:pb-12"
                     modules={[EffectCards, Mousewheel]}
@@ -570,7 +585,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                     grabCursor={true}
                     mousewheel={{ forceToAxis: true, thresholdDelta: 10, sensitivity: 0.5 }}
                     cardsEffect={{ slideShadows: false, perSlideOffset: 8 }}
-                    onSlideChange={(swiper) => setCurrentSlide(swiper.activeIndex || 0)}
+                    onSlideChange={(swiper) => { setCurrentSlide(swiper.activeIndex || 0); try { window.__packCarouselActiveIndex = swiper.activeIndex || 0; window.dispatchEvent(new CustomEvent('packCarouselSlide', { detail: { index: swiper.activeIndex || 0, total: totalSlides } })); } catch {} }}
                   >
                     {/* First slide: Pack Cover */}
                     <SwiperSlide key="cover" style={{ height: cardHeight ? `${cardHeight + SLIDE_HEIGHT_OFFSET}px` : 'auto' }}>

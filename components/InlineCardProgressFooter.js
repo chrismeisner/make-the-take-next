@@ -10,6 +10,7 @@ export default function InlineCardProgressFooter() {
   const { data: session } = useSession();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const totalProps = packData.props.length;
   const previousSubmissions = Object.keys(userTakesByProp).length === totalProps;
   const selectedCount = Object.keys(selectedChoices).length;
@@ -21,6 +22,18 @@ export default function InlineCardProgressFooter() {
   const changedCount = changedEntries.length;
   const hasChanges = changedCount > 0;
   const canSubmit = hasChanges;
+
+  // Determine if current slide (prop) has a selection
+  const hasSelectionOnCurrent = (() => {
+    // slide 0 is the cover; only props map from index 1..N
+    if (!Array.isArray(packData.props)) return false;
+    if (currentSlideIndex <= 0 || currentSlideIndex > packData.props.length) return false;
+    const prop = packData.props[currentSlideIndex - 1];
+    const propID = prop?.propID;
+    if (!propID) return false;
+    const chosen = selectedChoices[propID] ?? userTakesByProp[propID]?.side;
+    return Boolean(chosen);
+  })();
 
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
@@ -37,6 +50,22 @@ export default function InlineCardProgressFooter() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [canSubmit, handleSubmit]);
+
+  // Listen for carousel slide changes so we can style Next accordingly
+  useEffect(() => {
+    const onSlide = (e) => {
+      const idx = e?.detail?.index ?? 0;
+      setCurrentSlideIndex(idx);
+    };
+    window.addEventListener('packCarouselSlide', onSlide);
+    // Initialize from global if available to catch first render
+    try {
+      if (typeof window !== 'undefined' && typeof window.__packCarouselActiveIndex === 'number') {
+        setCurrentSlideIndex(window.__packCarouselActiveIndex);
+      }
+    } catch {}
+    return () => window.removeEventListener('packCarouselSlide', onSlide);
+  }, []);
 
   async function handleSubmit() {
     const receiptId = Math.random().toString(36).substring(2, 8);
@@ -67,6 +96,47 @@ export default function InlineCardProgressFooter() {
         </div>
       )}
       <footer className="fixed bottom-0 inset-x-0 bg-white p-2 pt-10 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-gray-200 z-50 md:static md:bg-transparent md:p-0 md:pt-0 md:pb-0 md:border-t-0">
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '0.5rem',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              try { window.dispatchEvent(new Event('packCarouselPrev')); } catch {}
+            }}
+            style={{
+              backgroundColor: '#e5e7eb',
+              color: '#111827',
+              padding: '0.25rem 0.75rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              try { window.dispatchEvent(new Event('packCarouselNext')); } catch {}
+            }}
+            style={{
+              backgroundColor: hasSelectionOnCurrent ? '#2196f3' : '#e5e7eb',
+              color: hasSelectionOnCurrent ? '#ffffff' : '#111827',
+              padding: '0.25rem 0.75rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Next
+          </button>
+        </div>
         <div
           style={{
             backgroundColor: "#e0e0e0",
