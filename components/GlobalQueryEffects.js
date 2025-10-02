@@ -28,11 +28,26 @@ export default function GlobalQueryEffects() {
           return;
         }
 
-        // Fetch preview to determine required team slug if any
+        // Fetch preview to determine routing
         const res = await fetch(`/api/awards/preview?code=${encodeURIComponent(code)}`);
         const data = await res.json();
         const reqSlug = res.ok && data?.success ? (data.requirementTeamRouteSlug || data.requirementTeamSlug || data.redirectTeamSlug || null) : null;
         const currentSlug = typeof router.query?.teamSlug === 'string' ? router.query.teamSlug : null;
+
+        if (data?.kind === 'promo') {
+          // Promo: open promo follow modal in-place (no redirect)
+          try {
+            if (typeof window !== 'undefined') {
+              window.__MTT_SUPPRESS_GLOBAL_MODALS__ = true;
+              window.__MTT_SUPPRESS_URL_SYNC__ = true;
+            }
+          } catch {}
+          openModal('promoFollow', { code });
+          const nextQuery = { ...q };
+          delete nextQuery.card;
+          router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+          return;
+        }
 
         if (reqSlug && router.pathname !== '/teams/[teamSlug]') {
           // Forward to team page with the card param so modal opens there

@@ -37,6 +37,7 @@ import ReferralChallengeModal from "./modals/ReferralChallengeModal";
 import { getDataBackend } from "../lib/runtimeConfig";
 import NewInventoryModal from "./modals/NewInventoryModal";
 import SubscribeModal from "./modals/SubscribeModal";
+import PromoFollowModal from "./modals/PromoFollowModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -46,6 +47,16 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "promoFollow": {
+      const { code } = modalConfig.modalProps;
+      return (
+        <PromoFollowModal
+          isOpen={true}
+          onClose={closeModal}
+          code={code}
+        />
+      );
+    }
     case "subscribe": {
       return (
         <SubscribeModal

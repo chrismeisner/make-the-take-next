@@ -46,7 +46,7 @@ export default async function handler(req, res) {
         let selectSql;
         if (hasCodes) {
           selectSql = hasCol
-            ? `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.require_address,
+            ? `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.require_address, i.item_type, i.external_url,
                        COALESCE(ic.total,0) AS inv_total,
                        COALESCE(ic.available,0) AS inv_available,
                        COALESCE(ic.assigned,0) AS inv_assigned,
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
                  ) ic ON TRUE
                 WHERE i.item_id = $1
                  LIMIT 1`
-            : `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured,
+            : `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.item_type, i.external_url,
                        COALESCE(ic.total,0) AS inv_total,
                        COALESCE(ic.available,0) AS inv_available,
                        COALESCE(ic.assigned,0) AS inv_assigned,
@@ -80,8 +80,8 @@ export default async function handler(req, res) {
                  LIMIT 1`;
         } else {
           selectSql = hasCol
-            ? 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, require_address FROM items WHERE item_id = $1 LIMIT 1'
-            : 'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items WHERE item_id = $1 LIMIT 1';
+            ? 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, require_address, item_type, external_url FROM items WHERE item_id = $1 LIMIT 1'
+            : 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, item_type, external_url FROM items WHERE item_id = $1 LIMIT 1';
         }
         const { rows } = await query(selectSql, [itemID]);
         if (rows.length === 0) return res.status(404).json({ success: false, error: 'Item not found' });
@@ -96,6 +96,8 @@ export default async function handler(req, res) {
           itemImage: r.image_url || '',
           featured: Boolean(r.featured),
           requireAddress: hasCol ? Boolean(r.require_address) : false,
+            itemType: r.item_type || '',
+            externalUrl: r.external_url || '',
           inventory: hasCodes ? {
             total: Number(r.inv_total || 0),
             available: Number(r.inv_available || 0),
@@ -125,7 +127,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PUT') {
-      const { itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured, requireAddress } = req.body || {};
+      const { itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured, requireAddress, itemType, externalUrl } = req.body || {};
       if (backend === 'postgres') {
         const hasCol = await hasRequireAddressColumn();
         if (hasCol) {
@@ -138,8 +140,10 @@ export default async function handler(req, res) {
                    status = $5,
                    image_url = $6,
                    featured = $7,
-                   require_address = $8
-              WHERE item_id = $9`,
+                   require_address = $8,
+                   item_type = $9,
+                   external_url = $10
+             WHERE item_id = $11`,
             [
               itemName || '',
               itemBrand || '',
@@ -149,6 +153,8 @@ export default async function handler(req, res) {
               itemImage || '',
               Boolean(featured),
               Boolean(requireAddress),
+              itemType || null,
+              externalUrl || null,
               itemID,
             ]
           );
@@ -161,8 +167,10 @@ export default async function handler(req, res) {
                    tokens = $4,
                    status = $5,
                    image_url = $6,
-                   featured = $7
-              WHERE item_id = $8`,
+                   featured = $7,
+                   item_type = $8,
+                   external_url = $9
+             WHERE item_id = $10`,
             [
               itemName || '',
               itemBrand || '',
@@ -171,6 +179,8 @@ export default async function handler(req, res) {
               itemStatus || '',
               itemImage || '',
               Boolean(featured),
+              itemType || null,
+              externalUrl || null,
               itemID,
             ]
           );

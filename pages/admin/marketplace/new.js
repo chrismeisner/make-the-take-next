@@ -15,9 +15,14 @@ export default function NewMarketplaceItemPage() {
     itemTokens: 0,
     itemStatus: 'Hidden',
     itemImage: '',
+    itemType: '',
+    externalUrl: '',
     featured: false,
     requireAddress: false,
   });
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [valueMultiplier, setValueMultiplier] = useState(5);
   // Team variations (queued for after create)
   const [varTeamLeague, setVarTeamLeague] = useState('');
   const [varTeamSlug, setVarTeamSlug] = useState('');
@@ -64,7 +69,26 @@ export default function NewMarketplaceItemPage() {
     setSaving(true);
     setError('');
     try {
-      const payload = { ...form };
+      // If a new image file was selected, upload it first
+      let imageUrl = form.itemImage || '';
+      if (file && preview) {
+        const toBase64 = (f) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(f);
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = (err) => reject(err);
+        });
+        const base64Data = await toBase64(file);
+        const uploadRes = await fetch('/api/admin/uploadItemImage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, fileData: base64Data })
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok || !uploadData?.success) throw new Error(uploadData?.error || 'Upload failed');
+        imageUrl = uploadData.url;
+      }
+      const payload = { ...form, itemImage: imageUrl };
       const res = await fetch('/api/admin/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,6 +145,16 @@ export default function NewMarketplaceItemPage() {
           />
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700">External URL</label>
+          <input
+            type="url"
+            value={form.externalUrl}
+            onChange={(e) => setForm({ ...form, externalUrl: e.target.value })}
+            className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            placeholder="https://example.com/product"
+          />
+        </div>
+        <div>
           <label className="block text-sm font-medium text-gray-700">Title</label>
           <input
             type="text"
@@ -158,6 +192,30 @@ export default function NewMarketplaceItemPage() {
               onChange={(e) => setForm({ ...form, itemTokens: Number(e.target.value) })}
               className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
+            <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+              <span className="text-gray-700">Multiplier</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={valueMultiplier}
+                onChange={(e) => setValueMultiplier(Number(e.target.value) || 0)}
+                className="w-24 px-2 py-1 border rounded"
+              />
+              <span className="ml-2">Value: {(Number(form.itemTokens || 0) * Number(valueMultiplier || 0)).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Type</label>
+            <select
+              value={form.itemType || ''}
+              onChange={(e) => setForm({ ...form, itemType: e.target.value })}
+              className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="">Select type</option>
+              <option value="gift card">gift card</option>
+              <option value="memorabilia">memorabilia</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Status</label>
@@ -196,12 +254,32 @@ export default function NewMarketplaceItemPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Image URL</label>
+          {preview && (
+            <img src={preview} alt="Preview" className="mt-1 w-24 h-24 object-cover rounded border" />)
+          }
           <input
             type="url"
             value={form.itemImage}
             onChange={(e) => setForm({ ...form, itemImage: e.target.value })}
             className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             placeholder="https://..."
+          />
+          <input
+            type="file"
+            accept="image/*"
+            className="mt-2"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                setFile(f);
+                const reader = new FileReader();
+                reader.onload = () => setPreview(reader.result);
+                reader.readAsDataURL(f);
+              } else {
+                setFile(null);
+                setPreview(null);
+              }
+            }}
           />
         </div>
       {/* Team Variations (optional, queued until after create) */}

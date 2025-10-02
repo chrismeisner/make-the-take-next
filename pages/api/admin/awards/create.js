@@ -19,10 +19,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { name, tokens, code, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesSlug, requirementSeriesId } = req.body || {};
-  if (!name || !tokens) return res.status(400).json({ success: false, error: 'Missing required fields' });
-  const safeTokens = Number.parseInt(tokens, 10);
-  if (!Number.isFinite(safeTokens) || safeTokens <= 0) return res.status(400).json({ success: false, error: 'Invalid tokens' });
+  const { kind = 'award', name, tokens, code, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesSlug, requirementSeriesId } = req.body || {};
+  if (!name) return res.status(400).json({ success: false, error: 'Missing required fields' });
+  const isPromo = String(kind) === 'promo';
+  const safeTokens = tokens == null ? null : Number.parseInt(tokens, 10);
+  if (!isPromo) {
+    if (!Number.isFinite(safeTokens) || safeTokens <= 0) return res.status(400).json({ success: false, error: 'Invalid tokens' });
+  }
   const providedCode = String(code || '').trim();
   const genCode = providedCode || (Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)).slice(0, 12);
 
@@ -43,11 +46,12 @@ export default async function handler(req, res) {
     }
   } catch {}
 
-  const sql = `INSERT INTO award_cards (code, name, tokens, valid_from, valid_to, redirect_team_slug, image_url, requirement_key, requirement_team_slug, requirement_team_id, requirement_series_id, requirement_series_slug)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING code`;
+  const sql = `INSERT INTO award_cards (code, name, tokens, valid_from, valid_to, redirect_team_slug, image_url, requirement_key, requirement_team_slug, requirement_team_id, requirement_series_id, requirement_series_slug, kind)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING code`;
 
   try {
-    const { rows } = await query(sql, [genCode, name, safeTokens, validFrom || null, validTo || null, redirectTeamSlug || null, imageUrl || null, requirementKey || null, requirementTeamSlug || null, reqTeamId, reqSeriesId || null, requirementSeriesSlug || null]);
+    const finalImageUrl = (req.body?.imageMode === 'team-logo') ? null : (imageUrl || null);
+    const { rows } = await query(sql, [genCode, name, isPromo ? null : safeTokens, validFrom || null, validTo || null, redirectTeamSlug || null, finalImageUrl, requirementKey || null, requirementTeamSlug || null, reqTeamId, reqSeriesId || null, requirementSeriesSlug || null, isPromo ? 'promo' : 'award']);
     return res.status(200).json({ success: true, code: rows[0].code });
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Create failed' });

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import useHasMounted from "../hooks/useHasMounted";
 
 /**
  * Reusable scoreboard table.
@@ -18,7 +19,8 @@ import { useSession } from "next-auth/react";
  */
 export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
   const { data: session } = useSession();
-  const currentProfileID = session?.user?.profileID;
+  const hasMounted = useHasMounted();
+  const currentProfileID = hasMounted ? (session?.user?.profileID) : null;
   const hasEntries = Array.isArray(leaderboard) && leaderboard.length > 0;
 
   return (
@@ -35,9 +37,9 @@ export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
 		  </tr>
 		</thead>
 		<tbody>
-		  {!hasEntries ? (
+          {!hasEntries ? (
 			<tr>
-			  <td colSpan={5} className="py-6 px-3 text-center text-gray-500">
+              <td colSpan={6} className="py-6 px-3 text-center text-gray-500">
 				No participants yet. Be the first to make a take!
 			  </td>
 			</tr>
@@ -68,7 +70,7 @@ export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
 				</td>
 				<td className="py-2 px-3">{Math.round(item.points)}</td>
                 <td className="py-2 px-3 text-right">
-                  {(() => {
+                  {hasMounted && (() => {
                     const other = item.profileID;
                     const can = other && currentProfileID && other !== currentProfileID;
                     const slug = packSlugOrId || item.packURL || item.packID || null;

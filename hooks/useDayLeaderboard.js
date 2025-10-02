@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
  * @param {string} day - The day to fetch leaderboard for ('today', 'yesterday', 'tomorrow', 'thisWeek', 'nextWeek')
  * @returns {{ leaderboard: Array, loading: boolean, error: string, dayLabel: string }}
  */
-export default function useDayLeaderboard(day = 'today', packIds = []) {
+export default function useDayLeaderboard(day = 'today', packIds = [], teamSlug = '') {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,6 +24,7 @@ export default function useDayLeaderboard(day = 'today', packIds = []) {
         if (Array.isArray(packIds) && packIds.length > 0) {
           params.append('packIds', packIds.join(','));
         }
+        if (teamSlug) params.append('teamSlug', teamSlug);
         try {
           // eslint-disable-next-line no-console
           console.log('[useDayLeaderboard] Fetching with params =>', params.toString());
@@ -55,7 +56,7 @@ export default function useDayLeaderboard(day = 'today', packIds = []) {
     return () => {
       isMounted = false;
     };
-  }, [day, Array.isArray(packIds) ? packIds.join(',') : '']);
+  }, [day, Array.isArray(packIds) ? packIds.join(',') : '', teamSlug]);
 
   return { leaderboard, loading, error, dayLabel };
 }

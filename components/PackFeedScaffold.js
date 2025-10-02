@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import DaySelector from './DaySelector';
 import DayBasedPackFeed from './DayBasedPackFeed';
 import DayBasedLeaderboard from './DayBasedLeaderboard';
+import AllTimeLeaderboard from './AllTimeLeaderboard';
 import PageContainer from './PageContainer';
 
 export default function PackFeedScaffold({
@@ -16,6 +17,7 @@ export default function PackFeedScaffold({
   initialDay = 'today',
   sidebarBelow = null,
   showLeaderboard = true,
+  leaderboardVariant = 'day', // 'day' | 'allTime'
 }) {
   const router = useRouter();
   const [selectedDay, setSelectedDay] = useState(initialDay);
@@ -26,7 +28,7 @@ export default function PackFeedScaffold({
     if (!router.isReady) return;
     
     const { day, date } = router.query;
-    const validDays = new Set(['today', 'yesterday', 'tomorrow']);
+    const validDays = new Set(['all', 'today', 'yesterday', 'tomorrow']);
     
     // Allow `day` to be a known label, otherwise treat it as part of date parsing below
     if (typeof day === 'string' && validDays.has(day)) {
@@ -62,18 +64,23 @@ export default function PackFeedScaffold({
     if (iso) setSelectedDate(iso); else setSelectedDate(null);
   }, [router.query.day, router.query.date, router.isReady]);
 
-  // Update URL when day/date changes; preserve explicit date via `date=YYYY-MM-DD`
+  // Update URL when day/date changes; keep URL clean by default (no day when 'today')
   useEffect(() => {
     if (!router.isReady) return;
     if (typeof window !== 'undefined' && window.__MTT_SUPPRESS_URL_SYNC__) return;
     const nextQuery = { ...router.query };
     if (selectedDate) {
+      // When an explicit date is selected, only include `date` and omit `day` entirely
       nextQuery.date = selectedDate;
-      // Keep a stable day label for UI when an explicit date is set
-      nextQuery.day = 'today';
+      delete nextQuery.day;
     } else {
+      // No explicit date: remove `date` and only include `day` when not the default ('today')
       delete nextQuery.date;
-      nextQuery.day = selectedDay;
+      if (selectedDay && selectedDay !== 'today') {
+        nextQuery.day = selectedDay;
+      } else {
+        delete nextQuery.day;
+      }
     }
     const same = JSON.stringify(router.query) === JSON.stringify(nextQuery);
     if (!same) {
@@ -115,12 +122,21 @@ export default function PackFeedScaffold({
 
           <aside className="lg:col-span-1 lg:sticky lg:top-4 self-start">
             {showLeaderboard ? (
-              <DayBasedLeaderboard
-                packs={packs}
-                selectedDay={selectedDay}
-                selectedDate={selectedDate}
-                accent={accent}
-              />
+              leaderboardVariant === 'allTime' ? (
+                <AllTimeLeaderboard
+                  packs={packs}
+                  selectedDate={selectedDate}
+                  teamSlug={forceTeamSlugFilter}
+                />
+              ) : (
+                <DayBasedLeaderboard
+                  packs={packs}
+                  selectedDay={selectedDay}
+                  selectedDate={selectedDate}
+                  accent={accent}
+                  teamSlug={forceTeamSlugFilter}
+                />
+              )
             ) : null}
             {sidebarBelow ? (
               <div className="mt-8">

@@ -16,6 +16,7 @@ export default function EditMarketplaceItemPage() {
     itemTokens: 0,
     itemStatus: '',
     itemImage: '',
+    itemType: '',
     featured: false,
     requireAddress: false,
   });
@@ -54,6 +55,7 @@ export default function EditMarketplaceItemPage() {
             itemTokens: Number(it.itemTokens) || 0,
             itemStatus: it.itemStatus || '',
             itemImage: it.itemImage || '',
+            itemType: it.itemType || '',
             featured: Boolean(it.featured),
             requireAddress: Boolean(it.requireAddress),
           });
@@ -209,6 +211,16 @@ export default function EditMarketplaceItemPage() {
               rows={4}
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">External URL</label>
+            <input
+              type="url"
+              value={form.externalUrl || ''}
+              onChange={(e) => setForm({ ...form, externalUrl: e.target.value })}
+              className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              placeholder="https://example.com/product"
+            />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Tokens</label>
@@ -219,6 +231,18 @@ export default function EditMarketplaceItemPage() {
                 onChange={(e) => setForm({ ...form, itemTokens: Number(e.target.value) })}
                 className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Type</label>
+              <select
+                value={form.itemType || ''}
+                onChange={(e) => setForm({ ...form, itemType: e.target.value })}
+                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              >
+                <option value="">Select type</option>
+                <option value="gift card">gift card</option>
+                <option value="memorabilia">memorabilia</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Status</label>

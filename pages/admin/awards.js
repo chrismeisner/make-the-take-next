@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import GlobalModal from '../../components/modals/GlobalModal';
+import { useModal } from '../../contexts/ModalContext';
 
 export default function AwardsAdminPage() {
+  const { openModal } = useModal();
   const [awards, setAwards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [form, setForm] = useState({ name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', requirementKey: '', requirementTeamSlug: '' });
+  const [form, setForm] = useState({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '' });
   const [creating, setCreating] = useState(false);
   const [teamOptions, setTeamOptions] = useState([]);
   const [leagueOptions, setLeagueOptions] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState('');
-  const [requirementModalOpen, setRequirementModalOpen] = useState(false);
+  const [seriesOptions, setSeriesOptions] = useState([]);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+  const [seriesError, setSeriesError] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
 
   const load = async () => {
@@ -38,6 +41,13 @@ export default function AwardsAdminPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Ensure promo defaults to follow_team requirement for clarity
+  useEffect(() => {
+    if (form.kind === 'promo' && form.requirementKey !== 'follow_team') {
+      setForm((f) => ({ ...f, requirementKey: 'follow_team' }));
+    }
+  }, [form.kind]);
+
   // Load teams for dropdown
   useEffect(() => {
     (async () => {
@@ -54,7 +64,8 @@ export default function AwardsAdminPage() {
               const rawSlug = String(t.teamSlug || '').toLowerCase();
               const league = String(t.teamLeague || t.teamType || t.league || '').toLowerCase();
               const label = String(t.teamNameFull || t.teamName || rawSlug || 'Team');
-              return rawSlug ? { value: rawSlug, label, league } : null;
+              const logoUrl = t.teamLogoURL || null;
+              return rawSlug ? { value: rawSlug, label, league, logoUrl } : null;
             })
             .filter(Boolean)
             .sort((a, b) => a.label.localeCompare(b.label));
@@ -72,20 +83,57 @@ export default function AwardsAdminPage() {
     })();
   }, []);
 
+  // Load series options for follow-series selection
+  useEffect(() => {
+    (async () => {
+      setSeriesLoading(true);
+      setSeriesError('');
+      try {
+        const res = await fetch('/api/series');
+        const data = await res.json();
+        if (res.ok && data?.success) {
+          const opts = Array.isArray(data.series) ? data.series.map(s => ({ value: s.id || s.seriesId, label: s.title || s.seriesId || 'Series' })) : [];
+          setSeriesOptions(opts);
+        } else {
+          setSeriesError(data?.error || 'Failed to load series');
+        }
+      } catch (e) {
+        setSeriesError(e.message || 'Failed to load series');
+      } finally {
+        setSeriesLoading(false);
+      }
+    })();
+  }, []);
+
   // Keep options in memory; selection happens inside modal
 
   const create = async (e) => {
     e.preventDefault();
     setCreating(true);
     try {
+      const payload = {
+        kind: form.kind,
+        name: form.name,
+        code: form.code || undefined,
+        redirectTeamSlug: form.redirectTeamSlug || undefined,
+        imageUrl: form.imageMode === 'team-logo' ? undefined : (form.imageUrl || undefined),
+        imageMode: form.imageMode || 'custom',
+        requirementKey: form.requirementKey || undefined,
+        requirementTeamSlug: form.requirementTeamSlug || undefined,
+        requirementSeriesSlug: form.requirementSeriesSlug || undefined,
+        requirementSeriesId: form.requirementSeriesId || undefined,
+      };
+      if (form.kind === 'award') {
+        payload.tokens = Number(form.tokens);
+      }
       const res = await fetch('/api/admin/awards/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, tokens: Number(form.tokens), code: form.code || undefined, redirectTeamSlug: form.redirectTeamSlug || undefined, imageUrl: form.imageUrl || undefined, requirementKey: form.requirementKey || undefined, requirementTeamSlug: form.requirementTeamSlug || undefined }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setForm({ name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', requirementKey: '', requirementTeamSlug: '' });
+        setForm({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '' });
         await load();
       } else {
         alert(data.error || 'Create failed');
@@ -129,16 +177,66 @@ export default function AwardsAdminPage() {
 
       <section className="border rounded-lg p-4 mb-6">
         <h2 className="text-lg font-semibold mb-3">Create Promo Card</h2>
-        <p className="text-sm text-gray-600 mb-3">Promo Cards are unique shareable cards that, when opened by a fan, grant a one-time marketplace token bonus to that fan's account.</p>
+        <p className="text-sm text-gray-600 mb-3">Promo Cards can either grant tokens (Award) or encourage following a Team/Series (Promo).</p>
         <form onSubmit={create} className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-sm text-gray-700">Type</label>
+            <select
+              value={(form.kind === 'award') ? 'award' : (form.requirementKey === 'follow_series' ? 'follow_series' : 'follow_team')}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'award') {
+                  setForm((f) => ({ ...f, kind: 'award', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '' }));
+                } else if (v === 'follow_team') {
+                  setForm((f) => ({ ...f, kind: 'promo', requirementKey: 'follow_team' }));
+                } else if (v === 'follow_series') {
+                  setForm((f) => ({ ...f, kind: 'promo', requirementKey: 'follow_series' }));
+                }
+              }}
+              className="mt-1 px-3 py-2 border rounded w-44"
+            >
+              <option value="award">Award Token</option>
+              <option value="follow_team">Follow Team</option>
+              <option value="follow_series">Follow Series</option>
+            </select>
+          </div>
+          {form.kind === 'promo' && form.requirementKey === 'follow_team' && (
+            <>
+              <div>
+                <label className="block text-sm text-gray-700">League</label>
+                <select value={form.league || ''} onChange={(e) => setForm({ ...form, league: e.target.value })} className="mt-1 px-3 py-2 border rounded min-w-[12rem]">
+                  <option value="">All</option>
+                  {leagueOptions.map((lg) => (
+                    <option key={lg} value={lg}>{lg.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700">Team</label>
+                <select
+                  key={form.league || 'all'}
+                  value={form.requirementTeamSlug || ''}
+                  onChange={(e) => setForm({ ...form, requirementTeamSlug: e.target.value, redirectTeamSlug: e.target.value })}
+                  className="mt-1 px-3 py-2 border rounded min-w-[16rem]"
+                >
+                  <option value="">Select team</option>
+                  {(form.league ? teamOptions.filter(o => o.league === form.league) : teamOptions).map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
           <div>
             <label className="block text-sm text-gray-700">Card Name</label>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 px-3 py-2 border rounded" required />
           </div>
+          {form.kind === 'award' && (
           <div>
             <label className="block text-sm text-gray-700">Token Bonus</label>
             <input type="number" min={1} value={form.tokens} onChange={(e) => setForm({ ...form, tokens: e.target.value })} className="mt-1 px-3 py-2 border rounded w-28" required />
           </div>
+          )}
           <div>
             <label className="block text-sm text-gray-700">Custom Card Code (optional)</label>
             <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="mt-1 px-3 py-2 border rounded" placeholder="e.g. launch25" />
@@ -146,7 +244,15 @@ export default function AwardsAdminPage() {
           <div>
             <label className="block text-sm text-gray-700">Card Image</label>
             <div className="flex items-center gap-2 mt-1">
-              <input type="file" accept="image/*" onChange={async (e) => {
+              <select
+                value={form.imageMode || 'custom'}
+                onChange={(e) => setForm({ ...form, imageMode: e.target.value })}
+                className="px-2 py-2 border rounded"
+              >
+                <option value="custom">Custom Upload</option>
+                <option value="team-logo" disabled={!(form.kind === 'promo' && form.requirementKey === 'follow_team')}>Use Team Logo (team)</option>
+              </select>
+              <input type="file" accept="image/*" disabled={form.imageMode === 'team-logo'} onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
@@ -180,37 +286,72 @@ export default function AwardsAdminPage() {
                 };
                 reader.readAsDataURL(file);
               }} />
-              {form.imageUrl ? (
+              {form.imageMode !== 'team-logo' && form.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={form.imageUrl} alt="preview" className="h-10 w-10 object-cover rounded" />
               ) : null}
+              {form.imageMode === 'team-logo' && (form.kind === 'promo' && form.requirementKey === 'follow_team') ? (
+                (() => {
+                  const selected = teamOptions.find(o => o.value === form.requirementTeamSlug);
+                  const logo = selected?.logoUrl || null;
+                  return logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logo} alt="team logo" className="h-10 w-10 object-cover rounded" />
+                  ) : (
+                    <span className="text-xs text-gray-500">Select a team to preview its logo</span>
+                  );
+                })()
+              ) : null}
             </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="block text-sm text-gray-700">Requirement</label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setRequirementModalOpen(true)}
-                className="mt-1 px-3 py-2 bg-gray-100 rounded hover:bg-gray-200"
-              >{form.requirementKey ? 'Edit requirement' : 'Add requirement'}</button>
-              {form.requirementKey ? (
-                <span className="text-sm text-gray-700">
-                  {form.requirementKey === 'follow_team' ? (
-                    <>Follow team: <span className="font-medium">{form.requirementTeamSlug || '—'}</span></>
-                  ) : '—'}
-                  {form.redirectTeamSlug ? (
-                    <> • Redirect: <span className="font-medium">{form.redirectTeamSlug}</span></>
-                  ) : null}
-                </span>
-              ) : (
-                <span className="text-sm text-gray-500">None</span>
-              )}
+          {(
+            form.kind === 'award' || (form.kind === 'promo' && form.requirementKey === 'follow_series')
+          ) && (
+            <div className="flex flex-col gap-1">
+              <label className="block text-sm text-gray-700">Requirement</label>
+              <div className="grid grid-cols-1 gap-2">
+                <select value={form.requirementKey} onChange={(e) => setForm({ ...form, requirementKey: e.target.value })} className="mt-1 px-3 py-2 border rounded min-w-[16rem]">
+                  <option value="">None</option>
+                  <option value="follow_team">Follow Team</option>
+                  <option value="follow_series">Follow Series</option>
+                </select>
+                {form.requirementKey === 'follow_team' && (
+                  <div className="flex items-center gap-2">
+                    <select value={form.league || ''} onChange={(e) => setForm({ ...form, league: e.target.value })} className="mt-1 px-3 py-2 border rounded min-w-[12rem]">
+                      <option value="">All</option>
+                      {leagueOptions.map((lg) => (
+                        <option key={lg} value={lg}>{lg.toUpperCase()}</option>
+                      ))}
+                    </select>
+                    <select key={form.league || 'all'} value={form.requirementTeamSlug || ''} onChange={(e) => setForm({ ...form, requirementTeamSlug: e.target.value, redirectTeamSlug: e.target.value })} className="mt-1 px-3 py-2 border rounded min-w-[16rem]">
+                      <option value="">Select team</option>
+                      {(form.league ? teamOptions.filter(o => o.league === form.league) : teamOptions).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {form.requirementKey === 'follow_series' && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={form.requirementSeriesId || ''}
+                      onChange={(e) => setForm({ ...form, requirementSeriesId: e.target.value })}
+                      className="mt-1 px-3 py-2 border rounded min-w-[16rem]"
+                    >
+                      <option value="">Select series</option>
+                      {seriesOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    {seriesError ? <span className="text-xs text-red-600">{seriesError}</span> : null}
+                  </div>
+                )}
+                {teamsError ? (
+                  <p className="text-xs text-red-600 mt-1">{teamsError}</p>
+                ) : null}
+              </div>
             </div>
-            {teamsError ? (
-              <p className="text-xs text-red-600 mt-1">{teamsError}</p>
-            ) : null}
-          </div>
+          )}
           <button type="submit" disabled={creating} className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
             {creating ? 'Creating…' : 'Create'}
           </button>
@@ -276,7 +417,33 @@ export default function AwardsAdminPage() {
                         >{copiedCode === a.code ? 'Link Copied' : 'Copy Link'}</button>
                       </div>
                     </td>
-                    <td className="py-2 pr-4 flex gap-2">
+                    <td className="py-2 pr-4 flex items-center gap-2">
+                      <select
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          try { window.__MTT_PREVIEW_STATE__ = v; } catch {}
+                        }}
+                        defaultValue="not_logged_not_following"
+                        className="px-2 py-1 border rounded"
+                        aria-label="Preview State"
+                      >
+                        <option value="not_logged_not_following">not logged in, not following</option>
+                        <option value="logged_not_following">logged in, not following</option>
+                        <option value="logged_following">logged in, following</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          const state = typeof window !== 'undefined' ? window.__MTT_PREVIEW_STATE__ : 'not_logged_not_following';
+                          if (a.kind === 'promo') {
+                            openModal('promoFollow', { code: a.code, previewState: state });
+                            return;
+                          }
+                          openModal('awardClaim', { code: a.code, previewState: state });
+                        }}
+                        className="px-2 py-1 bg-blue-200 rounded hover:bg-blue-300"
+                      >
+                        Show Modal Preview
+                      </button>
                       {a.status !== 'disabled' && (
                         <button onClick={() => setStatus(a.code, 'disabled')} className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">Disable</button>
                       )}
@@ -292,85 +459,8 @@ export default function AwardsAdminPage() {
           </div>
         )}
       </section>
-      <RequirementModal
-        isOpen={requirementModalOpen}
-        onClose={() => setRequirementModalOpen(false)}
-        options={teamOptions}
-        leagues={leagueOptions}
-        initial={{ requirementKey: form.requirementKey, requirementTeamSlug: form.requirementTeamSlug, redirectTeamSlug: form.redirectTeamSlug }}
-        onSave={({ requirementKey, requirementTeamSlug, redirectTeamSlug }) => {
-          setForm((f) => ({ ...f, requirementKey, requirementTeamSlug, redirectTeamSlug }));
-          setRequirementModalOpen(false);
-        }}
-      />
+      {/* RequirementModal removed: inline controls handle requirements */}
     </div>
   );
 }
-
-function RequirementModal({ isOpen, onClose, options, leagues, initial, onSave }) {
-  const [requirementKey, setRequirementKey] = useState(initial?.requirementKey || '');
-  const [league, setLeague] = useState(initial?.league || '');
-  const [requiredTeamSlug, setRequiredTeamSlug] = useState(initial?.requirementTeamSlug || initial?.redirectTeamSlug || '');
-  // When opening with a preselected team, auto-select its league for consistent filtering
-  useEffect(() => {
-    if (!league && requiredTeamSlug) {
-      const match = options.find((o) => o.value === requiredTeamSlug);
-      if (match?.league) setLeague(match.league);
-    }
-  }, [options, requiredTeamSlug, league]);
-  // If league changes and the selected team is not in that league, clear the team selection
-  useEffect(() => {
-    if (!league) return;
-    if (requiredTeamSlug && !options.some((o) => o.value === requiredTeamSlug && o.league === league)) {
-      setRequiredTeamSlug('');
-    }
-  }, [league, options, requiredTeamSlug]);
-  const filtered = useMemo(() => (league ? options.filter(o => o.league === league) : options), [options, league]);
-  return (
-    <GlobalModal isOpen={isOpen} onClose={onClose}>
-      <div className="space-y-3">
-        <h2 className="text-xl font-bold">Set Requirement</h2>
-        <div>
-          <label className="block text-sm text-gray-700">Requirement</label>
-          <select value={requirementKey} onChange={(e) => setRequirementKey(e.target.value)} className="mt-1 px-3 py-2 border rounded min-w-[16rem]">
-            <option value="">None</option>
-            <option value="follow_team">Follow Team</option>
-          </select>
-        </div>
-        {requirementKey === 'follow_team' && (
-          <>
-            <div>
-              <label className="block text-sm text-gray-700">League</label>
-              <select value={league} onChange={(e) => setLeague(e.target.value)} className="mt-1 px-3 py-2 border rounded min-w-[12rem]">
-                <option value="">All</option>
-                {leagues.map((lg) => (
-                  <option key={lg} value={lg}>{lg.toUpperCase()}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">Team</label>
-              <select key={league || 'all'} value={requiredTeamSlug} onChange={(e) => setRequiredTeamSlug(e.target.value)} className="mt-1 px-3 py-2 border rounded min-w-[16rem]">
-                <option value="">Select team</option>
-                {filtered.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-          </>
-        )}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 bg-gray-100 rounded hover:bg-gray-200">Cancel</button>
-          <button
-            onClick={() => {
-              onSave({ requirementKey, requirementTeamSlug: requiredTeamSlug, redirectTeamSlug: requiredTeamSlug });
-            }}
-            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >Save</button>
-        </div>
-      </div>
-    </GlobalModal>
-  );
-}
-
-
+ 

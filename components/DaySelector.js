@@ -3,11 +3,15 @@ import { computeAvailableDays, getDayLabels } from '../lib/dayGrouping';
 
 export default function DaySelector({ selectedDay, onDayChange, packs = [], accent = 'blue' }) {
   const dayLabels = getDayLabels();
-  const daysToShow = ['today', 'yesterday', 'tomorrow'];
+  const daysToShow = ['all', 'today', 'yesterday', 'tomorrow'];
 
-  const getPackCount = (day) => (Array.isArray(packs) ? packs : []).filter((p) => {
-    return (p && (p.eventTime || p.packOpenTime || p.packCloseTime)) && (computeAvailableDays([p]).includes(day));
-  }).length;
+  const getPackCount = (day) => {
+    const list = Array.isArray(packs) ? packs : [];
+    if (day === 'all') return list.length;
+    return list.filter((p) => {
+      return (p && (p.eventTime || p.packOpenTime || p.packCloseTime)) && (computeAvailableDays([p]).includes(day));
+    }).length;
+  };
 
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-3">
@@ -28,12 +32,12 @@ export default function DaySelector({ selectedDay, onDayChange, packs = [], acce
                     onClick={() => onDayChange(day)}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                       isSelected
-                        ? `bg-${accent}-500 text-white shadow-sm`
+                        ? `bg-blue-500 text-white shadow-sm`
                         : 'text-gray-600 hover:text-gray-900 hover:bg-white'
                     }`}
                   >
                     <span className="flex items-center space-x-2">
-                      <span>{dayLabels[day] || day}</span>
+                      <span>{day === 'all' ? 'All' : (dayLabels[day] || day)}</span>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                         isSelected 
                           ? 'bg-white bg-opacity-20' 

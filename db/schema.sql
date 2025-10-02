@@ -359,6 +359,10 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS brand TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS status TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE;
+-- Optional classification of item (e.g., 'gift card', 'memorabilia')
+ALTER TABLE items ADD COLUMN IF NOT EXISTS item_type TEXT;
+-- Optional external product detail URL
+ALTER TABLE items ADD COLUMN IF NOT EXISTS external_url TEXT;
 -- Whether redemption requires shipping address fields
 ALTER TABLE items ADD COLUMN IF NOT EXISTS require_address BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_items_status ON items (status);
@@ -578,7 +582,7 @@ CREATE TABLE IF NOT EXISTS award_cards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
-  tokens INT NOT NULL CHECK (tokens > 0),
+  tokens INT,
   status TEXT NOT NULL DEFAULT 'available', -- 'available' | 'redeemed' | 'disabled'
   redeemed_by_profile_id UUID REFERENCES profiles(id),
   redeemed_at TIMESTAMPTZ,
@@ -599,6 +603,32 @@ ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_team_id UUID REFERE
 -- Series follow requirement (optional): either by UUID or text ID/slug
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_series_id UUID REFERENCES series(id);
 ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS requirement_series_slug TEXT;
+
+-- Distinguish award vs promo cards; enforce tokens constraints by kind
+ALTER TABLE award_cards ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'award';
+-- Remove any prior strict tokens check and re-add a kind-aware constraint
+DO $$ BEGIN
+  BEGIN
+    ALTER TABLE award_cards DROP CONSTRAINT IF EXISTS award_cards_tokens_check;
+  EXCEPTION WHEN undefined_object THEN
+    -- no-op
+  END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN
+    ALTER TABLE award_cards DROP CONSTRAINT IF EXISTS award_cards_tokens_kind_check;
+  EXCEPTION WHEN undefined_object THEN
+    -- no-op
+  END;
+END $$;
+
+ALTER TABLE award_cards
+  ADD CONSTRAINT award_cards_tokens_kind_check CHECK (
+    (kind = 'award' AND tokens IS NOT NULL AND tokens > 0)
+    OR
+    (kind = 'promo' AND (tokens IS NULL OR tokens = 0))
+  );
 
 -- Per-user award redemptions (allow many users, one redemption each)
 CREATE TABLE IF NOT EXISTS award_redemptions (

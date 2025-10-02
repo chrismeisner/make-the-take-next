@@ -46,7 +46,7 @@ export default async function handler(req, res) {
         let selectSql;
         if (hasCodes) {
           selectSql = hasCol
-            ? `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.require_address,
+            ? `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.require_address, i.item_type, i.external_url,
                        COALESCE(ic.total,0) AS inv_total,
                        COALESCE(ic.available,0) AS inv_available,
                        COALESCE(ic.assigned,0) AS inv_assigned,
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
                     WHERE c.item_id = i.id
                  ) ic ON TRUE
                  ORDER BY i.created_at DESC`
-            : `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured,
+            : `SELECT i.item_id, i.title, i.image_url, i.tokens, i.brand, i.description, i.status, i.featured, i.item_type, i.external_url,
                        COALESCE(ic.total,0) AS inv_total,
                        COALESCE(ic.available,0) AS inv_available,
                        COALESCE(ic.assigned,0) AS inv_assigned,
@@ -78,8 +78,8 @@ export default async function handler(req, res) {
                  ORDER BY i.created_at DESC`;
         } else {
           selectSql = hasCol
-            ? 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, require_address FROM items ORDER BY created_at DESC'
-            : 'SELECT item_id, title, image_url, tokens, brand, description, status, featured FROM items ORDER BY created_at DESC';
+            ? 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, require_address, item_type, external_url FROM items ORDER BY created_at DESC'
+            : 'SELECT item_id, title, image_url, tokens, brand, description, status, featured, item_type, external_url FROM items ORDER BY created_at DESC';
         }
         const { rows } = await query(selectSql);
         const items = rows.map(r => ({
@@ -92,6 +92,8 @@ export default async function handler(req, res) {
           itemImage: r.image_url || '',
           featured: Boolean(r.featured),
           requireAddress: hasCol ? Boolean(r.require_address) : false,
+          itemType: r.item_type || '',
+          externalUrl: r.external_url || '',
           inventory: hasCodes ? {
             total: Number(r.inv_total || 0),
             available: Number(r.inv_available || 0),
@@ -122,7 +124,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { itemID, itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured, requireAddress } = req.body || {};
+      const { itemID, itemName, itemBrand, itemDescription, itemTokens, itemStatus, itemImage, featured, requireAddress, itemType, externalUrl } = req.body || {};
       if (!itemName || itemTokens == null || !itemStatus) {
         return res.status(400).json({ success: false, error: 'itemName, itemTokens, and itemStatus are required' });
       }
@@ -135,12 +137,12 @@ export default async function handler(req, res) {
           newItemId = String(itemName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         }
         const insertSql = hasCol
-          ? `INSERT INTO items (item_id, title, image_url, tokens, brand, description, status, featured, require_address)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ? `INSERT INTO items (item_id, title, image_url, tokens, brand, description, status, featured, require_address, item_type, external_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
              ON CONFLICT (item_id) DO NOTHING
              RETURNING item_id`
-          : `INSERT INTO items (item_id, title, image_url, tokens, brand, description, status, featured)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          : `INSERT INTO items (item_id, title, image_url, tokens, brand, description, status, featured, item_type, external_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
              ON CONFLICT (item_id) DO NOTHING
              RETURNING item_id`;
         const params = hasCol
@@ -154,6 +156,8 @@ export default async function handler(req, res) {
               itemStatus || '',
               Boolean(featured),
               Boolean(requireAddress),
+              itemType || null,
+              externalUrl || null,
             ]
           : [
               newItemId,
@@ -164,6 +168,8 @@ export default async function handler(req, res) {
               itemDescription || '',
               itemStatus || '',
               Boolean(featured),
+              itemType || null,
+              externalUrl || null,
             ];
         const { rows } = await query(insertSql, params);
         const createdId = rows[0]?.item_id || newItemId;

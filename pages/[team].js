@@ -17,7 +17,126 @@ export async function getServerSideProps({ params }) {
       LIMIT 1`,
     [team]
   );
-  if (!teamRows.length) return { notFound: true };
+
+  // If no team found, try resolving a series by series_id (acts as slug)
+  if (!teamRows.length) {
+    const { rows: sRows } = await query(
+      `SELECT id, series_id, title, summary, cover_url, status
+         FROM series
+        WHERE LOWER(series_id) = LOWER($1) OR id::text = $1
+        LIMIT 1`,
+      [team]
+    );
+    if (!sRows.length) return { notFound: true };
+
+    const series = {
+      id: sRows[0].id,
+      seriesID: sRows[0].series_id || sRows[0].id,
+      title: sRows[0].title || 'Untitled Series',
+      summary: sRows[0].summary || '',
+      coverUrl: sRows[0].cover_url || null,
+      status: sRows[0].status || null,
+    };
+
+    // Fetch packs for the series
+    const { rows } = await query(
+      `WITH sp AS (
+         SELECT p.id,
+                p.pack_id,
+                p.pack_url,
+                p.title,
+                p.summary,
+                p.prize,
+                p.cover_url,
+                p.league,
+                p.created_at,
+                p.pack_status,
+                p.pack_open_time,
+                p.pack_close_time,
+                p.event_id,
+                e.event_time,
+                e.title AS event_title
+           FROM series s
+           JOIN series_packs spx ON spx.series_id = s.id
+           JOIN packs p ON p.id = spx.pack_id
+      LEFT JOIN events e ON e.id = p.event_id
+          WHERE s.id = $1
+          ORDER BY p.created_at DESC NULLS LAST
+          LIMIT 120
+       )
+       SELECT sp.*,
+              COALESCE(pa.props_count, 0) AS props_count
+         FROM sp
+    LEFT JOIN (
+           SELECT p.pack_id, COUNT(*)::int AS props_count
+             FROM props p
+         GROUP BY p.pack_id
+         ) pa ON pa.pack_id = sp.id`,
+      [series.id]
+    );
+
+    const toIso = (t) => (t ? new Date(t).toISOString() : null);
+    const packsData = rows.map((r) => ({
+      airtableId: r.id,
+      eventId: r.event_id || null,
+      eventTitle: r.event_title || null,
+      propEventRollup: [],
+      packID: r.pack_id || r.id,
+      packTitle: r.title || 'Untitled Pack',
+      packURL: r.pack_url || '',
+      packCover: r.cover_url || null,
+      packPrize: r.prize || '',
+      prizeSummary: '',
+      packSummary: r.summary || '',
+      packType: '',
+      packLeague: r.league || null,
+      packStatus: r.pack_status || '',
+      packOpenTime: toIso(r.pack_open_time) || null,
+      packCloseTime: r.pack_close_time || null,
+      eventTime: toIso(r.event_time) || null,
+      firstPlace: '',
+      createdAt: toIso(r.created_at) || null,
+      propsCount: Number(r.props_count || 0),
+      winnerProfileID: null,
+      packWinnerRecordIds: [],
+      takeCount: 0,
+      userTakesCount: 0,
+    }));
+
+    const parseToMs = (val) => {
+      if (val == null) return NaN;
+      if (typeof val === 'number') return Number.isFinite(val) ? val : NaN;
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (/^\d{11,}$/.test(trimmed)) {
+          const n = Number(trimmed);
+          return Number.isFinite(n) ? n : NaN;
+        }
+        const ms = new Date(trimmed).getTime();
+        return Number.isFinite(ms) ? ms : NaN;
+      }
+      try {
+        const ms = new Date(val).getTime();
+        return Number.isFinite(ms) ? ms : NaN;
+      } catch { return NaN; }
+    };
+    const getCloseMs = (p) => {
+      const ms = parseToMs(p?.packCloseTime);
+      return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+    };
+    const getCreatedMs = (p) => {
+      const ms = parseToMs(p?.createdAt);
+      return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+    };
+    const sortedPacks = packsData.slice().sort((a, b) => {
+      const closeDiff = getCloseMs(a) - getCloseMs(b);
+      if (closeDiff !== 0) return closeDiff;
+      return getCreatedMs(b) - getCreatedMs(a);
+    });
+
+    return { props: { series, packsData: sortedPacks, isSeries: true } };
+  }
+
   const teamData = {
     id: teamRows[0].id,
     teamID: teamRows[0].team_id || teamRows[0].id,
@@ -28,7 +147,7 @@ export async function getServerSideProps({ params }) {
     teamLogoURL: teamRows[0].logo_url || null,
   };
 
-  // Fetch packs associated with this team via event home/away relations
+  // Fetch packs associated with this team and enrich to match homepage preview data
   const { rows } = await query(
     `WITH sp AS (
        SELECT p.id,
@@ -46,29 +165,178 @@ export async function getServerSideProps({ params }) {
               p.event_id,
               e.event_time,
               e.title AS event_title,
-              ht.team_slug AS home_team_slug,
-              at.team_slug AS away_team_slug,
-              ht.name AS home_team_name,
-              at.name AS away_team_name
+              p.creator_profile_id
          FROM packs p
     LEFT JOIN events e ON e.id = p.event_id
-    LEFT JOIN teams ht ON e.home_team_id = ht.id
-    LEFT JOIN teams at ON e.away_team_id = at.id
-        WHERE (
-          (LOWER(ht.team_slug) = LOWER($1) AND LOWER(COALESCE(ht.league, '')) = LOWER($2))
-          OR (LOWER(at.team_slug) = LOWER($1) AND LOWER(COALESCE(at.league, '')) = LOWER($2))
+        WHERE EXISTS (
+          SELECT 1 FROM (
+            SELECT e.home_team_id AS team_id, p.id AS pack_id
+              FROM packs p
+              JOIN events e ON e.id = p.event_id
+            UNION ALL
+            SELECT e.away_team_id AS team_id, p.id AS pack_id
+              FROM packs p
+              JOIN events e ON e.id = p.event_id
+            UNION ALL
+            SELECT e.home_team_id AS team_id, pe.pack_id AS pack_id
+              FROM packs_events pe
+              JOIN events e ON e.id = pe.event_id
+            UNION ALL
+            SELECT e.away_team_id AS team_id, pe.pack_id AS pack_id
+              FROM packs_events pe
+              JOIN events e ON e.id = pe.event_id
+            UNION ALL
+            SELECT pt.team_id AS team_id, pr.pack_id AS pack_id
+              FROM props pr
+              JOIN props_teams pt ON pt.prop_id = pr.id
+          ) link
+          JOIN teams t ON t.id = link.team_id
+         WHERE link.pack_id = p.id AND LOWER(COALESCE(t.team_slug,'')) = LOWER($1) AND LOWER(COALESCE(t.league,'')) = LOWER($2)
         )
         ORDER BY p.created_at DESC NULLS LAST
         LIMIT 120
+     ),
+     events_for_pack AS (
+       SELECT sp.id AS pack_id,
+              json_agg(
+                json_build_object(
+                  'id', e.id::text,
+                  'espnGameID', e.espn_game_id,
+                  'league', e.league,
+                  'title', e.title,
+                  'eventTime', COALESCE(e.event_time::text, NULL)
+                )
+                ORDER BY e.event_time ASC NULLS LAST
+              ) AS events
+         FROM sp
+         LEFT JOIN (
+           SELECT DISTINCT pe.pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+             FROM packs_events pe
+             JOIN events e ON e.id = pe.event_id
+           UNION
+           SELECT DISTINCT p.id AS pack_id, e.id, e.espn_game_id, e.league, e.title, e.event_time
+             FROM packs p
+             JOIN events e ON e.id = p.event_id
+         ) ev ON ev.pack_id = sp.id
+         LEFT JOIN events e ON e.id = ev.id
+        GROUP BY sp.id
+     ),
+     series_for_pack AS (
+       SELECT sp.id AS pack_id,
+              json_agg(DISTINCT jsonb_build_object(
+                'id', s.id,
+                'seriesId', s.series_id,
+                'title', s.title
+              )) FILTER (WHERE s.id IS NOT NULL) AS series
+         FROM sp
+         LEFT JOIN series_packs spx ON spx.pack_id = sp.id
+         LEFT JOIN series s ON s.id = spx.series_id
+        GROUP BY sp.id
+     ),
+     teams_for_pack AS (
+       SELECT sp.id AS pack_id,
+              json_agg(DISTINCT jsonb_build_object(
+                'slug', t.team_slug,
+                'name', t.name,
+                'logoUrl', t.logo_url
+              )) FILTER (WHERE t.team_slug IS NOT NULL) AS teams
+         FROM sp
+         LEFT JOIN (
+           SELECT p.id AS pack_id, e.home_team_id AS team_id
+             FROM packs p
+             JOIN events e ON e.id = p.event_id
+           UNION ALL
+           SELECT p.id AS pack_id, e.away_team_id AS team_id
+             FROM packs p
+             JOIN events e ON e.id = p.event_id
+           UNION ALL
+           SELECT pe.pack_id AS pack_id, e.home_team_id AS team_id
+             FROM packs_events pe
+             JOIN events e ON e.id = pe.event_id
+           UNION ALL
+           SELECT pe.pack_id AS pack_id, e.away_team_id AS team_id
+             FROM packs_events pe
+             JOIN events e ON e.id = pe.event_id
+           UNION ALL
+           SELECT pr.pack_id AS pack_id, pt.team_id
+             FROM props pr
+             JOIN props_teams pt ON pt.prop_id = pr.id
+         ) links ON links.pack_id = sp.id
+         LEFT JOIN teams t ON t.id = links.team_id
+        GROUP BY sp.id
+     ),
+     props_agg AS (
+       SELECT p.pack_id,
+              COUNT(*)::int AS props_count,
+              MIN(p.open_time) AS open_time,
+              MAX(p.close_time) AS close_time
+         FROM props p
+         JOIN sp ON sp.id = p.pack_id
+        GROUP BY p.pack_id
+     ),
+     takes_agg AS (
+       SELECT t.pack_id,
+              COUNT(*) FILTER (WHERE t.take_status = 'latest')::int AS total_count,
+              0::int AS user_count -- no SSR user on root team route
+         FROM takes t
+         JOIN sp ON sp.id = t.pack_id
+        GROUP BY t.pack_id
+     ),
+     latest_takes AS (
+       SELECT t.*
+         FROM takes t
+         JOIN sp ON sp.id = t.pack_id
+        WHERE t.take_status = 'latest'
+     ),
+     take_points AS (
+       SELECT lt.pack_id,
+              lt.take_mobile,
+              SUM(COALESCE(lt.take_pts, 0))::int AS points
+         FROM latest_takes lt
+        GROUP BY lt.pack_id, lt.take_mobile
+     ),
+     top_taker AS (
+       SELECT tp.pack_id,
+              tp.take_mobile,
+              tp.points,
+              ROW_NUMBER() OVER (PARTITION BY tp.pack_id ORDER BY tp.points DESC NULLS LAST) AS rn
+         FROM take_points tp
      )
-     SELECT sp.*,
-            COALESCE(pa.props_count, 0) AS props_count
+     SELECT sp.id,
+            sp.pack_id,
+            sp.pack_url,
+            sp.title,
+            sp.summary,
+            sp.prize,
+            sp.cover_url,
+            sp.league,
+            sp.created_at,
+            sp.pack_status,
+            COALESCE(sp.pack_open_time::text, pa.open_time::text) AS pack_open_time,
+            COALESCE(sp.pack_close_time::text, pa.close_time::text) AS pack_close_time,
+            sp.event_id,
+            sp.event_time::text AS event_time,
+            sp.event_title,
+            sp.creator_profile_id,
+            pr.profile_id AS creator_profile_handle,
+            efp.events AS events,
+            tfp.teams AS linked_teams,
+            sfp.series AS series,
+            COALESCE(pa.props_count, 0) AS props_count,
+            COALESCE(ta.total_count, 0) AS total_take_count,
+            COALESCE(ta.user_count, 0) AS user_count,
+            CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN tp.points ELSE NULL END AS winner_points,
+            CASE WHEN LOWER(COALESCE(sp.pack_status,'')) = 'graded' THEN prf.profile_id ELSE NULL END AS winner_profile_id
        FROM sp
-  LEFT JOIN (
-         SELECT p.pack_id, COUNT(*)::int AS props_count
-           FROM props p
-       GROUP BY p.pack_id
-       ) pa ON pa.pack_id = sp.id`,
+  LEFT JOIN props_agg pa ON pa.pack_id = sp.id
+  LEFT JOIN takes_agg ta ON ta.pack_id = sp.id
+  LEFT JOIN top_taker tt ON tt.pack_id = sp.id AND tt.rn = 1
+  LEFT JOIN profiles prf ON prf.mobile_e164 = tt.take_mobile
+  LEFT JOIN take_points tp ON tp.pack_id = tt.pack_id AND tp.take_mobile = tt.take_mobile
+  LEFT JOIN events_for_pack efp ON efp.pack_id = sp.id
+  LEFT JOIN teams_for_pack tfp ON tfp.pack_id = sp.id
+  LEFT JOIN series_for_pack sfp ON sfp.pack_id = sp.id
+  LEFT JOIN profiles pr ON pr.id = sp.creator_profile_id`,
     [team, teamData.teamLeague]
   );
 
@@ -89,19 +357,33 @@ export async function getServerSideProps({ params }) {
     packLeague: r.league || null,
     packStatus: r.pack_status || '',
     packOpenTime: toIso(r.pack_open_time) || null,
-    packCloseTime: r.pack_close_time || null,
+    packCloseTime: toIso(r.pack_close_time) || null,
     eventTime: toIso(r.event_time) || null,
     firstPlace: '',
     createdAt: toIso(r.created_at) || null,
     propsCount: Number(r.props_count || 0),
-    winnerProfileID: null,
+    winnerProfileID: r.winner_profile_id || null,
+    winnerPoints: (r.winner_points == null ? null : Number(r.winner_points)),
     packWinnerRecordIds: [],
-    takeCount: 0,
-    userTakesCount: 0,
-    homeTeamSlug: r.home_team_slug || null,
-    awayTeamSlug: r.away_team_slug || null,
-    homeTeamName: r.home_team_name || null,
-    awayTeamName: r.away_team_name || null,
+    takeCount: Number(r.total_take_count || 0),
+    userTakesCount: Number(r.user_count || 0),
+    events: Array.isArray(r.events)
+      ? r.events.map((e) => ({
+          id: e.id || null,
+          espnGameID: e.espnGameID || null,
+          league: e.league || null,
+          title: e.title || null,
+          eventTime: e.eventTime || null,
+        })) : [],
+    linkedTeams: Array.isArray(r.linked_teams)
+      ? r.linked_teams.map((t) => ({ slug: t.slug || null, name: t.name || null, logoUrl: t.logoUrl || null }))
+          .filter((t) => t.slug)
+      : [],
+    creatorProfileId: r.creator_profile_id || null,
+    creatorProfileHandle: r.creator_profile_handle || null,
+    seriesList: Array.isArray(r.series)
+      ? r.series.map((s) => ({ id: s.id || null, series_id: s.seriesId || null, title: s.title || null }))
+      : [],
   }));
 
   // Show all packs for the team; keep simple sorting by close time then created
@@ -139,61 +421,11 @@ export async function getServerSideProps({ params }) {
     return getCreatedMs(b) - getCreatedMs(a);
   });
 
-  // Build team leaderboard aggregated from takes linked to this team's packs/events/props
-  const { rows: lbRows } = await query(
-    `WITH filtered_takes AS (
-       SELECT t.take_mobile,
-              t.take_result,
-              COALESCE(t.take_pts, 0) AS take_pts
-         FROM takes t
-         JOIN props pr ON pr.id = t.prop_id
-         LEFT JOIN packs pk ON pk.id = COALESCE(t.pack_id, pr.pack_id)
-         LEFT JOIN events ev_pk ON ev_pk.id = pk.event_id
-         LEFT JOIN events ev_pr ON ev_pr.id = pr.event_id
-        WHERE t.take_status = 'latest'
-          AND EXISTS (
-            SELECT 1 FROM props_teams pt
-             WHERE pt.prop_id = pr.id AND pt.team_id = $1
-          )
-     ),
-     agg AS (
-       SELECT take_mobile,
-              COUNT(*)::int AS takes,
-              SUM(CASE WHEN take_result = 'won'  THEN 1 ELSE 0 END)::int AS won,
-              SUM(CASE WHEN take_result = 'lost' THEN 1 ELSE 0 END)::int AS lost,
-              SUM(CASE WHEN take_result = 'push' THEN 1 ELSE 0 END)::int AS pushed,
-              SUM(take_pts)::int AS points
-         FROM filtered_takes
-        GROUP BY take_mobile
-     )
-     SELECT a.take_mobile,
-            a.takes,
-            a.won,
-            a.lost,
-            a.pushed,
-            a.points,
-            pr.profile_id
-       FROM agg a
-       LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
-      ORDER BY a.points DESC, a.takes DESC
-      LIMIT 200`,
-    [teamData.id]
-  );
-
-  const leaderboard = lbRows.map((r) => ({
-    phone: r.take_mobile,
-    takes: Number(r.takes || 0),
-    points: Number(r.points || 0),
-    won: Number(r.won || 0),
-    lost: Number(r.lost || 0),
-    pushed: Number(r.pushed || 0),
-    profileID: r.profile_id || null,
-  }));
-
-  return { props: { team: teamData, packsData: sortedTeamPacks, leaderboard } };
+  // Leaderboard is now provided via client API using centralized DAL; no SSR aggregation here
+  return { props: { team: teamData, packsData: sortedTeamPacks, isSeries: false } };
 }
 
-export default function TeamRootPage({ team, packsData, leaderboard }) {
+export default function TeamRootPage({ team, series, packsData, isSeries }) {
   const { openModal } = useModal();
 
   // Show Pack Active modal if a team-related pack is open/active
@@ -228,6 +460,30 @@ export default function TeamRootPage({ team, packsData, leaderboard }) {
     } catch {}
   }, [packsData, openModal]);
 
+  if (isSeries) {
+    return (
+      <div className="bg-white text-gray-900">
+        <Head>
+          <title>{series.title} | Make the Take</title>
+        </Head>
+        <div className="p-4 w-full">
+          <PackFeedScaffold
+            packs={packsData}
+            accent="blue"
+            title={series.title}
+            subtitle={series.summary || 'Series feed'}
+            headerLeft={series.coverUrl ? (
+              <img src={series.coverUrl} alt={series.title} className="w-12 h-12 rounded" />
+            ) : null}
+            hideLeagueChips={true}
+            initialDay='today'
+            sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} />}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white text-gray-900">
       <Head>
@@ -246,6 +502,7 @@ export default function TeamRootPage({ team, packsData, leaderboard }) {
           forceTeamSlugFilter={team.teamSlug}
           hideLeagueChips={true}
           initialDay='today'
+          leaderboardVariant="allTime"
           sidebarBelow={<MarketplacePreview limit={1} title="Marketplace" variant="sidebar" preferFeatured={true} showSeeAll={true} />}
         />
       </div>

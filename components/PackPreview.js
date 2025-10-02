@@ -14,7 +14,9 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 
   // Number of props assumed to be provided by pack.propsCount
   const propsCount = pack.propsCount || 0;
-  const takeCount = pack.takeCount || 0; // deprecated in UI
+  // Total fan takes across all props in this pack
+  const takeCount = (typeof pack.totalTakeCount === 'number' ? pack.totalTakeCount
+    : (typeof pack.takeCount === 'number' ? pack.takeCount : 0));
   // User-specific verified take count from API
   const [userTakesCount, setUserTakesCount] = useState(pack.userTakesCount || 0);
   // Winner: prefer lookup winnerProfileID, fallback to first packWinner linked record id (if your UI uses it)
@@ -28,6 +30,17 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
   const [willNotify, setWillNotify] = useState(false);
   const [userLeagues, setUserLeagues] = useState([]);
   const [notifyLoading, setNotifyLoading] = useState(false);
+
+  // Simple in-memory cache for progress lookups (per tab lifetime)
+  // Keyed by packID => completedCount
+  if (typeof window !== 'undefined' && !window.__MTT_PROGRESS_CACHE__) {
+    Object.defineProperty(window, '__MTT_PROGRESS_CACHE__', {
+      value: new Map(),
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  }
 
   // Derive sorted, de-duplicated event times (ms) from rollup or single string
   function parseEventTimesToMs(input) {
@@ -92,6 +105,9 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
       ? earliestEventMs
       : (nextEventMs || earliestEventMs));
   
+  // Show winner overlay if graded and winner is known
+  const showWinnerOverlay = statusNorm === 'graded' && !!winnerID;
+  
   // Derive a simple status chip for display
   const statusInfo = (() => {
     const s = String(pack.packStatus || '').toLowerCase().replace(/\s+/g, '-');
@@ -151,13 +167,27 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 	coverUrl = null;
   }
 
-  // Client-side: fetch accurate user progress if logged in
+  // Client-side: fetch accurate user progress if logged in, with per-tab cache to avoid duplicate requests
   useEffect(() => {
     if (!session || !packID) return;
     let isActive = true;
     const controller = new AbortController();
     async function loadProgress() {
       try {
+        // Short-circuit if server provided an explicit count
+        if (Number.isFinite(pack.userTakesCount)) {
+          if (isActive) setUserTakesCount(Number(pack.userTakesCount));
+          return;
+        }
+        // Check cache
+        try {
+          const cache = window.__MTT_PROGRESS_CACHE__;
+          if (cache && cache.has(packID)) {
+            if (isActive) setUserTakesCount(Number(cache.get(packID)) || 0);
+            return;
+          }
+        } catch {}
+
         const res = await fetch(`/api/userPackProgress?packID=${encodeURIComponent(packID)}`, { signal: controller.signal });
         if (!res.ok) return;
         const json = await res.json();
@@ -165,6 +195,10 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
         if (isActive) {
           const completed = Number(json.completedCount || 0);
           setUserTakesCount(completed);
+          try {
+            const cache = window.__MTT_PROGRESS_CACHE__;
+            if (cache) cache.set(packID, completed);
+          } catch {}
         }
       } catch (err) {
         // ignore fetch aborts
@@ -346,24 +380,42 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					<span>No Cover</span>
 				</div>
 			)}
+            {showWinnerOverlay && (
+            	<div className="absolute inset-0 pointer-events-none">
+            		<div className="absolute bottom-0 left-0 right-0 p-2">
+            			<div className="inline-flex items-center gap-1 bg-black/60 text-white text-xs font-medium px-2 py-1 rounded">
+            				<span aria-hidden>🏆</span>
+            				<span>Winner: @{winnerID}</span>
+            				{Number.isFinite(winnerPoints) ? (
+            					<span className="opacity-90">• {winnerPoints} pts</span>
+            				) : null}
+            			</div>
+            		</div>
+            	</div>
+            )}
 		</div>
 		<div className="order-2 md:order-1 p-3 md:p-4 flex-1 md:basis-2/3">
 			<h2 className="text-base md:text-lg font-semibold">
 				{pack.packTitle || "Untitled Pack"}
 			</h2>
-            {Array.isArray(pack.seriesList) && pack.seriesList.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {pack.seriesList.slice(0, 3).map((s, idx) => (
-                    <span
-                      key={(s.id || s.series_id || String(idx))}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-300 text-xs text-indigo-800 bg-indigo-50"
-                    >
-                      <span>Series:</span>
-                      <span className="font-medium">{s.title || s.series_id || 'Untitled'}</span>
-                    </span>
-                  ))}
-                </div>
-            )}
+				{Array.isArray(pack.seriesList) && pack.seriesList.length > 0 && (
+					<div className="mt-1 flex flex-wrap gap-1">
+						{pack.seriesList.slice(0, 3).map((s, idx) => (
+							<span
+								key={(s.id || s.series_id || String(idx))}
+								role="link"
+								tabIndex={0}
+								onClick={(e) => { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) router.push(`/series/${encodeURIComponent(sid)}`); }}
+								onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) router.push(`/series/${encodeURIComponent(sid)}`); } }}
+								className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-300 text-xs text-indigo-800 bg-indigo-50 hover:bg-indigo-100 cursor-pointer"
+								aria-label={`View series ${s?.title || s?.series_id || 'Series'}`}
+							>
+								<span>Series:</span>
+								<span className="font-medium">{s.title || s.series_id || 'Untitled'}</span>
+							</span>
+						))}
+					</div>
+				)}
 			{(pack?.creatorProfileHandle || pack?.creatorProfileId) && (
 				<div className="mt-0.5 text-xs text-gray-500">
 					<span>by </span>
@@ -458,20 +510,26 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 					</div>
 				);
 			})()}
-			{propsCount > 0 && (
-				<div className="mt-1 text-xs md:text-sm text-gray-700">
-					{session?.user && userTakesCount > 0 ? (
-						<span className="inline-flex items-center gap-1">
-							<span className="font-medium text-green-600">{userTakesCount}</span>
-							<span>of</span>
-							<span>{propsCount}</span>
-							<span>props completed</span>
-						</span>
-					) : (
-						<span>{propsCount} {propsCount === 1 ? 'Prop' : 'Props'}</span>
-					)}
-				</div>
-			)}
+            {propsCount > 0 && (
+                <div className="mt-1 text-xs md:text-sm text-gray-700">
+                    {session?.user && userTakesCount > 0 ? (
+                        <span className="inline-flex items-center gap-1">
+                            <span className="font-medium text-green-600">{userTakesCount}</span>
+                            <span>of</span>
+                            <span>{propsCount}</span>
+                            <span>props completed</span>
+                        </span>
+                    ) : (
+                        <span>{propsCount} {propsCount === 1 ? 'Prop' : 'Props'}</span>
+                    )}
+                </div>
+            )}
+            <div className="mt-1 text-xs md:text-sm text-gray-700">
+                <span className="inline-flex items-center gap-1">
+                    <span aria-hidden>👥</span>
+                    <span>{(Number.isFinite(takeCount) ? takeCount : 0).toLocaleString()} {takeCount === 1 ? 'fan take' : 'fan takes'}</span>
+                </span>
+            </div>
 				{isOpenLike && (
 				<div className="mt-1 text-sm text-gray-700">
 						<span>🏟️ </span><Countdown targetTime={pillEventTime} />
@@ -579,6 +637,15 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 
 	// Stable top-level wrapper to avoid SSR/CSR tag mismatches
 	const wrapperClasses = `group w-full max-w-full border rounded shadow-sm bg-white overflow-hidden p-2 block text-black ${!isComingSoon ? 'transition-shadow hover:shadow-md' : ''} ${className}`;
+  const linkHref = targetHref || '#';
+  const onAnchorClick = (e) => {
+    try {
+      if (isComingSoon || disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    } catch {}
+  };
 
 	return (
 		<div
@@ -587,17 +654,14 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			aria-disabled={isComingSoon || disabled}
 			className={wrapperClasses}
 		>
-			{isComingSoon ? (
-				content
-			) : (
-				<Link
-					href={targetHref}
-					className="block"
-					aria-disabled={disabled}
-				>
-					{content}
-				</Link>
-			)}
+			<Link
+				href={linkHref}
+				className={`block ${isComingSoon || disabled ? 'cursor-default' : ''}`}
+				aria-disabled={isComingSoon || disabled}
+				onClick={onAnchorClick}
+			>
+				{content}
+			</Link>
 		</div>
 	);
 }

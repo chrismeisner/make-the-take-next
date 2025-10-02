@@ -1,8 +1,8 @@
 // File: pages/api/leaderboard/day.js
-import { query } from '../../../lib/db/postgres';
+import { getLeaderboard } from '../../../lib/dal/postgres/leaderboard';
 
 export default async function handler(req, res) {
-  const { day, limit: limitParam, packIds: packIdsParam } = req.query;
+  const { day, limit: limitParam, packIds: packIdsParam, teamSlug: teamSlugParam } = req.query;
 
   try {
     const limit = Math.min(Number.parseInt(limitParam || '100', 10), 500);
@@ -75,82 +75,14 @@ export default async function handler(req, res) {
       });
     } catch {}
 
-    const { rows } = await query(
-      `WITH pack_events AS (
-         SELECT p.id AS pack_id,
-                e.event_time
-           FROM packs p
-           JOIN events e ON e.id = p.event_id
-         UNION ALL
-         SELECT pe.pack_id,
-                e.event_time
-           FROM packs_events pe
-           JOIN events e ON e.id = pe.event_id
-       ),
-       day_packs AS (
-         SELECT DISTINCT p.id,
-                p.pack_id,
-                p.pack_url,
-                p.title,
-                p.pack_status
-           FROM packs p
-           JOIN pack_events ev ON ev.pack_id = p.id
-          WHERE (ev.event_time::date >= $1::date AND ev.event_time::date < $2::date)
-           AND (
-             $4::boolean = FALSE
-             OR p.id::text = ANY($5::text[])
-             OR p.pack_id::text = ANY($5::text[])
-           )
-            AND p.pack_status IN ('active','open','coming-soon','draft','live','closed','pending-grade','graded')
-       ),
-       day_props AS (
-         SELECT pr.id,
-                pr.prop_id,
-                pr.pack_id
-           FROM props pr
-           JOIN day_packs dp ON dp.id = pr.pack_id
-       ),
-       filtered_takes AS (
-         SELECT t.take_mobile,
-                t.take_result,
-                COALESCE(t.take_pts, 0) AS take_pts
-           FROM takes t
-           JOIN day_props dp ON dp.prop_id = t.prop_id_text
-          WHERE t.take_status = 'latest'
-       ),
-       agg AS (
-         SELECT take_mobile,
-                COUNT(*)::int AS takes,
-                SUM(CASE WHEN take_result = 'won'  THEN 1 ELSE 0 END)::int AS won,
-                SUM(CASE WHEN take_result = 'lost' THEN 1 ELSE 0 END)::int AS lost,
-                SUM(CASE WHEN take_result = 'push' THEN 1 ELSE 0 END)::int AS pushed,
-                SUM(take_pts)::int AS points
-           FROM filtered_takes
-          GROUP BY take_mobile
-       )
-       SELECT a.take_mobile,
-              a.takes,
-              a.won,
-              a.lost,
-              a.pushed,
-              a.points,
-              pr.profile_id
-         FROM agg a
-         LEFT JOIN profiles pr ON pr.mobile_e164 = a.take_mobile
-        ORDER BY a.points DESC, a.takes DESC
-        LIMIT $3`,
-      [startDate, endDate, limit, usePackFilter, usePackFilter ? packIds : []]
-    );
-
-    const leaderboard = rows.map((r) => ({
-      phone: r.take_mobile,
-      profileID: r.profile_id,
-      count: r.takes,
-      points: r.points,
-      won: r.won,
-      lost: r.lost,
-      pushed: r.pushed,
-    }));
+    const teamSlug = (teamSlugParam || '').toString().trim();
+    const leaderboard = await getLeaderboard({
+      teamSlug,
+      packIds,
+      startDate,
+      endDate,
+      limit,
+    });
 
     try {
       // eslint-disable-next-line no-console

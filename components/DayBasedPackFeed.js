@@ -78,6 +78,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
 
   const getGroupTitle = (groupKey) => {
     const titles = {
+      all: 'All Packs',
       today: selectedDate ? "Packs on selected date" : "Today's Packs",
       yesterday: "Yesterday's Packs",
       tomorrow: "Tomorrow's Packs",
@@ -87,6 +88,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
 
   const getGroupDescription = (groupKey) => {
     const descriptions = {
+      all: 'All packs regardless of date',
       today: selectedDate ? "Packs with events on the selected date" : "Packs with events happening today",
       yesterday: "Packs with events that happened yesterday",
       tomorrow: "Packs with events happening tomorrow",
@@ -94,9 +96,11 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
     return descriptions[groupKey] || '';
   };
 
-  // Show only the selected day's packs
+  // Show only the selected day's packs, or all
   const selectedDayPacks = useMemo(() => {
-    const packs = groupedPacks[selectedDay] || [];
+    const selectedList = selectedDay === 'all'
+      ? (Array.isArray(packs) ? packs : [])
+      : (groupedPacks[selectedDay] || []);
     
     // Sort packs based on sortBy setting
     const parseToMs = (val) => {
@@ -129,7 +133,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
       return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
     };
 
-    const arr = Array.isArray(packs) ? packs.slice() : [];
+    const arr = Array.isArray(selectedList) ? selectedList.slice() : [];
     switch (sortBy) {
       case 'close-asc':
         return arr.sort((a, b) => getCloseMs(a) - getCloseMs(b));
@@ -146,7 +150,7 @@ export default function DayBasedPackFeed({ packs = [], selectedDay = 'today', se
       default:
         return arr;
     }
-  }, [groupedPacks, selectedDay, sortBy]);
+  }, [groupedPacks, selectedDay, sortBy, packs]);
 
   return (
     <div className="space-y-4">

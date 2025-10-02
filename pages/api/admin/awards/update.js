@@ -14,7 +14,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: 'Auth check failed' });
   }
 
-  const { code, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesId, requirementSeriesSlug } = req.body || {};
+  const { code, kind, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesId, requirementSeriesSlug } = req.body || {};
+  if (typeof kind === 'string') { updates.push(`kind = $${i++}`); params.push(kind); }
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
   const updates = [];
   const params = [];

@@ -32,6 +32,9 @@ export default function ProfilePage() {
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [notifTeams, setNotifTeams] = useState([]);
   const [toastMessage, setToastMessage] = useState("");
+  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false);
+  const [unfollowTarget, setUnfollowTarget] = useState(null);
+  const [unfollowing, setUnfollowing] = useState(false);
 
   // Fetch the profile data
   useEffect(() => {
@@ -350,6 +353,15 @@ export default function ProfilePage() {
                   <span key={t.id} className="inline-flex items-center gap-2 border rounded px-2 py-1 text-xs bg-gray-50">
                     <span className="uppercase text-gray-600">{t.league}</span>
                     <span className="text-gray-800">{t.abv || t.teamSlug || t.name}</span>
+                    {isOwnProfile && (
+                      <button
+                        type="button"
+                        className="ml-1 text-red-600 hover:text-red-700 underline"
+                        onClick={() => { setUnfollowTarget(t); setShowUnfollowConfirm(true); }}
+                      >
+                        Unfollow
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -696,6 +708,54 @@ export default function ProfilePage() {
 		</Link>
 	  </p>
       <Toast message={toastMessage} onClose={() => setToastMessage("")} />
+      {showUnfollowConfirm && unfollowTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded p-4 w-80">
+            <h4 className="text-lg font-bold mb-2">Unfollow team?</h4>
+            <p className="text-sm text-gray-700 mb-4">
+              Are you sure you want to unfollow {unfollowTarget.abv || unfollowTarget.teamSlug || unfollowTarget.name}?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 border rounded text-gray-700 hover:bg-gray-50"
+                onClick={() => { setShowUnfollowConfirm(false); setUnfollowTarget(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded"
+                disabled={unfollowing}
+                onClick={async () => {
+                  try {
+                    setUnfollowing(true);
+                    const slug = String(unfollowTarget.teamSlug || unfollowTarget.abv || '').trim();
+                    const res = await fetch('/api/unfollow/team', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ teamSlug: slug })
+                    });
+                    const data = await res.json();
+                    if (!data?.success) throw new Error(data?.error || 'Unfollow failed');
+                    setNotifTeams((prev) => prev.filter((x) => x.id !== unfollowTarget.id));
+                    setToastMessage('Unfollowed');
+                  } catch (e) {
+                    try { console.error('Unfollow error', e); } catch {}
+                    setToastMessage('Failed to unfollow');
+                  } finally {
+                    setUnfollowing(false);
+                    setShowUnfollowConfirm(false);
+                    setUnfollowTarget(null);
+                  }
+                }}
+              >
+                {unfollowing ? 'Unfollowing…' : 'Unfollow'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageContainer>
   );
 }

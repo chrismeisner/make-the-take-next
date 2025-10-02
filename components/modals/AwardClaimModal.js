@@ -3,7 +3,7 @@ import { useSession } from 'next-auth/react';
 import GlobalModal from './GlobalModal';
 import { useModal } from '../../contexts/ModalContext';
 
-export default function AwardClaimModal({ isOpen, onClose, code }) {
+export default function AwardClaimModal({ isOpen, onClose, code, previewState = '' }) {
   const { data: session } = useSession();
   const { openModal } = useModal();
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,14 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   useEffect(() => {
     let mounted = true;
     async function check() {
-      if (!isOpen || !code || !session?.user) return;
+      // Skip check if preview simulates not logged in
+      if (!isOpen || !code) return;
+      const isPreviewNotLogged = previewState === 'not_logged_not_following';
+      if (isPreviewNotLogged) return;
+      // Simulate logged in for preview when needed by short-circuiting session
+      if (!session?.user && (previewState === 'logged_not_following' || previewState === 'logged_following')) {
+        return; // don't fetch check since there's no real session; rely on UI state below
+      }
       setChecking(true);
       try {
         const res = await fetch(`/api/awards/check?code=${encodeURIComponent(code)}`);
@@ -63,14 +70,23 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
     }
     check();
     return () => { mounted = false; };
-  }, [isOpen, code, session, preview, openModal]);
+  }, [isOpen, code, session, preview, openModal, previewState]);
 
   // Fetch follow status for required team when preview available and user logged in
   useEffect(() => {
     let mounted = true;
     async function fetchFollow() {
-      if (!isOpen || !preview?.requirementTeamSlug || !session?.user) {
+      const isPreviewNotLogged = previewState === 'not_logged_not_following';
+      if (!isOpen || !preview?.requirementTeamSlug || (!session?.user && !previewState) || isPreviewNotLogged) {
         setFollowStatus(null);
+        return;
+      }
+      if (previewState === 'logged_following') {
+        setFollowStatus({ followsTeam: true });
+        return;
+      }
+      if (previewState === 'logged_not_following') {
+        setFollowStatus({ followsTeam: false });
         return;
       }
       try {
@@ -85,7 +101,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
     }
     fetchFollow();
     return () => { mounted = false; };
-  }, [isOpen, preview, session]);
+  }, [isOpen, preview, session, previewState]);
 
   const handleClaim = useCallback(async () => {
     if (!preview || preview.status !== 'available') return;
@@ -285,6 +301,10 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
               </div>
             ) : null}
             {(() => {
+              // Hide token messaging entirely for follow-team flows
+              if (preview.requirementKey === 'follow_team') {
+                return null;
+              }
               const team = preview.requirementTeamName || preview.requirementTeamSlug;
               const needsFollowUnknown = preview.requirementKey === 'follow_team' && !session?.user;
               const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;

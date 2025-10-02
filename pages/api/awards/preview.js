@@ -35,7 +35,65 @@ export default async function handler(req, res) {
         requirementTeamRouteSlug = rows?.[0]?.team_slug || null;
       }
     } catch {}
-    return res.status(200).json({ success: true, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: rec.image_url || null, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamId: rec.requirement_team_id || null, requirementTeamName, requirementTeamRouteSlug });
+    // Determine promo vs award details
+    const kind = rec.kind || 'award';
+    let targetType = null;
+    let targetSlug = null;
+    let targetSeriesId = null;
+    if (kind === 'promo') {
+      if (rec.requirement_series_id || rec.requirement_series_slug) {
+        targetType = 'series';
+        targetSeriesId = rec.requirement_series_id || rec.requirement_series_slug || null;
+      } else if (rec.requirement_team_slug || rec.requirement_team_id) {
+        targetType = 'team';
+        targetSlug = requirementTeamRouteSlug || rec.requirement_team_slug || null;
+      }
+    }
+
+    // Compute hasUpcomingOrLive for target when promo
+    let hasUpcomingOrLive = false;
+    let displayImageUrl = rec.image_url || null;
+    if (kind === 'promo') {
+      try {
+        const { query } = await import('../../../lib/db/postgres');
+        if (targetType === 'team' && targetSlug) {
+          const { rows } = await query(
+            `SELECT EXISTS (
+               SELECT 1
+                 FROM packs p
+                 LEFT JOIN events e ON e.id = p.event_id
+                 LEFT JOIN teams ht ON e.home_team_id = ht.id
+                 LEFT JOIN teams at ON e.away_team_id = at.id
+                WHERE LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+                  AND (LOWER(ht.team_slug) = LOWER($1) OR LOWER(at.team_slug) = LOWER($1))
+             ) AS ok`,
+            [targetSlug]
+          );
+          hasUpcomingOrLive = Boolean(rows?.[0]?.ok);
+          if (!displayImageUrl) {
+            try {
+              const { rows: tl } = await query('SELECT logo_url FROM teams WHERE LOWER(team_slug) = LOWER($1) LIMIT 1', [targetSlug]);
+              displayImageUrl = tl?.[0]?.logo_url || null;
+            } catch {}
+          }
+        } else if (targetType === 'series' && targetSeriesId) {
+          const { rows } = await query(
+            `SELECT EXISTS (
+               SELECT 1
+                 FROM series s
+                 JOIN series_packs spx ON spx.series_id = s.id
+                 JOIN packs p ON p.id = spx.pack_id
+                WHERE (s.series_id = $1 OR s.id::text = $1)
+                  AND LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+             ) AS ok`,
+            [String(targetSeriesId)]
+          );
+          hasUpcomingOrLive = Boolean(rows?.[0]?.ok);
+        }
+      } catch {}
+    }
+
+    return res.status(200).json({ success: true, kind, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: displayImageUrl, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamId: rec.requirement_team_id || null, requirementTeamName, requirementTeamRouteSlug, targetType, targetSlug, targetSeriesId, hasUpcomingOrLive });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[awards/preview] error', err);

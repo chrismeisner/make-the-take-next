@@ -3,10 +3,10 @@ import LeaderboardTable from './LeaderboardTable';
 import useDayLeaderboard from '../hooks/useDayLeaderboard';
 import { computeAvailableDays, getPackIdsForDay, getDayLabels } from '../lib/dayGrouping';
 
-export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today', selectedDate = null, accent = 'blue' }) {
+export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today', selectedDate = null, accent = 'blue', teamSlug = '' }) {
   
   // Determine which days have packs (shared util)
-  const availableDays = useMemo(() => computeAvailableDays(packs, { selectedDateIso: selectedDate }), [packs, selectedDate]);
+  const availableDays = useMemo(() => computeAvailableDays(packs, { selectedDateIso: selectedDate, teamSlug }), [packs, selectedDate, teamSlug]);
 
   // If no packs available, don't show anything
   if (availableDays.length === 0) {
@@ -17,9 +17,9 @@ export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today',
   const currentSelectedDay = availableDays.includes(selectedDay) ? selectedDay : availableDays[0];
 
   // Compute the pack IDs that belong to the currentSelectedDay (shared util)
-  const dayPackIds = useMemo(() => getPackIdsForDay(packs, currentSelectedDay, { selectedDateIso: selectedDate }), [packs, currentSelectedDay, selectedDate]);
+  const dayPackIds = useMemo(() => getPackIdsForDay(packs, currentSelectedDay, { selectedDateIso: selectedDate, teamSlug }), [packs, currentSelectedDay, selectedDate, teamSlug]);
 
-  const { leaderboard, loading, error, dayLabel } = useDayLeaderboard(currentSelectedDay, dayPackIds);
+  const { leaderboard, loading, error, dayLabel } = useDayLeaderboard(currentSelectedDay, dayPackIds, teamSlug);
 
   // Debug logs
   try {

@@ -47,12 +47,7 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 		  <>
 			<h2 className="text-2xl font-bold mb-4 text-center">Featured Pack</h2>
 
-			<Link href={`/packs/${featuredPack.packURL}`}>
-			  <div
-				className="cursor-pointer"
-				onClick={onClose}
-				className="text-center"
-			  >
+			<Link href={`/packs/${featuredPack.packURL}`} onClick={onClose} className="block text-center">
 				{coverImageUrl && (
 				  <div className="mb-4 w-48 h-48 mx-auto overflow-visible rounded-lg shadow-md">
 					<img
@@ -65,7 +60,6 @@ export default function FeaturedPackModal({ isOpen, onClose }) {
 				<h3 className="text-xl font-semibold mb-2 text-center">
 				  {featuredPack.packTitle}
 				</h3>
-			  </div>
 			</Link>
 
 			{/* Removed Progress Bar Section */}
