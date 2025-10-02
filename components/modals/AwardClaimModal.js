@@ -11,6 +11,7 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
   const [preview, setPreview] = useState(null); // { name, tokens, status, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamName }
   const [checking, setChecking] = useState(false);
   const [followStatus, setFollowStatus] = useState(null); // { followsTeam: boolean } or null
+  const [smsConsent, setSmsConsent] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -306,12 +307,29 @@ export default function AwardClaimModal({ isOpen, onClose, code }) {
               <p className="text-gray-500">This code is not available to claim.</p>
             ) : (
               (() => {
-                const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;
-                const label = needsFollow ? `Follow ${preview.requirementTeamName || preview.requirementTeamSlug}` : 'Claim Bonus';
-                const onClick = needsFollow ? followRequiredTeamAndRedeem : handleClaim;
+                const teamName = preview.requirementTeamName || preview.requirementTeamSlug;
+                const shouldShowFollowCta = preview.requirementKey === 'follow_team' && (!session?.user || (followStatus != null && !followStatus.followsTeam));
+                const label = shouldShowFollowCta ? `Follow the ${teamName}` : 'Claim Bonus';
+                const onClick = shouldShowFollowCta ? followRequiredTeamAndRedeem : handleClaim;
                 const disabled = preview.requirementKey === 'follow_team' && !!session?.user && followStatus == null; // waiting for follow status
                 return (
-                  <button onClick={onClick} disabled={disabled} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 w-max">{label}</button>
+                  <>
+                    <button onClick={onClick} disabled={disabled} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 w-max">{label}</button>
+                    {shouldShowFollowCta && (
+                      <div className="flex items-start gap-2 mt-2">
+                        <input
+                          id="smsConsent"
+                          type="checkbox"
+                          checked={smsConsent}
+                          onChange={(e) => setSmsConsent(e.target.checked)}
+                          className="mt-1"
+                        />
+                        <label htmlFor="smsConsent" className="text-xs text-gray-600">
+                          I agree to receive SMS notifications about {teamName} pack drops. Message and data rates may apply.
+                        </label>
+                      </div>
+                    )}
+                  </>
                 );
               })()
             )}
