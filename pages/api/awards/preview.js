@@ -35,6 +35,29 @@ export default async function handler(req, res) {
         requirementTeamRouteSlug = rows?.[0]?.team_slug || null;
       }
     } catch {}
+    // Prefer custom image if present; otherwise we'll try to derive a useful image below
+    let displayImageUrl = rec.image_url || null;
+
+    // If this award/promo requires following a team and no custom image is present,
+    // use the team's logo as the card image (works for both award and promo kinds)
+    try {
+      if (!displayImageUrl && (rec.requirement_team_id || rec.requirement_team_slug)) {
+        const { query } = await import('../../../lib/db/postgres');
+        if (rec.requirement_team_id) {
+          const { rows } = await query('SELECT logo_url FROM teams WHERE id = $1 LIMIT 1', [rec.requirement_team_id]);
+          displayImageUrl = rows?.[0]?.logo_url || null;
+        } else if (rec.requirement_team_slug) {
+          const { rows } = await query(
+            `SELECT logo_url FROM teams 
+               WHERE LOWER(team_slug) = LOWER($1) OR LOWER(abbreviation) = LOWER($1)
+               LIMIT 1`,
+            [rec.requirement_team_slug]
+          );
+          displayImageUrl = rows?.[0]?.logo_url || null;
+        }
+      }
+    } catch {}
+
     // Determine promo vs award details
     const kind = rec.kind || 'award';
     let targetType = null;
@@ -52,7 +75,6 @@ export default async function handler(req, res) {
 
     // Compute hasUpcomingOrLive for target when promo
     let hasUpcomingOrLive = false;
-    let displayImageUrl = rec.image_url || null;
     let nextEventTime = null;
     let nextPackCoverUrl = null;
     if (kind === 'promo') {

@@ -15,11 +15,11 @@ export default async function handler(req, res) {
   }
 
   const { code, kind, name, tokens, status, validFrom, validTo, redirectTeamSlug, imageUrl, requirementKey, requirementTeamSlug, requirementTeamId, requirementSeriesId, requirementSeriesSlug } = req.body || {};
-  if (typeof kind === 'string') { updates.push(`kind = $${i++}`); params.push(kind); }
   if (!code) return res.status(400).json({ success: false, error: 'Missing code' });
   const updates = [];
   const params = [];
   let i = 1;
+  if (typeof kind === 'string') { updates.push(`kind = $${i++}`); params.push(kind); }
   if (typeof name === 'string') { updates.push(`name = $${i++}`); params.push(name); }
   if (Number.isFinite(Number(tokens))) { updates.push(`tokens = $${i++}`); params.push(Number(tokens)); }
   if (typeof status === 'string') { updates.push(`status = $${i++}`); params.push(status); }

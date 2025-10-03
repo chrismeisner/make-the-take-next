@@ -55,13 +55,13 @@ export default function AwardClaimModal({ isOpen, onClose, code, previewState = 
         const res = await fetch(`/api/awards/check?code=${encodeURIComponent(code)}`);
         const data = await res.json();
         if (!mounted) return;
-        if (res.ok && data?.success && data?.already) {
+          if (res.ok && data?.success && data?.already) {
           // Reuse preview data if present for name/tokens redirect. Fallbacks for safety.
           const name = preview?.name || 'Bonus';
           const tokens = preview?.tokens || 0;
           const redirectTeamSlug = preview?.redirectTeamSlug || null;
           const imageUrl = preview?.imageUrl || null;
-          openModal('awardSuccess', { name, tokens, redirectTeamSlug, imageUrl });
+          openModal('awardSuccess', { name, tokens, redirectTeamSlug, imageUrl, already: true });
         }
       } catch {}
       finally {
@@ -131,7 +131,7 @@ export default function AwardClaimModal({ isOpen, onClose, code, previewState = 
             });
             const data = await res.json();
             if (res.ok && data.success) {
-              openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: data.imageUrl || preview?.imageUrl || null });
+              openModal('awardSuccess', { name: data.name, tokens: data.tokens, redirectTeamSlug: data.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: data.imageUrl || preview?.imageUrl || null, already: data.already });
             } else {
               if (data?.code === 'requirement_follow_team') {
                 openModal('favoriteTeam', {
@@ -152,7 +152,7 @@ export default function AwardClaimModal({ isOpen, onClose, code, previewState = 
                       });
                       const retryJson = await retry.json();
                       if (retry.ok && retryJson.success) {
-                        openModal('awardSuccess', { name: retryJson.name, tokens: retryJson.tokens, redirectTeamSlug: retryJson.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: retryJson.imageUrl || preview?.imageUrl || null });
+                        openModal('awardSuccess', { name: retryJson.name, tokens: retryJson.tokens, redirectTeamSlug: retryJson.redirectTeamSlug || preview?.redirectTeamSlug || null, imageUrl: retryJson.imageUrl || preview?.imageUrl || null, already: retryJson.already });
                       } else {
                         openModal('awardSuccess', { name: preview?.name || 'Bonus', tokens: 0, error: retryJson.error || 'Could not claim', imageUrl: preview?.imageUrl || null });
                       }
@@ -301,14 +301,10 @@ export default function AwardClaimModal({ isOpen, onClose, code, previewState = 
               </div>
             ) : null}
             {(() => {
-              // Hide token messaging entirely for follow-team flows
-              if (preview.requirementKey === 'follow_team') {
-                return null;
-              }
               const team = preview.requirementTeamName || preview.requirementTeamSlug;
               const needsFollowUnknown = preview.requirementKey === 'follow_team' && !session?.user;
               const needsFollow = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && !followStatus.followsTeam;
-              const isFollowing = preview.requirementKey === 'follow_team' && !!session?.user && followStatus != null && followStatus.followsTeam;
+              const isFollowing = preview.requirementKey === 'follow_team' && (session?.user || previewState) && followStatus != null && followStatus.followsTeam;
               if (needsFollow || needsFollowUnknown) {
                 return (
                   <p className="text-gray-800">

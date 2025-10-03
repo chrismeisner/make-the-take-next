@@ -8,7 +8,7 @@ export default function AwardsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [form, setForm] = useState({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '' });
+  const [form, setForm] = useState({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '', promoBonusEnabled: false, promoBonusTokens: 25 });
   const [creating, setCreating] = useState(false);
   const [teamOptions, setTeamOptions] = useState([]);
   const [leagueOptions, setLeagueOptions] = useState([]);
@@ -111,8 +111,16 @@ export default function AwardsAdminPage() {
     e.preventDefault();
     setCreating(true);
     try {
+      // If Follow Team promo with bonus enabled, create as award with follow requirement
+      let kindToSend = form.kind;
+      let bonusTokens = null;
+      if (form.kind === 'promo' && form.requirementKey === 'follow_team' && form.promoBonusEnabled) {
+        kindToSend = 'award';
+        bonusTokens = Number(form.promoBonusTokens);
+      }
+
       const payload = {
-        kind: form.kind,
+        kind: kindToSend,
         name: form.name,
         code: form.code || undefined,
         redirectTeamSlug: form.redirectTeamSlug || undefined,
@@ -123,8 +131,8 @@ export default function AwardsAdminPage() {
         requirementSeriesSlug: form.requirementSeriesSlug || undefined,
         requirementSeriesId: form.requirementSeriesId || undefined,
       };
-      if (form.kind === 'award') {
-        payload.tokens = Number(form.tokens);
+      if (kindToSend === 'award') {
+        payload.tokens = Number(bonusTokens != null ? bonusTokens : form.tokens);
       }
       const res = await fetch('/api/admin/awards/create', {
         method: 'POST',
@@ -133,7 +141,7 @@ export default function AwardsAdminPage() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setForm({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '' });
+        setForm({ kind: 'award', name: '', tokens: 25, code: '', redirectTeamSlug: '', imageUrl: '', imageMode: 'custom', requirementKey: '', requirementTeamSlug: '', requirementSeriesSlug: '', league: '', promoBonusEnabled: false, promoBonusTokens: 25 });
         await load();
       } else {
         alert(data.error || 'Create failed');
@@ -224,6 +232,27 @@ export default function AwardsAdminPage() {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <label className="inline-flex items-center text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={!!form.promoBonusEnabled}
+                    onChange={(e) => setForm({ ...form, promoBonusEnabled: e.target.checked })}
+                    className="mr-2"
+                  />
+                  Add Token Bonus
+                </label>
+                {form.promoBonusEnabled ? (
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.promoBonusTokens}
+                    onChange={(e) => setForm({ ...form, promoBonusTokens: e.target.value })}
+                    className="px-3 py-2 border rounded w-28"
+                    placeholder="Bonus"
+                  />
+                ) : null}
               </div>
             </>
           )}

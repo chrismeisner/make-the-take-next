@@ -114,7 +114,7 @@ export default function GlobalModalRenderer() {
       );
     }
     case "awardSuccess": {
-      const { name, tokens, error, redirectTeamSlug, imageUrl } = modalConfig.modalProps;
+      const { name, tokens, error, redirectTeamSlug, imageUrl, already } = modalConfig.modalProps;
       return (
         <AwardSuccessModal
           isOpen={true}
@@ -124,6 +124,7 @@ export default function GlobalModalRenderer() {
           error={error}
           redirectTeamSlug={redirectTeamSlug}
           imageUrl={imageUrl}
+          already={already}
         />
       );
     }
