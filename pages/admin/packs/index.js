@@ -43,14 +43,7 @@ export default function AdminPacksPage() {
     fetchPacks();
   }, [status]);
 
-  // Initialize default visible statuses once real statuses are loaded
-  // Default: show ALL statuses on page load
-  useEffect(() => {
-    if (visibleStatuses != null) return;
-    const hasStatuses = statusOptions.length > 0;
-    if (!hasStatuses) return;
-    setVisibleStatuses(statusOptions);
-  }, [statusOptions, visibleStatuses]);
+  // Do not initialize visibleStatuses; when null, we show all by default
 
   const refetchPacks = async () => {
     try {
@@ -87,11 +80,13 @@ export default function AdminPacksPage() {
   if (!session) {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
-  // When none explicitly selected, default to ALL statuses
+  // When none explicitly selected, default to ALL statuses for UI checkboxes
   const defaultInitialStatuses = statusOptions;
   const effectiveVisibleStatuses = visibleStatuses == null ? defaultInitialStatuses : visibleStatuses;
-  // Filter out packs by selected statuses (or show all)
-  const filteredPacks = packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
+  // If no explicit filter chosen yet, show all packs on initial load
+  const filteredPacks = visibleStatuses == null
+    ? packs
+    : packs.filter(p => effectiveVisibleStatuses.includes(p.packStatus));
   // Optionally hide graded packs
   const visibilityFilteredPacks = hideGraded
     ? filteredPacks.filter(p => String(p.packStatus || '').toLowerCase() !== 'graded')
