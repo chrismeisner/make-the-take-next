@@ -16,12 +16,17 @@ export default async function handler(req, res) {
 
   try {
     const { filename, fileData } = req.body;
+    try {
+      console.log('[api/uploadPackCover] Start upload', { filename: filename || '(no filename)' });
+    } catch {}
     if (!fileData) {
+      try { console.warn('[api/uploadPackCover] Missing fileData for', { filename: filename || '(no filename)' }); } catch {}
       return res.status(400).json({ success: false, error: "Missing fileData" });
     }
 
     // Decode base64 to buffer
     const buffer = Buffer.from(fileData, "base64");
+    try { console.log('[api/uploadPackCover] Decoded buffer size (bytes):', buffer.length); } catch {}
     const folder = "pack-covers";
 
     // Derive a safe extension from the provided filename (fallback to .png)
@@ -30,6 +35,7 @@ export default async function handler(req, res) {
       ? "." + filename.split(".").pop().toLowerCase()
       : ".png";
     const ext = allowed.has(extRaw) ? extRaw : ".png";
+    try { console.log('[api/uploadPackCover] Resolved extension', { extRaw, ext }); } catch {}
 
     // Generate a random, URL-safe basename to avoid spaces/special chars
     const rand = crypto.randomBytes(8).toString("hex");
@@ -38,6 +44,7 @@ export default async function handler(req, res) {
     const safeFileName = `${safeBase}${ext}`;
     const firebasePath = `${folder}/${safeFileName}`;
     const file = storageBucket.file(firebasePath);
+    try { console.log('[api/uploadPackCover] Uploading to bucket', { bucket: storageBucket.name, path: firebasePath }); } catch {}
 
     // Upload buffer to Firebase Storage
     const contentType = (
@@ -55,6 +62,7 @@ export default async function handler(req, res) {
     });
 
     const publicUrl = `https://storage.googleapis.com/${storageBucket.name}/${firebasePath}`;
+    try { console.log('[api/uploadPackCover] Upload complete', { url: publicUrl }); } catch {}
     return res.status(200).json({ success: true, url: publicUrl, filename: safeFileName });
   } catch (error) {
     console.error("[api/uploadPackCover] Error =>", error);

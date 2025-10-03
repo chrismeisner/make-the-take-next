@@ -441,6 +441,15 @@ async function handler(req, res) {
         return res.status(401).json({ success: false, error: "Unauthorized" });
       }
       const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace, packOpenSmsTemplate } = req.body;
+      try {
+        console.log('[api/packs POST] incoming create', {
+          packURL,
+          packTitle,
+          hasCover: !!packCoverUrl,
+          eventId,
+          eventsCount: Array.isArray(events) ? events.length : 0,
+        });
+      } catch {}
       // Prize can be provided directly or aliased from firstPlace
       const prize = (req.body && (req.body.prize || firstPlace)) || null;
       if (!packTitle || !packURL) {
@@ -479,6 +488,13 @@ async function handler(req, res) {
         events, props,
         creatorProfileId: currentUser.userId,
       });
+      try {
+        console.log('[api/packs POST] created', {
+          id: created?.id,
+          packURL: created?.packURL,
+          coverUrl: (created?.packCover && created.packCover[0] && created.packCover[0].url) ? created.packCover[0].url : null,
+        });
+      } catch {}
       // Removed Airtable dual-write
       return res.status(200).json({ success: true, record: created });
     } catch (error) {
