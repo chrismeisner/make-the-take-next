@@ -145,6 +145,8 @@ export default function PromoFollowModal({ isOpen, onClose, code, justFollowed =
                     Make takes to win prizes in the{' '}
                     <a
                       href={`/marketplace?teamSlug=${encodeURIComponent(preview.requirementTeamRouteSlug || preview.targetSlug)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="underline text-blue-700"
                     >
                       team marketplace

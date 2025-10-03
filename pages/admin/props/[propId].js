@@ -1380,6 +1380,16 @@ export default function EditPropPage() {
               keys = [...nflTeamMetricFallback, 'points'];
             }
           }
+          // Ensure any saved metric(s) remain selectable even if not present in fetched keys
+          try {
+            const obj = formulaParamsText && formulaParamsText.trim() ? JSON.parse(formulaParamsText) : {};
+            const ensure = new Set(Array.isArray(keys) ? keys : []);
+            if (obj.metric) ensure.add(String(obj.metric));
+            if (Array.isArray(obj.metrics)) {
+              for (const m of obj.metrics.filter(Boolean)) ensure.add(String(m));
+            }
+            keys = Array.from(ensure);
+          } catch {}
           setMetricOptions(keys);
         } else {
           setMetricError(json?.error || 'Failed to load stat keys');
@@ -1486,23 +1496,27 @@ export default function EditPropPage() {
     const abvs = Array.from(new Set([norm(rawHome), norm(rawAway)].filter(Boolean)));
     setPlayersLoading(true);
     setPlayersError('');
-    setPlayersById({});
     (async () => {
       try {
-        // MLB roster only for dropdowns; no boxscore merge
+        // Prefer boxscore players (includes ESPN IDs), then merge MLB roster identities as best-effort
         let map = {};
+        try {
+          const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
+          const boxJson = await box.json();
+          map = (box.ok && boxJson?.normalized?.playersById) ? (boxJson.normalized.playersById || {}) : {};
+        } catch {}
         if ((dataSource || 'major-mlb') === 'major-mlb' && abvs.length) {
           try {
             const roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
             const rosterJson = await roster.json();
             if (roster.ok && rosterJson?.success && rosterJson.playersById) {
-              map = rosterJson.playersById;
+              const merged = { ...(map || {}) };
+              for (const [pid, rp] of Object.entries(rosterJson.playersById)) {
+                if (!merged[pid]) merged[pid] = rp; else merged[pid] = { ...rp, ...merged[pid] };
+              }
+              map = merged;
             }
           } catch {}
-        } else {
-          const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
-          const boxJson = await box.json();
-          map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
         }
         setPlayersById(map || {});
         if (!Object.keys(map || {}).length) setPlayersError('No players found for this event');
