@@ -38,6 +38,74 @@ function coerceNumeric(val) {
   return undefined;
 }
 
+// MLB player stat resolver with aliases and label fallbacks (SO↔K, HR, etc.)
+function resolveMlbPlayerMetricValue(player, metricRaw) {
+  try {
+    if (!player) return NaN;
+    const stats = player.stats || {};
+    const gameLine = player.gameLine || {};
+    const m = String(metricRaw || '').trim();
+
+    // Direct candidates by casing
+    const direct = [m, m.toUpperCase(), m.toLowerCase()];
+    for (const k of direct) {
+      const v = stats[k];
+      if (v != null) {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+
+    // Common aliases
+    const ALIASES = {
+      H: ['hits'],
+      R: ['runs'],
+      RBI: ['RBIs', 'rbi'],
+      HR: ['homeRuns', 'homeruns', 'home_runs', 'home runs'],
+      BB: ['walks', 'baseonballs', 'base_on_balls', 'base on balls'],
+      SO: ['strikeouts', 'strike_outs', 'strike outs', 'K', 'k'],
+      K: ['SO', 'so', 'strikeouts', 'strike_outs', 'strike outs'],
+      TB: ['totalBases', 'total_bases', 'total bases'],
+      SB: ['stolenBases', 'stolen_bases', 'stolen bases'],
+      OBP: ['onBasePct', 'on_base_percentage', 'on base percentage', 'obp'],
+      SLG: ['slugAvg', 'sluggingPct', 'slugging_percentage', 'slugging percentage', 'slg'],
+      AB: ['atBats', 'at_bats', 'at bats'],
+      AVG: ['battingAverage', 'batting_average', 'batting average', 'avg'],
+    };
+    const aliasList = ALIASES[m.toUpperCase()] || [];
+    for (const alias of aliasList) {
+      const v = stats[alias] ?? stats[String(alias).toUpperCase()] ?? stats[String(alias).toLowerCase()];
+      if (v != null) {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+
+    // Batting line labels fallback (e.g., R, H, HR, RBI, SO/K)
+    const LABELS = {
+      R: ['R'], H: ['H'], E: ['E'],
+      RBI: ['RBI'], HR: ['HR'],
+      SO: ['SO', 'K'], K: ['K', 'SO'],
+      BB: ['BB'], TB: ['TB'], SB: ['SB'],
+      AB: ['AB'], AVG: ['AVG'], OBP: ['OBP'], SLG: ['SLG'],
+    };
+    const labelKeys = [m, m.toUpperCase(), m.toLowerCase(), ...(LABELS[m.toUpperCase()] || [])];
+    for (const k of labelKeys) {
+      if (gameLine && gameLine[k] != null) {
+        const raw = gameLine[k];
+        const n = Number(raw);
+        if (Number.isFinite(n)) return n;
+        const parsed = parseFloat(String(raw));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+
+    return NaN;
+  } catch {
+    return NaN;
+  }
+}
+
 function normalizeMajorMlbPlayers(rawBox) {
   const map = {};
   const keySet = new Set();
@@ -504,7 +572,7 @@ export default async function handler(req, res) {
         if (!player) return res.status(404).json({ success: false, error: `Player ${playerId} not found in boxscore` });
         let sum = 0;
         for (const key of metrics) {
-          const v = Number(player?.stats?.[key]);
+          const v = (ds === 'major-mlb') ? resolveMlbPlayerMetricValue(player, key) : Number(player?.stats?.[key]);
           if (Number.isFinite(v)) sum += v;
         }
         const aPass = compareWithComparator(sum, sideA.comparator, Number(sideA.threshold));
@@ -587,7 +655,7 @@ export default async function handler(req, res) {
           const playerId = String(params?.playerId || '').trim();
           if (!playerId) return res.status(400).json({ success: false, error: 'Missing playerId for stat_over_under (entity=player)' });
           const player = playersById?.[playerId];
-          valueNumber = Number(player?.stats?.[metric]);
+          valueNumber = (ds === 'major-mlb') ? resolveMlbPlayerMetricValue(player, metric) : Number(player?.stats?.[metric]);
         } else {
           // Team single stat (MLB supported; NFL limited to points via scoreboard)
           if (ds === 'major-mlb') {
@@ -617,7 +685,7 @@ export default async function handler(req, res) {
                 let total = 0;
                 for (const p of Object.values(playersById || {})) {
                   if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
-                  const v = Number(p?.stats?.[metricKey] ?? p?.stats?.[metric] ?? p?.stats?.[mLc]);
+                  const v = resolveMlbPlayerMetricValue(p, metric);
                   if (Number.isFinite(v)) total += v;
                 }
                 valueNumber = total;
@@ -729,8 +797,8 @@ export default async function handler(req, res) {
           const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
           const pA = playersById?.[playerAId];
           const pB = playersById?.[playerBId];
-          vA = Number(pA?.stats?.[metric]);
-          vB = Number(pB?.stats?.[metric]);
+          vA = resolveMlbPlayerMetricValue(pA, metric);
+          vB = resolveMlbPlayerMetricValue(pB, metric);
         }
 
         if (!Number.isFinite(vA) || !Number.isFinite(vB)) {
@@ -941,7 +1009,13 @@ export default async function handler(req, res) {
           try {
             const { playersById } = await fetchMajorMlbBoxscorePlayers(espnGameID);
             const sumFor = (teamAbv) => {
-              let total = 0; for (const p of Object.values(playersById || {})) { if (String(p.teamAbv || '').toUpperCase() !== teamAbv) continue; const v = Number(p?.stats?.[metricKey] ?? p?.stats?.[metric] ?? p?.stats?.[mLc]); if (Number.isFinite(v)) total += v; } return total;
+              let total = 0;
+              for (const p of Object.values(playersById || {})) {
+                if (String(p.teamAbv || '').toUpperCase() !== teamAbv) continue;
+                const v = resolveMlbPlayerMetricValue(p, metric);
+                if (Number.isFinite(v)) total += v;
+              }
+              return total;
             };
             valueA = sumFor(teamAbvA); valueB = sumFor(teamAbvB);
           } catch {}
@@ -1055,7 +1129,7 @@ export default async function handler(req, res) {
         for (const p of Object.values(playersById || {})) {
           if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
           for (const k of metrics) {
-            const v = Number(p?.stats?.[k]); if (Number.isFinite(v)) total += v;
+            const v = resolveMlbPlayerMetricValue(p, k); if (Number.isFinite(v)) total += v;
           }
         }
         const aPass = compareWithComparator(total, sideA.comparator, Number(sideA.threshold));
@@ -1081,7 +1155,7 @@ export default async function handler(req, res) {
           let total = 0;
           for (const p of Object.values(playersById || {})) {
             if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
-            for (const k of metrics) { const v = Number(p?.stats?.[k]); if (Number.isFinite(v)) total += v; }
+            for (const k of metrics) { const v = resolveMlbPlayerMetricValue(p, k); if (Number.isFinite(v)) total += v; }
           }
           return total;
         };
@@ -1398,7 +1472,7 @@ export default async function handler(req, res) {
       if (!player) return res.status(404).json({ success: false, error: `Player ${playerId} not found in boxscore` });
       let sum = 0;
       for (const key of metrics) {
-        const v = Number(player?.stats?.[key]);
+        const v = resolveMlbPlayerMetricValue(player, key);
         if (Number.isFinite(v)) sum += v;
       }
       const aPass = compareWithComparator(sum, sideA.comparator, Number(sideA.threshold));
@@ -1472,7 +1546,7 @@ export default async function handler(req, res) {
             let total = 0;
             for (const p of Object.values(playersById || {})) {
               if (String(p?.teamAbv || '').toUpperCase() !== teamAbv) continue;
-              const v = Number(p?.stats?.[metric] ?? p?.stats?.[mLc]);
+              const v = resolveMlbPlayerMetricValue(p, metric);
               if (Number.isFinite(v)) total += v;
             }
             value = total;

@@ -16,6 +16,7 @@ import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import { useModal } from "../contexts/ModalContext";
 import Countdown from "./Countdown";
+import { PACK_SHARING_ENABLED } from "../lib/runtimeConfig";
 
 // Add a swipeable cover card as the first slide
 function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
@@ -300,6 +301,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             </div>
           )}
           <p className="text-gray-600">{packData.packSummary}</p>
+          {PACK_SHARING_ENABLED && (
           <div className="mt-3">
             <button
               type="button"
@@ -316,6 +318,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               Share this pack
             </button>
           </div>
+          )}
           {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
             <div className="mt-4">
               <div className="text-sm font-medium text-gray-700">Links to teams</div>
@@ -362,6 +365,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </div>
               )}
               <p className="text-gray-600">{packData.packSummary}</p>
+              {PACK_SHARING_ENABLED && (
               <div className="mt-3">
                 <button
                   type="button"
@@ -378,6 +382,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   Share this pack
                 </button>
               </div>
+              )}
               {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
                 <div className="mt-4">
                   <div className="text-sm font-medium text-gray-700">Links to teams</div>

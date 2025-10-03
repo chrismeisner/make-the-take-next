@@ -313,6 +313,62 @@ export async function getServerSideProps(context) {
 
 export default function TeamPage({ team, packsData }) {
   const { openModal } = useModal();
+  const router = useRouter();
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState('');
+  const [followsTeam, setFollowsTeam] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setFollowError('');
+      try {
+        const res = await fetch(`/api/follow/status?teamSlug=${encodeURIComponent(team.teamSlug)}`);
+        const data = await res.json();
+        if (!mounted) return;
+        if (res.status === 401) {
+          setFollowsTeam(false);
+          return;
+        }
+        if (res.ok && data.success) setFollowsTeam(Boolean(data.followsTeam));
+        else setFollowsTeam(false);
+      } catch {
+        if (mounted) setFollowsTeam(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [team.teamSlug]);
+
+  async function handleFollow() {
+    setFollowBusy(true);
+    setFollowError('');
+    try {
+      // Check session: if not logged in, open login modal and retry
+      const me = await fetch('/api/auth/session');
+      const isAuthed = me.ok ? Boolean((await me.json())?.user) : false;
+      if (!isAuthed) {
+        openModal('login', {
+          title: 'Log in to follow',
+          ctaLabel: 'Verify & Follow',
+          onSuccess: async () => {
+            try {
+              await fetch('/api/follow/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamSlug: team.teamSlug }) });
+              setFollowsTeam(true);
+            } catch {}
+          },
+        });
+        return;
+      }
+      const r = await fetch('/api/follow/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamSlug: team.teamSlug }) });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || 'Follow failed');
+      setFollowsTeam(true);
+    } catch (e) {
+      setFollowError(e.message || 'Could not follow');
+    } finally {
+      setFollowBusy(false);
+    }
+  }
 
   // Show Pack Active modal if a team-related pack is open/active
   useEffect(() => {
@@ -352,6 +408,27 @@ export default function TeamPage({ team, packsData }) {
         <title>{team.teamNameFull || team.teamName} | Make the Take</title>
       </Head>
       <div className="p-4 w-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            {team.teamLogoURL ? (
+              <img src={team.teamLogoURL} alt={team.teamNameFull || team.teamName} className="w-10 h-10 rounded" />
+            ) : null}
+            <div>
+              <div className="text-xl font-bold">{team.teamNameFull || team.teamName}</div>
+              <div className="text-xs text-gray-500 uppercase">{team.teamLeague}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleFollow}
+              disabled={followBusy || followsTeam === true}
+              className={`px-3 py-2 rounded text-white ${followsTeam ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
+            >
+              {followsTeam ? 'Following' : (followBusy ? 'Following…' : 'Follow this team')}
+            </button>
+          </div>
+        </div>
+        {followError ? <div className="text-xs text-red-600 mb-2">{followError}</div> : null}
         <PackFeedScaffold
           packs={packsData}
           accent="green"

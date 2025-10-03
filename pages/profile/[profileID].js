@@ -242,6 +242,13 @@ export default function ProfilePage() {
     }
     return keys.has(teamFilter);
   });
+  
+  const maskPhone = (value) => {
+    if (!value) return 'Hidden';
+    const digits = String(value).replace(/\D/g, '');
+    if (digits.length < 4) return 'Hidden';
+    return `***-***-${digits.slice(-4)}`;
+  };
 
   return (
     <PageContainer>
@@ -414,9 +421,11 @@ export default function ProfilePage() {
 	  <p>
 		<strong>Profile ID:</strong> {profile.profileID}
 	  </p>
-	  <p>
-		<strong>Mobile:</strong> {profile.profileMobile}
-	  </p>
+  {isOwnProfile && profile.profileMobile ? (
+    <p>
+      <strong>Mobile:</strong> {profile.profileMobile}
+    </p>
+  ) : null}
 	  <p>
 		<strong>Username:</strong> {profile.profileID}
 	  </p>
@@ -523,7 +532,7 @@ export default function ProfilePage() {
 	            {creatorLeaderboard.map((row, idx) => (
 	              <tr key={row.phone || idx}>
 	                <td className="border px-4 py-2">{idx + 1}</td>
-	                <td className="border px-4 py-2">{row.phone}</td>
+                    <td className="border px-4 py-2">{maskPhone(row.phone)}</td>
 	                <td className="border px-4 py-2">{Math.round(row.points)}</td>
 	                <td className="border px-4 py-2">{row.won}-{row.lost}-{row.pushed}</td>
 	                <td className="border px-4 py-2">{row.takes}</td>

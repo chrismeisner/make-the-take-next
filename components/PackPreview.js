@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Countdown from "./Countdown";
 import { useModal } from "../contexts/ModalContext";
+import { PACK_SHARING_ENABLED } from "../lib/runtimeConfig";
 // Simplified: we will read winner from pack.winnerProfileID (lookup) or pack.packWinnerRecordIds
 
 export default function PackPreview({ pack, className = "", accent = "blue" }) {
@@ -562,11 +563,12 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 			{/* Date and status labels removed on request */}
 
 				{isOpenLike && (
-				<div className="mt-3 flex items-center gap-2">
+					<div className="mt-3 flex items-center gap-2">
 					<div className={`${primaryBtnBase} ${primaryBtnColor}`}>
 						Play this pack
 					</div>
-					<span
+						{PACK_SHARING_ENABLED && (
+						<span
 							role="button"
 							tabIndex={0}
 						onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
@@ -575,6 +577,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 						>
 							Share
 						</span>
+						)}
 					</div>
 				)}
 				{isComingSoon && (!prefsLoaded || !willNotify) && (
@@ -586,6 +589,7 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 						>
 							{notifyLoading ? 'Adding…' : 'Notify me when this Pack drops'}
 						</button>
+						{PACK_SHARING_ENABLED && (
 						<span
 							role="button"
 							tabIndex={0}
@@ -595,33 +599,34 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 						>
 							Share
 						</span>
+						)}
 					</div>
 				)}
-				{isComingSoon && prefsLoaded && willNotify && (
-					<div className="mt-3 flex items-center gap-2">
-						<span
-							role="button"
-							tabIndex={0}
-							onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
-							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
-							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
-						>
-							Share
-						</span>
-					</div>
+				{PACK_SHARING_ENABLED && isComingSoon && prefsLoaded && willNotify && (
+				<div className="mt-3 flex items-center gap-2">
+					<span
+						role="button"
+						tabIndex={0}
+						onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+						onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
+						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+					>
+						Share
+					</span>
+				</div>
 				)}
-				{!isOpenLike && !isComingSoon && (
-					<div className="mt-3 flex items-center gap-2">
-						<span
-							role="button"
-							tabIndex={0}
-							onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
-							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
-							className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
-						>
-							Share
-						</span>
-					</div>
+				{PACK_SHARING_ENABLED && !isOpenLike && !isComingSoon && (
+				<div className="mt-3 flex items-center gap-2">
+					<span
+						role="button"
+						tabIndex={0}
+						onClick={(e) => { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); }}
+						onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); const slug = pack.packURL || packID; openModal('sharePack', { packTitle: pack.packTitle, packSummary: pack.packSummary, packUrl: typeof window !== 'undefined' && slug ? `${window.location.origin}/packs/${slug}` : '', packLeague: pack.packLeague, packCloseTime: pack.packCloseTime, packOpenSmsTemplate: pack.packOpenSmsTemplate }); } }}
+						className="inline-flex items-center justify-center px-2.5 py-1.5 md:px-3 md:py-2 rounded bg-gray-200 text-gray-900 text-xs md:text-sm font-medium hover:bg-gray-300"
+					>
+						Share
+					</span>
+				</div>
 				)}
 			<div className="mt-2 text-xs md:text-sm text-gray-600">
 				{pack.packStatus === "graded" && winnerID && (

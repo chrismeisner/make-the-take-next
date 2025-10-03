@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useModal } from '../contexts/ModalContext';
 import Head from 'next/head';
 import { query } from '../lib/db/postgres';
@@ -427,6 +427,57 @@ export async function getServerSideProps({ params }) {
 
 export default function TeamRootPage({ team, series, packsData, isSeries }) {
   const { openModal } = useModal();
+  const [followsTeam, setFollowsTeam] = useState(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState('');
+
+  useEffect(() => {
+    if (isSeries || !team?.teamSlug) return;
+    let mounted = true;
+    (async () => {
+      setFollowError('');
+      try {
+        const res = await fetch(`/api/follow/status?teamSlug=${encodeURIComponent(team.teamSlug)}`);
+        const data = await res.json();
+        if (!mounted) return;
+        if (res.status === 401) { setFollowsTeam(false); return; }
+        if (res.ok && data.success) setFollowsTeam(Boolean(data.followsTeam));
+        else setFollowsTeam(false);
+      } catch { if (mounted) setFollowsTeam(false); }
+    })();
+    return () => { mounted = false; };
+  }, [team?.teamSlug, isSeries]);
+
+  async function handleFollow() {
+    if (!team?.teamSlug) return;
+    setFollowBusy(true);
+    setFollowError('');
+    try {
+      const me = await fetch('/api/auth/session');
+      const isAuthed = me.ok ? Boolean((await me.json())?.user) : false;
+      if (!isAuthed) {
+        openModal('login', {
+          title: 'Log in to follow',
+          ctaLabel: 'Verify & Follow',
+          onSuccess: async () => {
+            try {
+              await fetch('/api/follow/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamSlug: team.teamSlug }) });
+              setFollowsTeam(true);
+            } catch {}
+          },
+        });
+        return;
+      }
+      const r = await fetch('/api/follow/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ teamSlug: team.teamSlug }) });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error || 'Follow failed');
+      setFollowsTeam(true);
+    } catch (e) {
+      setFollowError(e.message || 'Could not follow');
+    } finally {
+      setFollowBusy(false);
+    }
+  }
 
   // Show Pack Active modal if a team-related pack is open/active
   useEffect(() => {
@@ -490,6 +541,27 @@ export default function TeamRootPage({ team, series, packsData, isSeries }) {
         <title>{team.teamNameFull || team.teamName} | Make the Take</title>
       </Head>
       <div className="w-full">
+        <div className="flex items-center justify-between px-4 pt-4">
+          <div className="flex items-center gap-3">
+            {team.teamLogoURL ? (
+              <img src={team.teamLogoURL} alt={team.teamName} className="w-10 h-10 rounded" />
+            ) : null}
+            <div>
+              <div className="text-xl font-bold">{team.teamNameFull || team.teamName}</div>
+              <div className="text-xs text-gray-500 uppercase">{team.teamLeague}</div>
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={handleFollow}
+              disabled={followsTeam === true || followBusy}
+              className={`px-3 py-2 rounded text-white ${followsTeam ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
+            >
+              {followsTeam ? 'Following' : (followBusy ? 'Following…' : 'Follow this team')}
+            </button>
+          </div>
+        </div>
+        {followError ? <div className="px-4 text-xs text-red-600 mt-1">{followError}</div> : null}
         <PackFeedScaffold
           packs={packsData}
           accent="green"
