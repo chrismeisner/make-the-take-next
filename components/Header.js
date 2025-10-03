@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
@@ -26,6 +26,42 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 	console.log("[Header] Session data:", session);
   }, [session, status]);
 
+	// Wallet balance (tokens)
+	const [tokensBalance, setTokensBalance] = useState(null);
+	useEffect(() => {
+		const profileID = session?.user?.profileID;
+		if (!profileID) {
+			setTokensBalance(null);
+			return;
+		}
+		let cancelled = false;
+		async function fetchTokens() {
+			try {
+				const res = await fetch(`/api/profile/${encodeURIComponent(profileID)}?select=tokens`);
+				const data = await res.json();
+				if (cancelled) return;
+				if (res.ok && data?.success) {
+					setTokensBalance(Number.isFinite(data.tokensBalance) ? Math.round(data.tokensBalance) : 0);
+				} else {
+					setTokensBalance(0);
+				}
+			} catch {
+				if (!cancelled) setTokensBalance(0);
+			}
+		}
+		fetchTokens();
+		const onFocus = () => { fetchTokens(); };
+		if (typeof window !== 'undefined') {
+			window.addEventListener('focus', onFocus);
+		}
+		return () => {
+			cancelled = true;
+			if (typeof window !== 'undefined') {
+				window.removeEventListener('focus', onFocus);
+			}
+		};
+	}, [session?.user?.profileID]);
+
   // Logged out => simple login button
   function LoginButton() {
     return (
@@ -40,7 +76,7 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
     );
   }
 
-  // If user is logged in => show profile link and sign out button
+  // If user is logged in => show profile link and wallet
   function LoggedInLinks() {
     const profileID = session?.user?.profileID;
 
@@ -49,7 +85,13 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
         {/* ProfileID => link to /profile/[profileID] */}
 		{profileID && (
 		  <Link href={`/profile/${profileID}`} className={pillLinkStyles}>
-			{profileID}
+			<span className="mr-2">{profileID}</span>
+			{typeof tokensBalance === 'number' && (
+				<span className="inline-flex items-center">
+					<span className="mr-1">🪙</span>
+					<span>{tokensBalance}</span>
+				</span>
+			)}
 		  </Link>
 		)}
 		{/* Sign out moved to sidebar */}
