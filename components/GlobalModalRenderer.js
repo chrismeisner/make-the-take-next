@@ -48,12 +48,13 @@ export default function GlobalModalRenderer() {
 
   switch (modalConfig.modalType) {
     case "promoFollow": {
-      const { code } = modalConfig.modalProps;
+      const { code, previewState } = modalConfig.modalProps;
       return (
         <PromoFollowModal
           isOpen={true}
           onClose={closeModal}
           code={code}
+          previewState={previewState}
         />
       );
     }

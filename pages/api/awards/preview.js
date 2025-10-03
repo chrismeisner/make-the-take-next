@@ -53,6 +53,8 @@ export default async function handler(req, res) {
     // Compute hasUpcomingOrLive for target when promo
     let hasUpcomingOrLive = false;
     let displayImageUrl = rec.image_url || null;
+    let nextEventTime = null;
+    let nextPackCoverUrl = null;
     if (kind === 'promo') {
       try {
         const { query } = await import('../../../lib/db/postgres');
@@ -70,6 +72,42 @@ export default async function handler(req, res) {
             [targetSlug]
           );
           hasUpcomingOrLive = Boolean(rows?.[0]?.ok);
+
+          // Determine next upcoming event time and its pack cover (team)
+          try {
+            const { rows: nextRows } = await query(
+              `SELECT sub.cover_url, sub.event_time
+                 FROM (
+                   SELECT p.cover_url, e.event_time
+                     FROM packs p
+                     JOIN events e ON e.id = p.event_id
+                     JOIN teams ht ON e.home_team_id = ht.id
+                     JOIN teams at ON e.away_team_id = at.id
+                    WHERE LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+                      AND e.event_time IS NOT NULL
+                      AND e.event_time > NOW()
+                      AND (LOWER(ht.team_slug) = LOWER($1) OR LOWER(at.team_slug) = LOWER($1))
+                   UNION ALL
+                   SELECT p.cover_url, e.event_time
+                     FROM packs_events pe
+                     JOIN events e ON e.id = pe.event_id
+                     JOIN packs p ON p.id = pe.pack_id
+                     JOIN teams ht ON e.home_team_id = ht.id
+                     JOIN teams at ON e.away_team_id = at.id
+                    WHERE LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+                      AND e.event_time IS NOT NULL
+                      AND e.event_time > NOW()
+                      AND (LOWER(ht.team_slug) = LOWER($1) OR LOWER(at.team_slug) = LOWER($1))
+                 ) sub
+             ORDER BY sub.event_time ASC
+                LIMIT 1`,
+              [targetSlug]
+            );
+            if (nextRows && nextRows.length > 0) {
+              nextEventTime = nextRows[0].event_time ? new Date(nextRows[0].event_time).toISOString() : null;
+              nextPackCoverUrl = nextRows[0].cover_url || null;
+            }
+          } catch {}
           if (!displayImageUrl) {
             try {
               const { rows: tl } = await query('SELECT logo_url FROM teams WHERE LOWER(team_slug) = LOWER($1) LIMIT 1', [targetSlug]);
@@ -89,11 +127,47 @@ export default async function handler(req, res) {
             [String(targetSeriesId)]
           );
           hasUpcomingOrLive = Boolean(rows?.[0]?.ok);
+
+          // Determine next upcoming event time and pack cover (series)
+          try {
+            const { rows: nextRows } = await query(
+              `SELECT sub.cover_url, sub.event_time
+                 FROM (
+                   SELECT p.cover_url, e.event_time
+                     FROM series s
+                     JOIN series_packs spx ON spx.series_id = s.id
+                     JOIN packs p ON p.id = spx.pack_id
+                     JOIN events e ON e.id = p.event_id
+                    WHERE (s.series_id = $1 OR s.id::text = $1)
+                      AND LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+                      AND e.event_time IS NOT NULL
+                      AND e.event_time > NOW()
+                   UNION ALL
+                   SELECT p.cover_url, e.event_time
+                     FROM series s
+                     JOIN series_packs spx ON spx.series_id = s.id
+                     JOIN packs p ON p.id = spx.pack_id
+                     JOIN packs_events pe ON pe.pack_id = p.id
+                     JOIN events e ON e.id = pe.event_id
+                    WHERE (s.series_id = $1 OR s.id::text = $1)
+                      AND LOWER(COALESCE(p.pack_status,'')) IN ('active','open','coming-soon','live')
+                      AND e.event_time IS NOT NULL
+                      AND e.event_time > NOW()
+                 ) sub
+             ORDER BY sub.event_time ASC
+                LIMIT 1`,
+              [String(targetSeriesId)]
+            );
+            if (nextRows && nextRows.length > 0) {
+              nextEventTime = nextRows[0].event_time ? new Date(nextRows[0].event_time).toISOString() : null;
+              nextPackCoverUrl = nextRows[0].cover_url || null;
+            }
+          } catch {}
         }
       } catch {}
     }
 
-    return res.status(200).json({ success: true, kind, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: displayImageUrl, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamId: rec.requirement_team_id || null, requirementTeamName, requirementTeamRouteSlug, targetType, targetSlug, targetSeriesId, hasUpcomingOrLive });
+    return res.status(200).json({ success: true, kind, code: rec.code, name: rec.name, tokens: Number(rec.tokens) || 0, status, redirectTeamSlug: rec.redirect_team_slug || null, imageUrl: displayImageUrl, requirementKey: rec.requirement_key || null, requirementTeamSlug: rec.requirement_team_slug || null, requirementTeamId: rec.requirement_team_id || null, requirementTeamName, requirementTeamRouteSlug, targetType, targetSlug, targetSeriesId, hasUpcomingOrLive, nextEventTime, nextPackCoverUrl });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[awards/preview] error', err);

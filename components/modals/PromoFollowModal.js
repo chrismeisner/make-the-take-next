@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import GlobalModal from './GlobalModal';
 import { useModal } from '../../contexts/ModalContext';
+import Countdown from '../Countdown';
 
 export default function PromoFollowModal({ isOpen, onClose, code, justFollowed = false, previewState = '' }) {
   const { openModal } = useModal();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState(null); // { kind, targetType, targetSlug, targetSeriesId, imageUrl, hasUpcomingOrLive, name }
+  const [preview, setPreview] = useState(null); // { kind, targetType, targetSlug, targetSeriesId, imageUrl, hasUpcomingOrLive, name, nextEventTime, nextPackCoverUrl }
   const [busy, setBusy] = useState(false);
   const [followed, setFollowed] = useState(Boolean(justFollowed));
 
@@ -123,10 +124,15 @@ export default function PromoFollowModal({ isOpen, onClose, code, justFollowed =
             {!loading && error && <p className="text-red-600">{error}</p>}
             {!loading && !error && preview && (
               <>
-                {preview.imageUrl ? (
+                {(preview.nextPackCoverUrl || preview.imageUrl) ? (
                   <div className="w-full flex justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview.imageUrl} alt={preview.name || 'Promo'} className="max-h-40 object-contain rounded" />
+                    <img src={preview.nextPackCoverUrl || preview.imageUrl} alt={preview.name || 'Promo'} className="max-h-40 object-contain rounded" />
+                  </div>
+                ) : null}
+                {preview.nextEventTime ? (
+                  <div className="text-sm text-gray-700 text-center">
+                    <Countdown targetTime={preview.nextEventTime} prefix="Next pack in" alwaysShowSeconds={true} />
                   </div>
                 ) : null}
                 {preview.hasUpcomingOrLive ? (
@@ -134,6 +140,18 @@ export default function PromoFollowModal({ isOpen, onClose, code, justFollowed =
                 ) : (
                   <p className="text-gray-800">We’ll notify you when packs open for this {preview.targetType}.</p>
                 )}
+                {preview.targetType === 'team' && (preview.requirementTeamRouteSlug || preview.targetSlug) ? (
+                  <p className="text-gray-800 mt-1">
+                    Make takes to win prizes in the{' '}
+                    <a
+                      href={`/marketplace?teamSlug=${encodeURIComponent(preview.requirementTeamRouteSlug || preview.targetSlug)}`}
+                      className="underline text-blue-700"
+                    >
+                      team marketplace
+                    </a>
+                    .
+                  </p>
+                ) : null}
                 <button onClick={handleFollow} disabled={busy} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 w-max">{busy ? 'Please wait…' : ctaLabel}</button>
               </>
             )}

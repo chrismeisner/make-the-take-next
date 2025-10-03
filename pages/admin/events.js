@@ -330,7 +330,16 @@ export default function AdminEventsPage() {
             <tr>
               <th className="px-4 py-2 border">Cover</th>
               <th className="px-4 py-2 border">Title</th>
-              <th className="px-4 py-2 border">Time</th>
+              <th className="px-4 py-2 border">
+                <button
+                  type="button"
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="flex items-center gap-1 hover:underline"
+                >
+                  <span>Time</span>
+                  <span className="text-xs">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                </button>
+              </th>
               <th className="px-4 py-2 border">League</th>
               <th className="px-4 py-2 border">Props</th>
               <th className="px-4 py-2 border">Packs</th>
