@@ -43,7 +43,8 @@ export default function InlineCardProgressFooter() {
       }, 0)
     : 0;
   // Button is fully blue only when there are changes to submit
-  const submitBgColor = canSubmit ? '#1d4ed8' : '#cccccc';
+  const isFullProgress = progressPercentage === 100;
+  const submitBgColor = isFullProgress ? '#7c3aed' : (canSubmit ? '#1d4ed8' : '#cccccc');
   const submitTextColor = '#ffffff';
   const buttonLabel = changedCount > 0
     ? `Submit ${changedCount} ${changedCount === 1 ? 'Take' : 'Takes'}`

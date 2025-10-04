@@ -30,7 +30,7 @@ export default function AllTimeLeaderboard({ packs = [], selectedDate = null, te
       )}
 
       {!loading && !error && (
-        <LeaderboardTable leaderboard={leaderboard} packSlugOrId={null} />
+        <LeaderboardTable leaderboard={leaderboard} />
       )}
 
       {loading && (

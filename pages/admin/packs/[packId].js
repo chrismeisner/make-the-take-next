@@ -10,6 +10,8 @@ export default function AdminPackDetail() {
   const [winner, setWinner] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [recipients, setRecipients] = useState([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [smsDraftRows, setSmsDraftRows] = useState([]);
   const [smsOptions, setSmsOptions] = useState({ includeWinner: true, includeLink: true });
@@ -54,6 +56,31 @@ export default function AdminPackDetail() {
     fetchLeaderboard();
     return () => { cancelled = true; };
   }, [pack]);
+
+  useEffect(() => {
+    if (!pack?.airtableId) return;
+    let cancelled = false;
+    const loadRecipients = async () => {
+      try {
+        setRecipientsLoading(true);
+        const res = await fetch(`/api/admin/packs/${encodeURIComponent(pack.airtableId)}/recipients`);
+        const data = await res.json();
+        if (!cancelled) {
+          if (data?.success && Array.isArray(data.recipients)) {
+            setRecipients(data.recipients);
+          } else {
+            setRecipients([]);
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setRecipients([]);
+      } finally {
+        if (!cancelled) setRecipientsLoading(false);
+      }
+    };
+    loadRecipients();
+    return () => { cancelled = true; };
+  }, [pack?.airtableId]);
 
   if (status === 'loading') return <div className="container mx-auto px-4 py-6">Loading...</div>;
   if (!session) return <div className="container mx-auto px-4 py-6">Not authorized</div>;
@@ -249,6 +276,14 @@ export default function AdminPackDetail() {
           <dt className="font-medium"># Props</dt>
           <dd>{pack.propsCount}</dd>
         </div>
+        <div>
+          <dt className="font-medium">Opens</dt>
+          <dd>{pack.packOpenTime ? new Date(pack.packOpenTime).toLocaleString() : '-'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">Closes</dt>
+          <dd>{pack.packCloseTime ? new Date(pack.packCloseTime).toLocaleString() : '-'}</dd>
+        </div>
         <div className="md:col-span-2">
           <dt className="font-medium">Summary</dt>
           <dd>{pack.packSummary}</dd>
@@ -346,6 +381,43 @@ export default function AdminPackDetail() {
           </div>
         ) : (
           <div className="text-gray-500">No entries yet.</div>
+        )}
+      </div>
+      {/* Recipients for Pack Open SMS */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-3">Pack Open SMS Recipients</h2>
+        {recipientsLoading ? (
+          <div className="text-gray-500">Loading recipients...</div>
+        ) : recipients.length === 0 ? (
+          <div className="text-gray-500">No opted-in recipients.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left border border-gray-200 rounded">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 border-b w-12">#</th>
+                  <th className="px-3 py-2 border-b">Profile</th>
+                  <th className="px-3 py-2 border-b">Phone</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recipients.map((r, idx) => (
+                  <tr key={`${r.phone}-${idx}`} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 border-b">{idx + 1}</td>
+                    <td className="px-3 py-2 border-b">
+                      {r.profileID ? (
+                        <a href={`/profile/${r.profileID}`} className="text-blue-600 hover:underline">{r.profileID}</a>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 border-b whitespace-nowrap">{r.phone}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-xs text-gray-600 mt-2">Total: {recipients.length}</div>
+          </div>
         )}
       </div>
       {/* Props List */}

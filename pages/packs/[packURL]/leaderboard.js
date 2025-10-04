@@ -37,10 +37,10 @@ export default function PackLeaderboardPage() {
   return (
 	<div style={{ padding: '1rem' }}>
 	  <h2>Pack Leaderboard: {packURL}</h2>
-	  {leaderboard.length === 0 ? (
+      {leaderboard.length === 0 ? (
 		<p>No data found for this pack’s leaderboard.</p>
 	  ) : (
-		<LeaderboardTable leaderboard={leaderboard} packSlugOrId={packURL} />
+        <LeaderboardTable leaderboard={leaderboard} />
 	  )}
 	  <p style={{ marginTop: '1rem' }}>
 		<Link href={`/packs/${packURL}`}>Back to Pack</Link>

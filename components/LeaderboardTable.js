@@ -17,7 +17,7 @@ import useHasMounted from "../hooks/useHasMounted";
  *   ...
  * }
  */
-export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
+export default function LeaderboardTable({ leaderboard }) {
   const { data: session } = useSession();
   const hasMounted = useHasMounted();
   const currentProfileID = hasMounted ? (session?.user?.profileID) : null;
@@ -25,7 +25,7 @@ export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
 
   return (
 	<div className="overflow-x-auto w-full">
-	  <table className="min-w-full border-collapse">
+		  <table className="min-w-full border-collapse">
 		<thead>
           <tr className="border-b">
 			<th className="text-left py-2 px-3 w-10"></th>
@@ -33,13 +33,12 @@ export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
 			<th className="text-left py-2 px-3">REC</th>
 			<th className="text-left py-2 px-3">PER</th>
 			<th className="text-left py-2 px-3">PTS</th>
-            <th className="text-right py-2 px-3">Compare</th>
 		  </tr>
 		</thead>
 		<tbody>
-          {!hasEntries ? (
+			  {!hasEntries ? (
 			<tr>
-              <td colSpan={6} className="py-6 px-3 text-center text-gray-500">
+				  <td colSpan={5} className="py-6 px-3 text-center text-gray-500">
 				No participants yet. Be the first to make a take!
 			  </td>
 			</tr>
@@ -69,19 +68,6 @@ export default function LeaderboardTable({ leaderboard, packSlugOrId }) {
 				  })()}
 				</td>
 				<td className="py-2 px-3">{Math.round(item.points)}</td>
-                <td className="py-2 px-3 text-right">
-                  {hasMounted && (() => {
-                    const other = item.profileID;
-                    const can = other && currentProfileID && other !== currentProfileID;
-                    const slug = packSlugOrId || item.packURL || item.packID || null;
-                    if (!can || !slug) return null;
-                    return (
-                      <Link href={{ pathname: `/packs/[packURL]/h2h`, query: { u1: currentProfileID, u2: other, packURL: slug } }}>
-                        <span className="text-blue-600 underline">Compare</span>
-                      </Link>
-                    );
-                  })()}
-                </td>
 			  </tr>
 			))
 		  )}

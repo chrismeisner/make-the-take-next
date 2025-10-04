@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import HeaderGlobe from "./HeaderGlobe";
+import useHasMounted from "../hooks/useHasMounted";
 
 // Minimal link style for header links (non-pill)
 const linkBaseStyles = "text-sm text-gray-200 hover:text-gray-300 transition-colors";
@@ -20,6 +21,7 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   // timezone detection removed; now only in admin page
+  const hasMounted = useHasMounted();
 
   useEffect(() => {
 	console.log("[Header] Session status:", status);
@@ -111,11 +113,14 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 			{/* timezone display removed; moved to admin page */}
 		  </div>
 		  <nav className="flex items-center space-x-4">
-			{session?.user ? (
-			  <LoggedInLinks />
-			) : (
-			  <LoginButton />
-			)}
+            {/* Prevent SSR/CSR mismatch by rendering a stable placeholder until mounted */}
+            {!hasMounted ? (
+              <div style={{ width: 80, height: 24 }} />
+            ) : session?.user ? (
+              <LoggedInLinks />
+            ) : (
+              <LoginButton />
+            )}
 		  </nav>
 		</div>
 	  </div>

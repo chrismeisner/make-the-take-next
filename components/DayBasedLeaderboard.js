@@ -54,7 +54,7 @@ export default function DayBasedLeaderboard({ packs = [], selectedDay = 'today',
 
       {/* Leaderboard table */}
       {!loading && !error && (
-        <LeaderboardTable leaderboard={leaderboard} packSlugOrId={null} />
+        <LeaderboardTable leaderboard={leaderboard} />
       )}
 
       {/* Loading state */}

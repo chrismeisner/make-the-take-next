@@ -158,6 +158,8 @@ export default function EditPropPage() {
   const [teamToAdd, setTeamToAdd] = useState('');
   const [updatingTeams, setUpdatingTeams] = useState(false);
   const [teamsError, setTeamsError] = useState('');
+  const [event, setEvent] = useState(null);
+  const [eventDetails, setEventDetails] = useState(null);
   const currentLeague = event?.eventLeague || eventDetails?.eventLeague || '';
   const availableTeams = useMemo(() => {
     const leagueLower = String(currentLeague || '').toLowerCase();
@@ -198,7 +200,6 @@ export default function EditPropPage() {
   const [propOpenTime, setPropOpenTime] = useState('');
   const [propCloseTime, setPropCloseTime] = useState('');
   const [propCoverSource, setPropCoverSource] = useState('event');
-  const [event, setEvent] = useState(null);
   // Auto-grade fields
   const [gradingMode, setGradingMode] = useState('manual');
   const [gradingType, setGradingType] = useState('individual'); // 'individual' | 'h2h'
@@ -392,10 +393,53 @@ export default function EditPropPage() {
   const [autoGradeKey, setAutoGradeKey] = useState('');
 
   // New state for team cover (declare before any hooks that depend on eventDetails)
-  const [eventDetails, setEventDetails] = useState(null);
   const [teamCoverUrl, setTeamCoverUrl] = useState(null);
   const [eventCoverUrl, setEventCoverUrl] = useState(null);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
+  const [customCoverFile, setCustomCoverFile] = useState(null);
+  const [customCoverPreview, setCustomCoverPreview] = useState(null);
+  const [uploadingCustomCover, setUploadingCustomCover] = useState(false);
+  const [customCoverUploadError, setCustomCoverUploadError] = useState('');
+
+  const handleCustomCoverFileChange = (e) => {
+    try {
+      const file = e?.target?.files?.[0] || null;
+      setCustomCoverFile(file || null);
+      setCustomCoverUploadError('');
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => setCustomCoverPreview(reader.result);
+        reader.readAsDataURL(file);
+      } else {
+        setCustomCoverPreview(null);
+      }
+    } catch {}
+  };
+
+  const handleUploadCustomCover = async () => {
+    if (!customCoverFile || !customCoverPreview) return;
+    setUploadingCustomCover(true);
+    setCustomCoverUploadError('');
+    try {
+      const base64Data = String(customCoverPreview).split(',')[1];
+      const res = await fetch('/api/admin/uploadPropCover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: customCoverFile.name || 'prop-cover.png', fileData: base64Data }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success || !json?.url) {
+        throw new Error(json?.error || 'Upload failed');
+      }
+      setCustomCoverUrl(json.url);
+      setCustomCoverFile(null);
+      setCustomCoverPreview(null);
+    } catch (e) {
+      setCustomCoverUploadError(e?.message || 'Upload failed');
+    } finally {
+      setUploadingCustomCover(false);
+    }
+  };
 
   // Load teams for abbreviation lookups (used to source Team ABV A/B from DB abbreviations)
   useEffect(() => {
@@ -2939,6 +2983,21 @@ export default function EditPropPage() {
               onChange={(e) => setCustomCoverUrl(e.target.value)}
               placeholder="https://..."
             />
+            <div className="mt-2 flex items-center gap-2">
+              <input type="file" accept="image/*" onChange={handleCustomCoverFileChange} />
+              <button
+                type="button"
+                className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
+                disabled={uploadingCustomCover || !customCoverPreview}
+                onClick={handleUploadCustomCover}
+              >
+                {uploadingCustomCover ? 'Uploading…' : 'Upload'}
+              </button>
+              {customCoverPreview && (
+                <img src={customCoverPreview} alt="Selected" className="w-10 h-10 object-cover rounded border" />
+              )}
+            </div>
+            {customCoverUploadError ? <div className="text-red-600 text-xs mt-1">{customCoverUploadError}</div> : null}
           </div>
         )}
         {error && <p className="text-red-600 text-sm">{error}</p>}
