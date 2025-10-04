@@ -469,8 +469,7 @@ export default function ProfilePage() {
 	      <h3 className="text-xl font-bold mb-2">Created Packs</h3>
 	      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 	        {creatorPacks.map((p) => (
-	          <Link key={p.packID} href={`/packs/${encodeURIComponent(p.packURL || p.packID)}`} legacyBehavior>
-	            <a className="block border rounded overflow-hidden bg-white hover:shadow">
+	          <Link key={p.packID} href={`/packs/${encodeURIComponent(p.packURL || p.packID)}`} className="block border rounded overflow-hidden bg-white hover:shadow">
 	              <div className="w-full aspect-square relative bg-gray-100">
 	                {/* eslint-disable-next-line @next/next/no-img-element */}
 	                {p.packCover ? (
@@ -486,7 +485,6 @@ export default function ProfilePage() {
                   <div className="text-xs text-gray-600">{formatDateTimeUtc(p.eventTime)}</div>
                 )}
 	              </div>
-	            </a>
 	          </Link>
 	        ))}
 	      </div>

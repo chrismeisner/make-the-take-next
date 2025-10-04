@@ -16,7 +16,7 @@ import { usePackContext } from "../contexts/PackContext";
 import { useRouter } from "next/router";
 import { useModal } from "../contexts/ModalContext";
 import Countdown from "./Countdown";
-import { PACK_SHARING_ENABLED } from "../lib/runtimeConfig";
+// Removed PACK_SHARING_ENABLED gating so Share Pack is always available
 
 // Add a swipeable cover card as the first slide
 function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
@@ -301,8 +301,8 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             </div>
           )}
           <p className="text-gray-600 text-sm">{packData.packSummary}</p>
-          {canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0) && (
-            <div className="mt-3">
+          {(canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0)) ? (
+            <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => openModal('shareMyTakes', { packTitle: packData.packTitle, packUrl: (typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`), packProps: packData.props, userTakes })}
@@ -310,25 +310,38 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               >
                 Share my Takes
               </button>
+              <button
+                type="button"
+                onClick={() => openModal('sharePack', {
+                  packTitle: packData.packTitle,
+                  packSummary: packData.packSummary,
+                  packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                  packLeague: packData.packLeague,
+                  packCloseTime: packData.packCloseTime,
+                  packOpenSmsTemplate: packData.packOpenSmsTemplate,
+                })}
+                className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+              >
+                Share Pack
+              </button>
             </div>
-          )}
-          {PACK_SHARING_ENABLED && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => openModal('sharePack', {
-                packTitle: packData.packTitle,
-                packSummary: packData.packSummary,
-                packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
-                packLeague: packData.packLeague,
-                packCloseTime: packData.packCloseTime,
-                packOpenSmsTemplate: packData.packOpenSmsTemplate,
-              })}
-              className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
-            >
-              Share this pack
-            </button>
-          </div>
+          ) : (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => openModal('sharePack', {
+                  packTitle: packData.packTitle,
+                  packSummary: packData.packSummary,
+                  packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                  packLeague: packData.packLeague,
+                  packCloseTime: packData.packCloseTime,
+                  packOpenSmsTemplate: packData.packOpenSmsTemplate,
+                })}
+                className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+              >
+                Share Pack
+              </button>
+            </div>
           )}
           {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
             <div className="mt-4">
@@ -376,8 +389,8 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </div>
               )}
               <p className="text-gray-600">{packData.packSummary}</p>
-              {canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0) && (
-                <div className="mt-3">
+              {(canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0)) ? (
+                <div className="mt-3 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => openModal('shareMyTakes', { packTitle: packData.packTitle, packUrl: (typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`), packProps: packData.props, userTakes })}
@@ -385,25 +398,38 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   >
                     Share my Takes
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => openModal('sharePack', {
+                      packTitle: packData.packTitle,
+                      packSummary: packData.packSummary,
+                      packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                      packLeague: packData.packLeague,
+                      packCloseTime: packData.packCloseTime,
+                      packOpenSmsTemplate: packData.packOpenSmsTemplate,
+                    })}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+                  >
+                    Share Pack
+                  </button>
                 </div>
-              )}
-              {PACK_SHARING_ENABLED && (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => openModal('sharePack', {
-                    packTitle: packData.packTitle,
-                    packSummary: packData.packSummary,
-                    packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
-                    packLeague: packData.packLeague,
-                    packCloseTime: packData.packCloseTime,
-                    packOpenSmsTemplate: packData.packOpenSmsTemplate,
-                  })}
-                  className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
-                >
-                  Share this pack
-                </button>
-              </div>
+              ) : (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => openModal('sharePack', {
+                      packTitle: packData.packTitle,
+                      packSummary: packData.packSummary,
+                      packUrl: typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`,
+                      packLeague: packData.packLeague,
+                      packCloseTime: packData.packCloseTime,
+                      packOpenSmsTemplate: packData.packOpenSmsTemplate,
+                    })}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300"
+                  >
+                    Share Pack
+                  </button>
+                </div>
               )}
               {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
                 <div className="mt-4">
