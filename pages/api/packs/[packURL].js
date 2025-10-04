@@ -395,7 +395,7 @@ export default async function handler(req, res) {
                JOIN props_teams pt ON pt.prop_id = pr.id
               WHERE pr.pack_id = $1
            )
-           SELECT DISTINCT t.team_slug, t.name, t.logo_url
+           SELECT DISTINCT t.team_slug, t.name, t.short_name, t.logo_url
              FROM team_ids ti
              JOIN teams t ON t.id = ti.team_id
             WHERE t.team_slug IS NOT NULL`,
@@ -404,6 +404,7 @@ export default async function handler(req, res) {
         linkedTeams = (teamRows || []).map((r) => ({
           slug: r.team_slug,
           name: r.name,
+          shortName: r.short_name || null,
           logoUrl: r.logo_url || null,
         }));
       }

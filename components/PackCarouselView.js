@@ -289,6 +289,24 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
             Back
           </button>
           <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
+          {Array.isArray(packData.seriesList) && packData.seriesList.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {packData.seriesList.slice(0, 3).map((s, idx) => (
+                <span
+                  key={(s.id || s.series_id || String(idx))}
+                  role="link"
+                  tabIndex={0}
+                  onClick={(e) => { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) window.location.href = `/series/${encodeURIComponent(sid)}`; }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) window.location.href = `/series/${encodeURIComponent(sid)}`; } }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-300 text-xs text-indigo-800 bg-indigo-50 hover:bg-indigo-100 cursor-pointer"
+                  aria-label={`View series ${s?.title || s?.series_id || 'Series'}`}
+                >
+                  <span>Series:</span>
+                  <span className="font-medium">{s.title || s.series_id || 'Untitled'}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {packData.packCloseTime && (
             <div className="mt-1 text-sm text-gray-600">
               <Countdown targetTime={packData.packCloseTime} prefix="Closes in:" />
@@ -345,7 +363,6 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
           )}
           {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
             <div className="mt-4">
-              <div className="text-sm font-medium text-gray-700">Links to teams</div>
               <ul className="mt-2 flex flex-wrap gap-3">
                 {packData.linkedTeams.map((t) => (
                   <li key={t.slug}>
@@ -353,7 +370,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                       {t.logoUrl && (
                         <img src={t.logoUrl} alt={t.name} className="w-5 h-5 rounded-sm" />
                       )}
-                      <span>{t.name}</span>
+                      <span>{t.shortName || t.name || t.slug}</span>
                     </Link>
                   </li>
                 ))}
@@ -377,6 +394,24 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 Back
               </button>
               <h2 className="text-3xl font-bold">{packData.packTitle}</h2>
+              {Array.isArray(packData.seriesList) && packData.seriesList.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {packData.seriesList.slice(0, 3).map((s, idx) => (
+                    <span
+                      key={(s.id || s.series_id || String(idx))}
+                      role="link"
+                      tabIndex={0}
+                      onClick={(e) => { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) window.location.href = `/series/${encodeURIComponent(sid)}`; }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { try { e.preventDefault(); e.stopPropagation(); } catch {} const sid = s?.series_id || s?.id; if (sid) window.location.href = `/series/${encodeURIComponent(sid)}`; } }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-300 text-xs text-indigo-800 bg-indigo-50 hover:bg-indigo-100 cursor-pointer"
+                      aria-label={`View series ${s?.title || s?.series_id || 'Series'}`}
+                    >
+                      <span>Series:</span>
+                      <span className="font-medium">{s.title || s.series_id || 'Untitled'}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               {packData.packCloseTime && (
                 <div className="mt-1 text-sm text-gray-600">
                   <Countdown targetTime={packData.packCloseTime} prefix="Closes in:" />
@@ -433,15 +468,14 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               )}
               {Array.isArray(packData.linkedTeams) && packData.linkedTeams.length > 0 && (
                 <div className="mt-4">
-                  <div className="text-sm font-medium text-gray-700">Links to teams</div>
                   <ul className="mt-2 flex flex-wrap gap-3">
-                    {packData.linkedTeams.map((t) => (
+                  {packData.linkedTeams.map((t) => (
                       <li key={t.slug}>
                         <Link href={`/teams/${encodeURIComponent(t.slug)}`} className="inline-flex items-center gap-2 text-blue-600 underline">
                           {t.logoUrl && (
                             <img src={t.logoUrl} alt={t.name} className="w-5 h-5 rounded-sm" />
                           )}
-                          <span>{t.name}</span>
+                        <span>{t.shortName || t.name || t.slug}</span>
                         </Link>
                       </li>
                     ))}
