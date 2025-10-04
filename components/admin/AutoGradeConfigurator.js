@@ -102,7 +102,10 @@ export default function AutoGradeConfigurator(props) {
             <option value="team_multi_stat_ou">Team Multi Stat O/U</option>
             <option value="team_multi_stat_h2h">Team Multi Stat H2H</option>
             {dataSource === 'major-mlb' && (
-              <option value="spread">Spread (MLB Total O/U)</option>
+              <>
+                <option value="spread">Spread (MLB Total O/U)</option>
+                <option value="total_runs_over_under">Total Runs O/U (MLB)</option>
+              </>
             )}
             <option value="who_wins">Team Winner</option>
           </>
@@ -175,7 +178,7 @@ export default function AutoGradeConfigurator(props) {
       )}
 
       {/* Team/Player Stat O/U and H2H (single metric) */}
-      {(autoGradeKey === 'stat_over_under' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h') && (
+      {(autoGradeKey === 'stat_over_under' || autoGradeKey === 'team_stat_over_under' || autoGradeKey === 'team_stat_h2h' || autoGradeKey === 'total_runs_over_under') && (
         <div className="mt-3 space-y-3">
           {autoGradeKey === 'team_stat_over_under' && (
             <div>
@@ -188,6 +191,12 @@ export default function AutoGradeConfigurator(props) {
                 <option value="">Select team…</option>
                 {teamOptionsH2H.map((abv) => (<option key={`ou-team-${abv}`} value={abv}>{abv}</option>))}
               </select>
+            </div>
+          )}
+          {autoGradeKey === 'total_runs_over_under' && (
+            <div>
+              <div className="text-sm text-gray-700">Total Runs O/U compares combined home+away runs to a threshold.</div>
+              <div className="text-xs text-gray-600 mt-1">Metric is fixed to R (runs). No team or player selection needed.</div>
             </div>
           )}
           {autoGradeKey === 'stat_over_under' && (
@@ -247,25 +256,32 @@ export default function AutoGradeConfigurator(props) {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Metric</label>
-              {metricLoading ? (
-                <div className="mt-1 text-xs text-gray-600">Loading metrics…</div>
-              ) : (
-                <select
-                  className="mt-1 block w-full border rounded px-2 py-1"
-                  value={selectedMetric}
-                  onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }}
-                  disabled={!metricOptions || metricOptions.length === 0}
-                >
-                  <option value="">Select a metric…</option>
-                  {(metricOptions || []).map((k) => (
-                    <option key={k} value={k}>{k}</option>
-                  ))}
-                </select>
-              )}
-              {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
-            </div>
+            {autoGradeKey !== 'total_runs_over_under' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Metric</label>
+                {metricLoading ? (
+                  <div className="mt-1 text-xs text-gray-600">Loading metrics…</div>
+                ) : (
+                  <select
+                    className="mt-1 block w-full border rounded px-2 py-1"
+                    value={selectedMetric}
+                    onChange={(e)=> { setSelectedMetric(e.target.value); upsertRootParam('metric', e.target.value); }}
+                    disabled={!metricOptions || metricOptions.length === 0}
+                  >
+                    <option value="">Select a metric…</option>
+                    {(metricOptions || []).map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                )}
+                {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Metric</label>
+                <div className="mt-1 text-sm">R (Runs) — fixed</div>
+              </div>
+            )}
             {autoGradeKey !== 'team_stat_h2h' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">Comparator & Thresholds</label>

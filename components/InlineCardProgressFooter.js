@@ -55,6 +55,15 @@ export default function InlineCardProgressFooter() {
     ? 'Swipe to Play'
     : `${currentSlideIndex} of ${totalProps}`;
 
+  // Determine if we're on the last prop slide (index equals totalProps)
+  const isOnLastProp = currentSlideIndex >= totalProps && totalProps > 0;
+  // Determine if we're on the cover slide
+  const isOnCover = (currentSlideIndex ?? 0) === 0;
+  // Has the user made all takes across the pack? (existing takes + new selections)
+  const hasTakenAll = totalProps > 0 && takenCount >= totalProps;
+  // If logged in and all takes are made, keep navigation active (except Prev on cover)
+  const forceButtonsActive = Boolean(session?.user) && hasTakenAll;
+
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -121,13 +130,14 @@ export default function InlineCardProgressFooter() {
             onClick={() => {
               try { window.dispatchEvent(new Event('packCarouselPrev')); } catch {}
             }}
+            disabled={isOnCover}
             style={{
-              backgroundColor: '#e5e7eb',
-              color: '#111827',
+              backgroundColor: (forceButtonsActive && !isOnCover) ? '#2196f3' : '#e5e7eb',
+              color: (forceButtonsActive && !isOnCover) ? '#ffffff' : (isOnCover ? '#9ca3af' : '#111827'),
               padding: '0.25rem 0.75rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
+              cursor: isOnCover ? 'not-allowed' : 'pointer',
             }}
           >
             Prev
@@ -150,13 +160,14 @@ export default function InlineCardProgressFooter() {
             onClick={() => {
               try { window.dispatchEvent(new Event('packCarouselNext')); } catch {}
             }}
+            disabled={!forceButtonsActive && isOnLastProp}
             style={{
-              backgroundColor: hasSelectionOnCurrent ? '#2196f3' : '#e5e7eb',
-              color: hasSelectionOnCurrent ? '#ffffff' : '#111827',
+              backgroundColor: forceButtonsActive ? '#2196f3' : ((isOnLastProp) ? '#e5e7eb' : (hasSelectionOnCurrent ? '#2196f3' : '#e5e7eb')),
+              color: forceButtonsActive ? '#ffffff' : ((isOnLastProp) ? '#9ca3af' : (hasSelectionOnCurrent ? '#ffffff' : '#111827')),
               padding: '0.25rem 0.75rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
+              cursor: (!forceButtonsActive && isOnLastProp) ? 'not-allowed' : 'pointer',
             }}
           >
             Next

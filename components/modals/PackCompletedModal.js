@@ -82,17 +82,10 @@ const handleGenerateQR = () => {
   return (
 	<GlobalModal isOpen={isOpen} onClose={onClose}>
 	  <div className="p-4">
-		<h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
+		<h2 className="text-2xl font-bold mb-4">Takes Made ✅</h2>
 		<p className="mb-4">
-		  Thank you for completing the pack <strong>{packTitle}</strong>.
+		  You submitted your takes for <strong>{packTitle}</strong>.
 		</p>
-        {receiptUrl && (
-          <div className="mb-4">
-            <div className="mt-3 flex items-center gap-2">
-              <button onClick={handleGenerateQR} className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-black">Generate QR</button>
-            </div>
-          </div>
-        )}
 		{/* Display created take record IDs for verification */}
 		{/* Removed per request: hide created records list */}
 		<div className="flex justify-end gap-2">
@@ -105,25 +98,12 @@ const handleGenerateQR = () => {
 		  >
 			Close
 		  </button>
-        {receiptUrl && (
-          <button
-            onClick={() => {
-              onClose();
-              router.push(receiptUrl);
-            }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-          >
-            View Receipt
-          </button>
-        )}
-		  {profileID && (
-			<button
-			  onClick={handleProfileNavigation}
-			  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-			>
-			  Go to My Profile
-			</button>
-		  )}
+		  <button
+			onClick={handleShare}
+			className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+		  >
+			Share Pack
+		  </button>
 		</div>
 	  </div>
 	</GlobalModal>
