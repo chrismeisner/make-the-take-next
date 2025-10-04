@@ -39,7 +39,7 @@ function PackCoverCard({ packCover, packTitle, onImgLoad, onClick }) {
   );
 }
 
-export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [] }) {
+export default function PackCarouselView({ packData, leaderboard, debugLogs, userReceipts = [], canShareMyTakes = false, userTakes = [] }) {
   const { handleChoiceSelect } = usePackContext();
   const { openModal } = useModal();
   const [activeTab, setActiveTab] = useState('leaderboard');
@@ -153,7 +153,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       if (e.key === 'ArrowRight') {
         if (!swiperRef.current) return;
         const idx = swiperRef.current.activeIndex ?? 0;
-        if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
+        if (idx >= totalSlides - 1) return; else swiperRef.current.slideNext();
         return;
       }
       // Number keys select choice on current card
@@ -207,7 +207,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
     const handleNext = () => {
       if (!swiperRef.current) return;
       const idx = swiperRef.current.activeIndex ?? 0;
-      if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
+      if (idx >= totalSlides - 1) return; else swiperRef.current.slideNext();
     };
     window.addEventListener('packCarouselPrev', handlePrev);
     window.addEventListener('packCarouselNext', handleNext);
@@ -277,7 +277,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
       {/* Removed sticky footer; using inline footer below pagination */}
       <div className="p-4 overflow-x-visible pb-32 md:pb-24">
         {/* Mobile-only hero above prop stack */}
-        <div className="block md:hidden px-2 mb-4">
+        <div className="block md:hidden px-1 mb-4">
           <button
             type="button"
             onClick={() => window.history.back()}
@@ -300,7 +300,18 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               <span>{packData.packPrize || packData.firstPlace}</span>
             </div>
           )}
-          <p className="text-gray-600">{packData.packSummary}</p>
+          <p className="text-gray-600 text-sm">{packData.packSummary}</p>
+          {canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0) && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => openModal('shareMyTakes', { packTitle: packData.packTitle, packUrl: (typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`), packProps: packData.props, userTakes })}
+                className="inline-flex items-center justify-center px-3 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+              >
+                Share my Takes
+              </button>
+            </div>
+          )}
           {PACK_SHARING_ENABLED && (
           <div className="mt-3">
             <button
@@ -365,6 +376,17 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                 </div>
               )}
               <p className="text-gray-600">{packData.packSummary}</p>
+              {canShareMyTakes && (Array.isArray(userReceipts) && userReceipts.length > 0) && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => openModal('shareMyTakes', { packTitle: packData.packTitle, packUrl: (typeof window !== 'undefined' ? `${window.location.origin}/packs/${packData.packURL}` : `${debugLogs.origin}/packs/${packData.packURL}`), packProps: packData.props, userTakes })}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  >
+                    Share my Takes
+                  </button>
+                </div>
+              )}
               {PACK_SHARING_ENABLED && (
               <div className="mt-3">
                 <button
@@ -449,12 +471,14 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   >
                     Leaderboard
                   </button>
-                  <button
-                    onClick={() => setActiveTab('content')}
-                    className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'content' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                  >
-                    Content
-                  </button>
+                  {Array.isArray(packData.contentData) && packData.contentData.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('content')}
+                      className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'content' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                    >
+                      Content
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveTab('activity')}
                     className={`py-2 px-1 text-sm font-medium border-b-2 ${activeTab === 'activity' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}

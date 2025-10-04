@@ -25,6 +25,7 @@ import AddPacksToContestModal from "./modals/AddPacksToContestModal";
 import MobileNavModal from "./modals/MobileNavModal";
 import ShareContestModal from "./modals/ShareContestModal";
 import SharePackModal from "./modals/SharePackModal";
+import ShareMyTakesModal from "./modals/ShareMyTakesModal";
 import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
 import PackActiveModal from "./modals/PackActiveModal";
@@ -206,6 +207,19 @@ export default function GlobalModalRenderer() {
           packLeague={packLeague}
           packCloseTime={packCloseTime}
           packOpenSmsTemplate={packOpenSmsTemplate}
+        />
+      );
+    }
+    case "shareMyTakes": {
+      const { packTitle, packUrl, packProps, userTakes } = modalConfig.modalProps;
+      return (
+        <ShareMyTakesModal
+          isOpen={true}
+          onClose={closeModal}
+          packTitle={packTitle}
+          packUrl={packUrl}
+          packProps={packProps}
+          userTakes={userTakes}
         />
       );
     }

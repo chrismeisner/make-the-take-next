@@ -74,6 +74,8 @@ export default async function handler(req, res) {
   let awayTeamScore = null;
   // Collect teams linked to this pack via events and props
   let linkedTeams = [];
+  // Series list for this pack
+  let seriesList = [];
 
   if (eventIDs.length > 0) {
     const firstEventID = eventIDs[0];
@@ -125,6 +127,23 @@ export default async function handler(req, res) {
     } catch (err) {
       console.error(`[api/packs/[packURL]] Event lookup error =>`, err);
     }
+  }
+  // Discover series that include this pack
+  try {
+    if (packRecordId) {
+      const { rows } = await query(
+        `SELECT s.id, s.series_id, s.title
+           FROM series_packs spx
+           JOIN series s ON s.id = spx.series_id
+          WHERE spx.pack_id = $1
+          ORDER BY s.created_at DESC NULLS LAST, s.title ASC NULLS LAST`,
+        [packRecordId]
+      );
+      seriesList = (rows || []).map((r) => ({ id: r.id, series_id: r.series_id || null, title: r.title || 'Untitled Series' }));
+    }
+  } catch (e) {
+    // non-fatal
+    seriesList = [];
   }
 	// ---------------------------------------------
 	// 2. Fetch linked Props via DAL and compute per-pack order
@@ -472,6 +491,7 @@ export default async function handler(req, res) {
     contentData,
     contests: contestsData,
     linkedTeams,
+    seriesList,
   };
 
   console.log("[packURL] final leaderboard =>", leaderboard);

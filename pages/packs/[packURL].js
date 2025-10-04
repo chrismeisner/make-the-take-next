@@ -8,7 +8,8 @@ import { useModal } from '../../contexts/ModalContext';
 import { useSession } from 'next-auth/react';
 import { usePackContext } from '../../contexts/PackContext';
 import { useRouter } from 'next/router';
-import PackCarouselView from '../../components/PackCarouselView';
+import dynamic from 'next/dynamic';
+const PackCarouselView = dynamic(() => import('../../components/PackCarouselView'), { ssr: false });
 import Head from 'next/head';
 import PropDetailPage from '../props/[propID]';
 import InlineCardProgressFooter from '../../components/InlineCardProgressFooter';
@@ -48,6 +49,8 @@ export async function getServerSideProps(context) {
       : null;
     console.log('[getServerSideProps] session:', session);
     let userReceipts = [];
+    let hasCompletedAllTakes = false;
+    let userTakes = [];
     if (session?.user?.phone) {
       console.log('[getServerSideProps] looking up receipts for phone:', session.user.phone);
       const phone = session.user.phone;
@@ -59,7 +62,7 @@ export async function getServerSideProps(context) {
       if (packId) {
         // Get all takes for this user on this pack
         const { rows: takeRows } = await query(`
-          SELECT t.id, t.created_at
+          SELECT t.id, t.created_at, t.prop_id, t.prop_side
           FROM takes t
           JOIN props p ON p.id = t.prop_id
           WHERE p.pack_id = $1 
@@ -102,6 +105,24 @@ export async function getServerSideProps(context) {
           createdTime,
         }));
         console.log('[getServerSideProps] final userReceipts:', userReceipts);
+
+        try {
+          const totalProps = Array.isArray(data.pack?.props) ? data.pack.props.length : 0;
+          const distinctPropIds = new Set((takeRows || []).map(r => String(r.prop_id || '')).filter(Boolean));
+          hasCompletedAllTakes = totalProps > 0 && distinctPropIds.size === totalProps;
+        } catch {}
+
+        // Build a per-prop latest take list for sharing
+        try {
+          const latestByProp = new Map();
+          // takeRows are ordered DESC by created_at, so first occurrence per prop_id is the latest
+          for (const r of (takeRows || [])) {
+            const pid = String(r.prop_id || '');
+            if (!pid || latestByProp.has(pid)) continue;
+            latestByProp.set(pid, { propId: pid, side: r.prop_side || null });
+          }
+          userTakes = Array.from(latestByProp.values());
+        } catch {}
       }
     }
     // Note: Challenge functionality has been removed
@@ -114,6 +135,8 @@ export async function getServerSideProps(context) {
         leaderboard: data.leaderboard || [],
         debugLogs,
         userReceipts,
+        hasCompletedAllTakes,
+        userTakes,
       },
     };
   } catch {
@@ -123,15 +146,11 @@ export async function getServerSideProps(context) {
 
 // Challenge functionality has been removed
 
-export default function PackDetailPage({ packData, leaderboard, debugLogs, userReceipts }) {
+export default function PackDetailPage({ packData, leaderboard, debugLogs, userReceipts, hasCompletedAllTakes, userTakes }) {
   const { openModal, closeModal } = useModal();
   const router = useRouter();
   const { data: session } = useSession();
-  const [mounted, setMounted] = useState(false);
   const [refModalFired, setRefModalFired] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   // Show Pack Graded modal only for logged-in users who have takes on this pack
   useEffect(() => {
     const status = String(packData?.packStatus || '').toLowerCase();
@@ -266,16 +285,16 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, userR
           )}
         </Head>
         <PageContainer>
-          {mounted && (
-            <PackContextProvider packData={packData}>
-              <PackCarouselView
-                packData={packData}
-                leaderboard={leaderboard}
-                debugLogs={debugLogs}
-                userReceipts={userReceipts}
-              />
-            </PackContextProvider>
-          )}
+          <PackContextProvider packData={packData}>
+            <PackCarouselView
+              packData={packData}
+              leaderboard={leaderboard}
+              debugLogs={debugLogs}
+              userReceipts={userReceipts}
+              canShareMyTakes={Boolean(hasCompletedAllTakes)}
+              userTakes={userTakes}
+            />
+          </PackContextProvider>
         </PageContainer>
       </>
     );
@@ -301,16 +320,16 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, userR
         )}
       </Head>
         <PageContainer>
-          {mounted && (
-            <PackContextProvider packData={packData}>
-              <PackCarouselView
-                packData={packData}
-                leaderboard={leaderboard}
-                debugLogs={debugLogs}
-                userReceipts={userReceipts}
-              />
-            </PackContextProvider>
-          )}
+          <PackContextProvider packData={packData}>
+            <PackCarouselView
+              packData={packData}
+              leaderboard={leaderboard}
+              debugLogs={debugLogs}
+              userReceipts={userReceipts}
+              canShareMyTakes={Boolean(hasCompletedAllTakes)}
+              userTakes={userTakes}
+            />
+          </PackContextProvider>
         </PageContainer>
     </>
   );

@@ -621,12 +621,21 @@ export default function EditPropPage() {
         setPropCloseTime(formatDateTimeLocal(p.propCloseTime));
         // Normalize stored cover source (Airtable may store lowercase values)
         (function normalizeCoverSource() {
-          const raw = String(p.propCoverSource || 'event').toLowerCase();
+          // Prefer server-provided propCoverSource; fallback to old field
+          const rawSrc = p.propCoverSource || p.coverSource || '';
+          const raw = String(rawSrc || 'event').toLowerCase();
           const normalized =
             raw === 'hometeam' ? 'homeTeam' :
             raw === 'awayteam' ? 'awayTeam' :
             raw === 'custom' ? 'custom' : 'event';
           setPropCoverSource(normalized);
+          // If custom, seed the URL input from saved coverUrl (server includes it)
+          try {
+            if (normalized === 'custom') {
+              const url = p.coverUrl || (function(){ try { const o = p.formulaParams ? JSON.parse(p.formulaParams) : {}; return o?.propCover || ''; } catch { return ''; } })();
+              setCustomCoverUrl(url || '');
+            }
+          } catch {}
         })();
         setEvent(p.event || null);
         try {
@@ -1426,10 +1435,12 @@ export default function EditPropPage() {
         const json = await resp.json();
         if (resp.ok && json?.success) {
           let keys = Array.isArray(json?.normalized?.statKeys) ? json.normalized.statKeys : [];
-          // MLB curated fallback when no boxscore keys yet (pre-game)
-          if (src === 'major-mlb' && (!Array.isArray(keys) || keys.length === 0)) {
+          // MLB: always use curated metrics from DB for dropdown (align with create-prop)
+          if (src === 'major-mlb') {
             try {
-              const catUrl = `/api/admin/metrics?league=${encodeURIComponent('mlb')}&entity=${encodeURIComponent('player')}&scope=${encodeURIComponent(autoGradeKey.includes('_multi_') ? 'multi' : 'single')}`;
+              const entity = (autoGradeKey && String(autoGradeKey).startsWith('team_')) ? 'team' : 'player';
+              const scope = autoGradeKey && String(autoGradeKey).includes('_multi_') ? 'multi' : 'single';
+              const catUrl = `/api/admin/metrics?league=${encodeURIComponent('mlb')}&entity=${encodeURIComponent(entity)}&scope=${encodeURIComponent(scope)}`;
               const cat = await fetch(catUrl);
               const catJson = await cat.json().catch(() => ({}));
               const curated = Array.isArray(catJson?.metrics) && catJson.metrics.length ? catJson.metrics.map(m => m.key) : [];

@@ -23,15 +23,16 @@ export default async function handler(req, res) {
     const packDetailUrl = ref ? `${baseUrl}?ref=${encodeURIComponent(ref)}` : baseUrl;
 
     const lines = [];
-    lines.push(`I just made my takes on ${packTitle || packURL}`);
+    lines.push(`Here's my 🏟️ ${packTitle || packURL} ⚡️ Takes`);
+    lines.push('');
     if (Array.isArray(takeTexts) && takeTexts.length > 0) {
       for (const t of takeTexts) {
         const txt = String(t || '').trim();
         if (txt) lines.push(`🔮 ${txt}`);
       }
     }
-    lines.push(`Think you can beat my takes?`);
-    lines.push(packDetailUrl);
+    lines.push('');
+    lines.push(`Make Your Take ⚡️ ${packDetailUrl}`);
     const message = lines.join('\n');
 
     await sendSMS({ to: session.user.phone, message });

@@ -160,14 +160,14 @@ export default function InlineCardProgressFooter() {
             onClick={() => {
               try { window.dispatchEvent(new Event('packCarouselNext')); } catch {}
             }}
-            disabled={!forceButtonsActive && isOnLastProp}
+            disabled={isOnLastProp}
             style={{
-              backgroundColor: forceButtonsActive ? '#2196f3' : ((isOnLastProp) ? '#e5e7eb' : (hasSelectionOnCurrent ? '#2196f3' : '#e5e7eb')),
-              color: forceButtonsActive ? '#ffffff' : ((isOnLastProp) ? '#9ca3af' : (hasSelectionOnCurrent ? '#ffffff' : '#111827')),
+              backgroundColor: isOnLastProp ? '#e5e7eb' : (forceButtonsActive ? '#2196f3' : (hasSelectionOnCurrent ? '#2196f3' : '#e5e7eb')),
+              color: isOnLastProp ? '#9ca3af' : (forceButtonsActive ? '#ffffff' : (hasSelectionOnCurrent ? '#ffffff' : '#111827')),
               padding: '0.25rem 0.75rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: (!forceButtonsActive && isOnLastProp) ? 'not-allowed' : 'pointer',
+              cursor: isOnLastProp ? 'not-allowed' : 'pointer',
             }}
           >
             Next

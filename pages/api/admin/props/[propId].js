@@ -49,18 +49,23 @@ export default async function handler(req, res) {
   // Postgres backend
   if (getDataBackend() === 'postgres') {
     try {
-      // Fetch prop + joined event basics
+      // Fetch prop + joined event basics + cover/logos for derivation
       const { rows } = await query(
         `SELECT p.*, 
-                e.id          AS event_uuid,
-                e.title       AS event_title,
-                e.event_time  AS event_time,
-                e.league      AS event_league,
-                e.espn_game_id AS espn_game_id,
-                e.home_team   AS home_team,
-                e.away_team   AS away_team
+                e.id            AS event_uuid,
+                e.title         AS event_title,
+                e.event_time    AS event_time,
+                e.league        AS event_league,
+                e.espn_game_id  AS espn_game_id,
+                e.cover_url     AS event_cover_url,
+                e.home_team     AS home_team,
+                e.away_team     AS away_team,
+                ht.logo_url     AS home_logo_url,
+                at.logo_url     AS away_logo_url
            FROM props p
       LEFT JOIN events e ON e.id = p.event_id
+      LEFT JOIN teams ht ON e.home_team_id = ht.id
+      LEFT JOIN teams at ON e.away_team_id = at.id
           WHERE p.id::text = $1 OR p.prop_id = $1
           LIMIT 1`,
         [String(propId)]
@@ -91,6 +96,18 @@ export default async function handler(req, res) {
         espnGameID: r.espn_game_id || '',
       } : null;
 
+      // Derive cover source from stored cover_url
+      const deriveCoverSource = () => {
+        try {
+          const cover = r.cover_url || null;
+          if (!cover) return 'event';
+          if (r.home_logo_url && cover === r.home_logo_url) return 'homeTeam';
+          if (r.away_logo_url && cover === r.away_logo_url) return 'awayTeam';
+          if (r.event_cover_url && cover === r.event_cover_url) return 'event';
+          return 'custom';
+        } catch { return 'event'; }
+      };
+
       const prop = {
         airtableId: r.id,
         propID: r.prop_id || r.id,
@@ -111,7 +128,8 @@ export default async function handler(req, res) {
         teams: teamIds,
         propOpenTime: r.open_time || null,
         propCloseTime: r.close_time || null,
-        propCoverSource: 'event',
+        propCoverSource: deriveCoverSource(),
+        coverUrl: r.cover_url || null,
         propESPNLookup: '',
         propLeagueLookup: '',
         event,
