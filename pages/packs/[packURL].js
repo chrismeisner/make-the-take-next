@@ -132,13 +132,15 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, userR
   useEffect(() => {
     setMounted(true);
   }, []);
-  // Show Pack Graded modal on load if the pack is graded and not a referral view
+  // Show Pack Graded modal only for logged-in users who have takes on this pack
   useEffect(() => {
     const status = String(packData?.packStatus || '').toLowerCase();
-    if (status === 'graded' && !router.query.ref) {
+    const isLoggedIn = Boolean(session?.user?.phone);
+    const hasUserTakes = Array.isArray(userReceipts) && userReceipts.length > 0;
+    if (status === 'graded' && isLoggedIn && hasUserTakes && !router.query.ref) {
       openModal('packGraded', { packTitle: packData.packTitle, packProps: packData.props, packURL: packData.packURL });
     }
-  }, [packData?.packStatus, packData?.packTitle, packData?.props, openModal, router.query.ref]);
+  }, [packData?.packStatus, packData?.packTitle, packData?.props, packData?.packURL, openModal, router.query.ref, session?.user?.phone, userReceipts]);
 
   // Show referral challenge modal when ?ref=<profileID> is present
   useEffect(() => {

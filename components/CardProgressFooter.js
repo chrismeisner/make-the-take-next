@@ -33,26 +33,6 @@ export default function CardProgressFooter() {
     setIsSubmitting(true);
     const newTakeIDs = await submitAllTakes(receiptId);
     // Temporarily removing URL query updates for userReceiptId
-    // Fire-and-forget SMS notification to the user
-    try {
-      // Build an ordered list of take texts for SMS sharing
-      const takeTexts = Object.keys(selectedChoices)
-        .map((propID) => {
-          const prop = packData.props.find((p) => p.propID === propID);
-          const side = selectedChoices[propID];
-          if (!prop || !side) return null;
-          if (side === 'A') return prop.propSideATake || prop.PropSideATake || prop.PropSideAShort || '';
-          if (side === 'B') return prop.propSideBTake || prop.PropSideBTake || prop.PropSideBShort || '';
-          return '';
-        })
-        .filter(Boolean);
-      const ref = session?.user?.profileID || null;
-      fetch("/api/notifyPackSubmitted", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packURL: packData.packURL, packTitle: packData.packTitle, receiptId, takeTexts, ref }),
-      });
-    } catch {}
     openModal("packCompleted", { packTitle: packData.packTitle, receiptId, newTakeIDs, selectedChoices, packProps: packData.props });
     setIsSubmitting(false);
   }

@@ -600,35 +600,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
                   </Swiper>
                 )}
               </div>
-{props.length > 0 && (
-                <div className="mt-10 sm:mt-8 relative w-full flex items-center justify-center">
-                  <button type="button" onClick={() => {
-                    if (!swiperRef.current) return;
-                    const idx = swiperRef.current.activeIndex ?? 0;
-                    if (idx <= 0) swiperRef.current.slideTo(totalSlides - 1); else swiperRef.current.slidePrev();
-                  }} className="absolute left-0 p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <div className="flex justify-center w-full">
-                    <span className="text-sm text-gray-600">
-                      {(currentSlide ?? 0) === 0
-                        ? 'Swipe to Play'
-                        : `${currentSlide} of ${props.length}`}
-                    </span>
-                  </div>
-                  <button type="button" onClick={() => {
-                    if (!swiperRef.current) return;
-                    const idx = swiperRef.current.activeIndex ?? 0;
-                    if (idx >= totalSlides - 1) swiperRef.current.slideTo(0); else swiperRef.current.slideNext();
-                  }} className="absolute right-0 p-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              
               <div className="mt-10 sm:mt-8">
                 <InlineCardProgressFooter />
               </div>

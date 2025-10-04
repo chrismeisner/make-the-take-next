@@ -155,6 +155,46 @@ export default function EditPropPage() {
   }, [PropSideBMoneyline]);
   const [teams, setTeams] = useState([]);
   const [teamOptions, setTeamOptions] = useState([]);
+  const [teamToAdd, setTeamToAdd] = useState('');
+  const [updatingTeams, setUpdatingTeams] = useState(false);
+  const [teamsError, setTeamsError] = useState('');
+  const currentLeague = event?.eventLeague || eventDetails?.eventLeague || '';
+  const availableTeams = useMemo(() => {
+    const leagueLower = String(currentLeague || '').toLowerCase();
+    const opts = Array.isArray(teamOptions) ? teamOptions : [];
+    if (!leagueLower) return opts;
+    return opts.filter((t) => String(t.teamType || '').toLowerCase() === leagueLower);
+  }, [teamOptions, currentLeague]);
+
+  const handleAddTeam = () => {
+    if (!teamToAdd) return;
+    if (teams.includes(teamToAdd)) return;
+    setTeams([...teams, teamToAdd]);
+    setTeamToAdd('');
+  };
+
+  const handleRemoveTeam = (id) => {
+    setTeams((prev) => prev.filter((t) => String(t) !== String(id)));
+  };
+
+  const handleSaveTeams = async () => {
+    if (!propId) return;
+    setUpdatingTeams(true);
+    setTeamsError('');
+    try {
+      const res = await fetch(`/api/admin/props/${encodeURIComponent(propId)}/teams`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamIds: teams }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to update linked teams');
+    } catch (e) {
+      setTeamsError(e?.message || 'Failed to update linked teams');
+    } finally {
+      setUpdatingTeams(false);
+    }
+  };
   const [propOpenTime, setPropOpenTime] = useState('');
   const [propCloseTime, setPropCloseTime] = useState('');
   const [propCoverSource, setPropCoverSource] = useState('event');
@@ -1457,12 +1497,23 @@ export default function EditPropPage() {
         const box = await fetch(`/api/admin/api-tester/boxscore?source=${encodeURIComponent(dataSource || 'major-mlb')}&gameID=${encodeURIComponent(espnId)}`);
         const boxJson = await box.json();
         let map = (box.ok && boxJson?.normalized?.playersById) ? boxJson.normalized.playersById : {};
-        // Merge MLB RapidAPI roster identities into players map (preserve boxscore stats)
-        if (abvs.length) {
+        // Merge MLB RapidAPI roster identities into players map (prefer fetching by teamId; fallback to teamAbv)
+        if ((dataSource || 'major-mlb') === 'major-mlb') {
           try {
-            const roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
-            const rosterJson = await roster.json();
-            if (roster.ok && rosterJson?.success && rosterJson.playersById) {
+            const homeLink = Array.isArray(eventDetails?.homeTeamLink) && eventDetails.homeTeamLink[0];
+            const awayLink = Array.isArray(eventDetails?.awayTeamLink) && eventDetails.awayTeamLink[0];
+            const homeTeamRec = homeLink ? (Array.isArray(teamOptions) ? teamOptions.find((t) => String(t.recordId) === String(homeLink)) : null) : null;
+            const awayTeamRec = awayLink ? (Array.isArray(teamOptions) ? teamOptions.find((t) => String(t.recordId) === String(awayLink)) : null) : null;
+            const ids = [homeTeamRec?.teamID, awayTeamRec?.teamID].filter(Boolean).map(String);
+            let roster = null; let rosterJson = {};
+            if (ids.length) {
+              roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamId=${encodeURIComponent(ids.join(','))}`);
+              rosterJson = await roster.json();
+            } else if (abvs.length) {
+              roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
+              rosterJson = await roster.json();
+            }
+            if (roster && roster.ok && rosterJson?.success && rosterJson.playersById) {
               const merged = { ...(map || {}) };
               for (const [pid, rp] of Object.entries(rosterJson.playersById)) {
                 if (!merged[pid]) merged[pid] = rp; else merged[pid] = { ...rp, ...merged[pid] };
@@ -1479,11 +1530,11 @@ export default function EditPropPage() {
         setPlayersLoading(false);
       }
     })();
-  }, [event?.espnGameID, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, eventDetails?.homeTeamAbbreviation, eventDetails?.awayTeamAbbreviation]);
+  }, [event?.espnGameID, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, eventDetails?.homeTeamAbbreviation, eventDetails?.awayTeamAbbreviation, eventDetails?.homeTeamLink, eventDetails?.awayTeamLink, teamOptions]);
 
-  // Load players for Stat O/U and Player H2H from MLB boxscore; roster fallback if needed
+  // Load players for Stat O/U, Player H2H, and Player Multi Stat modes; roster fallback if needed
   useEffect(() => {
-    if (!(autoGradeKey === 'stat_over_under' || autoGradeKey === 'player_h2h')) return;
+    if (!(autoGradeKey === 'stat_over_under' || autoGradeKey === 'player_h2h' || autoGradeKey === 'player_multi_stat_ou' || autoGradeKey === 'player_multi_stat_h2h')) return;
     const espnId = String(event?.espnGameID || '').trim();
     if (!espnId) return;
     const rawHome = eventDetails?.homeTeamAbbreviation || event?.homeTeamAbbreviation;
@@ -1505,11 +1556,22 @@ export default function EditPropPage() {
           const boxJson = await box.json();
           map = (box.ok && boxJson?.normalized?.playersById) ? (boxJson.normalized.playersById || {}) : {};
         } catch {}
-        if ((dataSource || 'major-mlb') === 'major-mlb' && abvs.length) {
+        if ((dataSource || 'major-mlb') === 'major-mlb') {
           try {
-            const roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
-            const rosterJson = await roster.json();
-            if (roster.ok && rosterJson?.success && rosterJson.playersById) {
+            const homeLink = Array.isArray(eventDetails?.homeTeamLink) && eventDetails.homeTeamLink[0];
+            const awayLink = Array.isArray(eventDetails?.awayTeamLink) && eventDetails.awayTeamLink[0];
+            const homeTeamRec = homeLink ? (Array.isArray(teamOptions) ? teamOptions.find((t) => String(t.recordId) === String(homeLink)) : null) : null;
+            const awayTeamRec = awayLink ? (Array.isArray(teamOptions) ? teamOptions.find((t) => String(t.recordId) === String(awayLink)) : null) : null;
+            const ids = [homeTeamRec?.teamID, awayTeamRec?.teamID].filter(Boolean).map(String);
+            let roster = null; let rosterJson = {};
+            if (ids.length) {
+              roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamId=${encodeURIComponent(ids.join(','))}`);
+              rosterJson = await roster.json();
+            } else if (abvs.length) {
+              roster = await fetch(`/api/admin/api-tester/mlbPlayers?teamAbv=${encodeURIComponent(abvs.join(','))}`);
+              rosterJson = await roster.json();
+            }
+            if (roster && roster.ok && rosterJson?.success && rosterJson.playersById) {
               const merged = { ...(map || {}) };
               for (const [pid, rp] of Object.entries(rosterJson.playersById)) {
                 if (!merged[pid]) merged[pid] = rp; else merged[pid] = { ...rp, ...merged[pid] };
@@ -1526,7 +1588,7 @@ export default function EditPropPage() {
         setPlayersLoading(false);
       }
     })();
-  }, [autoGradeKey, event?.espnGameID, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, eventDetails?.homeTeamAbbreviation, eventDetails?.awayTeamAbbreviation]);
+  }, [autoGradeKey, event?.espnGameID, event?.homeTeamAbbreviation, event?.awayTeamAbbreviation, eventDetails?.homeTeamAbbreviation, eventDetails?.awayTeamAbbreviation, eventDetails?.homeTeamLink, eventDetails?.awayTeamLink, teamOptions]);
   useEffect(() => {
     if (autoGradeKey !== 'who_wins') return;
     try {
@@ -2740,6 +2802,43 @@ export default function EditPropPage() {
         </>
       )}
       <form onSubmit={handleSave} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Linked Teams</label>
+          <div className="mt-1 flex items-center gap-2">
+            <select
+              className="border rounded px-2 py-1"
+              value={teamToAdd}
+              onChange={(e) => setTeamToAdd(e.target.value)}
+            >
+              <option value="">Select team…</option>
+              {availableTeams.map((t) => (
+                <option key={`opt-${t.recordId}`} value={t.recordId}>
+                  {t.teamAbbreviation || t.teamSlug || t.teamName} ({t.teamLeague?.toUpperCase?.() || t.teamLeague})
+                </option>
+              ))}
+            </select>
+            <button type="button" className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300" onClick={handleAddTeam} disabled={!teamToAdd}>Add</button>
+            <button type="button" className={`px-3 py-1 rounded text-white ${updatingTeams ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`} onClick={handleSaveTeams} disabled={updatingTeams}>
+              {updatingTeams ? 'Saving…' : 'Save Linked Teams'}
+            </button>
+          </div>
+          {teamsError && <div className="text-red-600 text-sm mt-1">{teamsError}</div>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {teams.length === 0 && (
+              <span className="text-xs text-gray-500">No linked teams.</span>
+            )}
+            {teams.map((id) => {
+              const t = (teamOptions || []).find((x) => String(x.recordId) === String(id));
+              const label = t ? (t.teamAbbreviation || t.teamSlug || t.teamName || id) : id;
+              return (
+                <span key={`team-${id}`} className="inline-flex items-center gap-2 text-xs bg-gray-100 rounded px-2 py-1">
+                  {label}
+                  <button type="button" className="text-red-600" onClick={() => handleRemoveTeam(id)}>✕</button>
+                </span>
+              );
+            })}
+          </div>
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Short Label</label>
           <input className="mt-1 block w-full border rounded px-2 py-1" value={propShort} onChange={(e) => setPropShort(e.target.value)} />

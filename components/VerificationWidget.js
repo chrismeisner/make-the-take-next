@@ -98,7 +98,7 @@ function Choice({
     "rounded-md",
     "transition-colors",
     clickable ? "cursor-pointer" : "cursor-default",
-    isSelected ? "bg-white" : "bg-gray-50",
+    isSelected ? "bg-blue-50" : "bg-gray-50",
   ].join(" ");
 
   // Decide if we show a grading icon (✅ / ❌):
@@ -507,7 +507,7 @@ export default function VerificationWidget({
             setLastUpdated(new Date(timestamp));
             // Only reveal bars if user already took it or prop is graded/closed
             const propStatusCached = cachedData.propStatus || 'open';
-            if (alreadyTookSide || selectedChoice || propStatusCached !== 'open') {
+            if (alreadyTookSide || propStatusCached !== 'open') {
               setResultsRevealed(true);
             } else {
               setResultsRevealed(false);
@@ -534,7 +534,7 @@ export default function VerificationWidget({
         } catch {}
         // Only re-show bars if user has taken or it's a graded/closed prop
         const propStatusFetched = data.propStatus || 'open';
-        if (alreadyTookSide || selectedChoice || propStatusFetched !== 'open') {
+        if (alreadyTookSide || propStatusFetched !== 'open') {
           // Re-show bars to animate fill
           setTimeout(() => {
             setResultsRevealed(true);
@@ -666,7 +666,7 @@ export default function VerificationWidget({
       }
     } else {
       setSelectedChoice(sideValue);
-      setResultsRevealed(true);
+      // Do not reveal until submission
       // propagate to pack context
       if (packCtx?.handleChoiceSelect) {
         packCtx.handleChoiceSelect(embeddedPropID, sideValue);

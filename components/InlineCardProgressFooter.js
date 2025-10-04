@@ -42,9 +42,17 @@ export default function InlineCardProgressFooter() {
         return acc + (chosen ? 1 : 0);
       }, 0)
     : 0;
-  const submitVariant = takenCount <= 0 ? 'none' : (takenCount >= totalProps ? 'full' : 'partial');
-  const submitBgColor = submitVariant === 'none' ? '#cccccc' : submitVariant === 'partial' ? '#93c5fd' : '#1d4ed8';
+  // Button is fully blue only when there are changes to submit
+  const submitBgColor = canSubmit ? '#1d4ed8' : '#cccccc';
   const submitTextColor = '#ffffff';
+  const buttonLabel = changedCount > 0
+    ? `Submit ${changedCount} ${changedCount === 1 ? 'Take' : 'Takes'}`
+    : 'Submit Takes';
+
+  // Derive counter text for current slide (0 = cover)
+  const counterText = (currentSlideIndex ?? 0) === 0
+    ? 'Swipe to Play'
+    : `${currentSlideIndex} of ${totalProps}`;
 
   // Keyboard shortcut: Enter to submit pack
   useEffect(() => {
@@ -87,14 +95,6 @@ export default function InlineCardProgressFooter() {
     setIsSubmitting(true);
     const newTakeIDs = await submitAllTakes(receiptId);
     // Temporarily removing URL query updates for userReceiptId
-    // Fire-and-forget SMS notification to the user
-    try {
-      fetch("/api/notifyPackSubmitted", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packURL: packData.packURL, packTitle: packData.packTitle, receiptId }),
-      });
-    } catch {}
     openModal("packCompleted", { packTitle: packData.packTitle, receiptId, newTakeIDs, selectedChoices, packProps: packData.props });
     setIsSubmitting(false);
   }
@@ -131,6 +131,19 @@ export default function InlineCardProgressFooter() {
           >
             Prev
           </button>
+          <div
+            style={{
+              margin: '0 0.75rem',
+              color: '#666666',
+              fontSize: '0.85rem',
+              lineHeight: 1.25,
+              minWidth: '5rem',
+              textAlign: 'center',
+            }}
+            aria-live="polite"
+          >
+            {counterText}
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -172,7 +185,7 @@ export default function InlineCardProgressFooter() {
               margin: "0 0 0.5rem 0",
               fontSize: "0.8rem",
               color: "#666",
-              textAlign: "left",
+            textAlign: "center",
             }}
           >
             {progressPercentage}% complete
@@ -190,9 +203,7 @@ export default function InlineCardProgressFooter() {
               width: "100%",
             }}
           >
-            {changedCount === 0
-              ? (selectedCount === 0 ? "Make Your Takes" : "Make Your Takes")
-              : (previousSubmissions ? "Resubmit" : "Submit") + " " + changedCount + " " + (changedCount === 1 ? "Take" : "Takes")}
+            {buttonLabel}
           </button>
         </div>
       </footer>

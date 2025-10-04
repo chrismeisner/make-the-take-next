@@ -31,17 +31,7 @@ export default function PackCompletedModal({ isOpen, onClose, packTitle, receipt
     if (receiptId && router.query.packURL) {
       const base = `${window.location.origin}/packs/${router.query.packURL}/${receiptId}`;
       setReceiptUrl(base);
-      try {
-        let urlWithRef = base;
-        if (session?.user?.profileID) {
-          const u = new URL(base);
-          u.searchParams.set("ref", session.user.profileID);
-          urlWithRef = u.toString();
-        }
-        setShareUrl(urlWithRef);
-      } catch {
-        setShareUrl(base);
-      }
+      setShareUrl("");
     }
   }, [receiptId, router.query.packURL, session?.user?.profileID]);
 
@@ -96,24 +86,13 @@ const handleGenerateQR = () => {
 		<p className="mb-4">
 		  Thank you for completing the pack <strong>{packTitle}</strong>.
 		</p>
-		{receiptUrl && (
-		  <div className="mb-4">
-			<p className="mb-2 font-medium">Share your picks:</p>
-			<input
-			  type="text"
-			  readOnly
-			  value={shareUrl || receiptUrl}
-			  className="w-full px-3 py-2 border rounded text-sm"
-			  onFocus={(e) => e.target.select()}
-			/>
-			<p className="mt-2 text-xs text-gray-600">When someone uses your link, <span className="font-semibold">you</span> get <span className="font-semibold">+5</span> marketplace tokens.</p>
-			<div className="mt-3 flex items-center gap-2">
-			  <button onClick={handleShare} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Share</button>
-			  <button onClick={handleCopy} className="px-4 py-2 bg-gray-200 text-gray-900 rounded hover:bg-gray-300">Copy link</button>
-			  <button onClick={handleGenerateQR} className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-black">Generate QR</button>
-			</div>
-		  </div>
-		)}
+        {receiptUrl && (
+          <div className="mb-4">
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={handleGenerateQR} className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-black">Generate QR</button>
+            </div>
+          </div>
+        )}
 		{/* Display created take record IDs for verification */}
 		{/* Removed per request: hide created records list */}
 		<div className="flex justify-end gap-2">

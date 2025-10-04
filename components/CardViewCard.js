@@ -67,7 +67,7 @@ export default function CardViewCard({ prop, currentReceiptId }) {
   const sideAPct = Math.round((smoothedA / smoothedTotal) * 100);
   const sideBPct = 100 - sideAPct;
   const totalTakes = rawA + rawB;
-  const resultsRevealed = prop.propStatus !== "open" || Boolean(selected || alreadyTookSide);
+  const resultsRevealed = prop.propStatus !== "open" || Boolean(alreadyTookSide);
   const readOnly = prop.propStatus !== "open";
   const { propSummary = "No summary provided", propShort, propResult = "" } = prop;
   const statusLc = String(prop.propStatus || '').toLowerCase();
@@ -219,8 +219,6 @@ export default function CardViewCard({ prop, currentReceiptId }) {
           Friend chose: <strong>{friendTake.side}</strong>
         </p>
       )}
-      <p className="mt-2 text-xs text-gray-500">{totalTakes} Takes Made</p>
-      {/* Commented out Takes Made counter per request */}
 
       {/* Removed Share link and "Make The Take" line per request */}
     </div>

@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
 import PageContainer from "../../components/PageContainer";
 import Toast from "../../components/Toast";
+import { formatDateTimeUtc } from "../../lib/dateFormat";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -306,7 +307,7 @@ export default function ProfilePage() {
                   <tr key={`${b.code || 'bonus'}-${idx}`} className="border-b last:border-b-0">
                     <td className="py-2 pr-4">{b.name || b.code || 'Bonus'}</td>
                     <td className="py-2 pr-4">{b.tokens}</td>
-                    <td className="py-2 pr-4">{b.redeemedAt ? new Date(b.redeemedAt).toLocaleString() : '-'}</td>
+                    <td className="py-2 pr-4">{b.redeemedAt ? formatDateTimeUtc(b.redeemedAt) : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -481,9 +482,9 @@ export default function ProfilePage() {
 	              <div className="p-3">
 	                <div className="font-medium truncate">{p.packTitle || p.packURL || 'Untitled Pack'}</div>
 	                <div className="text-xs text-gray-600 mt-1">{p.packStatus || ''}</div>
-	                {p.eventTime && (
-	                  <div className="text-xs text-gray-600">{new Date(p.eventTime).toLocaleString()}</div>
-	                )}
+                {p.eventTime && (
+                  <div className="text-xs text-gray-600">{formatDateTimeUtc(p.eventTime)}</div>
+                )}
 	              </div>
 	            </a>
 	          </Link>
@@ -497,9 +498,9 @@ export default function ProfilePage() {
 	    <div className="mt-8">
 	      <h3 className="text-xl font-bold mb-2">All-time leaderboard (their packs)</h3>
 	      <div className="flex items-center justify-between mb-2">
-	        {creatorLeaderboardUpdatedAt ? (
-	          <div className="text-xs text-gray-600">Last updated: {new Date(creatorLeaderboardUpdatedAt).toLocaleString()}</div>
-	        ) : <div />}
+            {creatorLeaderboardUpdatedAt ? (
+              <div className="text-xs text-gray-600">Last updated: {formatDateTimeUtc(creatorLeaderboardUpdatedAt)}</div>
+            ) : <div />}
 	        <button
 	          type="button"
 	          className="text-xs text-blue-600 underline"
@@ -592,7 +593,7 @@ export default function ProfilePage() {
                         )}
                       </td>
                       <td className="border px-4 py-2">+{row.tokens}</td>
-                      <td className="border px-4 py-2">{row.redeemedAt ? new Date(row.redeemedAt).toLocaleString() : ''}</td>
+                      <td className="border px-4 py-2">{row.redeemedAt ? formatDateTimeUtc(row.redeemedAt) : ''}</td>
                       <td className="border px-4 py-2">
                         {receiptHref ? (
                           <Link href={receiptHref} className="text-blue-600 underline">View takes</Link>
@@ -703,7 +704,7 @@ export default function ProfilePage() {
                       );
                     })()}
                   </td>
-                  <td className="border px-4 py-2">{new Date(take.createdTime).toLocaleString()}</td>
+                  <td className="border px-4 py-2">{formatDateTimeUtc(take.createdTime)}</td>
                 </tr>
               ))}
             </tbody>

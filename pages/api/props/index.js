@@ -228,6 +228,7 @@ export default async function handler(req, res) {
         PropSideAShort: r.prop_side_a_short || "",
         PropSideBShort: r.prop_side_b_short || "",
         propShort: r.prop_short || "",
+        coverUrl: r.cover_url || null,
         eventTitle: r.event_title || null,
         eventTime: r.event_time || null,
         eventLeague: r.event_league || null,

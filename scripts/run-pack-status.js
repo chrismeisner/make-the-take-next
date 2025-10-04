@@ -331,17 +331,50 @@ async function run() {
             .replace(/{league}/g, league)
             .replace(/{timeLeft}/g, timeLeft);
 
-          // Find recipients who opted in for this league
+          // Find recipients who opted in for this league OR any team linked to this pack
           const { rows: recRows } = await query(
-            `SELECT p.id AS profile_id, p.mobile_e164 AS phone
-               FROM profiles p
-               JOIN notification_preferences np ON np.profile_id = p.id
-              WHERE COALESCE(p.sms_opt_out_all, FALSE) = FALSE
-                AND np.category = 'pack_open'
-                AND np.league = $1
-                AND np.opted_in = TRUE
-                AND p.mobile_e164 IS NOT NULL`,
-            [league]
+            `WITH pack_teams AS (
+               SELECT DISTINCT t.id AS team_id
+                 FROM packs p
+                 LEFT JOIN events e ON e.id = p.event_id
+                 LEFT JOIN packs_events pe ON pe.pack_id = p.id
+                 LEFT JOIN events e2 ON e2.id = pe.event_id
+                 LEFT JOIN props pr ON pr.pack_id = p.id
+                 LEFT JOIN props_teams pt ON pt.prop_id = pr.id
+                 LEFT JOIN teams t ON t.id = ANY(ARRAY[
+                   e.home_team_id, e.away_team_id,
+                   e2.home_team_id, e2.away_team_id,
+                   pt.team_id
+                 ])
+                WHERE p.id = $2
+             ),
+             league_recipients AS (
+               SELECT p.id AS profile_id, p.mobile_e164 AS phone
+                 FROM profiles p
+                 JOIN notification_preferences np ON np.profile_id = p.id
+                WHERE COALESCE(p.sms_opt_out_all, FALSE) = FALSE
+                  AND np.category = 'pack_open'
+                  AND np.league = $1
+                  AND np.opted_in = TRUE
+                  AND p.mobile_e164 IS NOT NULL
+             ),
+             team_recipients AS (
+               SELECT p.id AS profile_id, p.mobile_e164 AS phone
+                 FROM profiles p
+                 JOIN notification_preferences np ON np.profile_id = p.id
+                 JOIN pack_teams pk ON pk.team_id = np.team_id
+                WHERE COALESCE(p.sms_opt_out_all, FALSE) = FALSE
+                  AND np.category = 'pack_open'
+                  AND np.opted_in = TRUE
+                  AND p.mobile_e164 IS NOT NULL
+             ),
+             all_recipients AS (
+               SELECT DISTINCT profile_id, phone FROM league_recipients
+               UNION
+               SELECT DISTINCT profile_id, phone FROM team_recipients
+             )
+             SELECT profile_id, phone FROM all_recipients`,
+            [league, pack.id]
           );
 
           if (recRows.length === 0) {

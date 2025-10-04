@@ -315,6 +315,7 @@ export default function AdminPropsPage() {
         <table className="min-w-full bg-white">
           <thead>
             <tr>
+              <th className="px-4 py-2 border text-left">Cover</th>
               <th className="px-4 py-2 border text-left">Question</th>
               <th className="px-4 py-2 border text-left">Event</th>
               <th className="px-4 py-2 border whitespace-nowrap w-40">Time</th>
@@ -328,6 +329,15 @@ export default function AdminPropsPage() {
           <tbody>
             {filtered.map((p) => (
               <tr key={p.airtableId}>
+                <td className="px-4 py-2 border align-top">
+                  {p.coverUrl ? (
+                    <div className="w-14 h-14 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+                      <img src={p.coverUrl} alt="cover" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-14 h-14 bg-gray-50 border border-dashed border-gray-300 rounded flex items-center justify-center text-xs text-gray-400">—</div>
+                  )}
+                </td>
                 <td className="px-4 py-2 border align-top">
                   <div className="font-medium">{p.propShort || p.propTitle || 'Untitled'}</div>
                   {p.propSummary && (

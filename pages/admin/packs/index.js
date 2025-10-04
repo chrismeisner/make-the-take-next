@@ -81,7 +81,7 @@ export default function AdminPacksPage() {
     return <div className="container mx-auto px-4 py-6">Not authorized</div>;
   }
   // When none explicitly selected, default to ALL statuses for UI checkboxes
-  const defaultInitialStatuses = statusOptions;
+  const defaultInitialStatuses = allStatusOptions;
   const effectiveVisibleStatuses = visibleStatuses == null ? defaultInitialStatuses : visibleStatuses;
   // If no explicit filter chosen yet, show all packs on initial load
   const filteredPacks = visibleStatuses == null
@@ -151,7 +151,7 @@ export default function AdminPacksPage() {
             <button
               type="button"
               className="underline hover:text-gray-700"
-              onClick={() => setVisibleStatuses(statusOptions)}
+              onClick={() => setVisibleStatuses(allStatusOptions)}
             >
               All
             </button>
@@ -165,7 +165,7 @@ export default function AdminPacksPage() {
           </div>
         </div>
         <div className="mt-2 flex flex-wrap gap-4">
-          {statusOptions.map((status) => (
+          {allStatusOptions.map((status) => (
             <label key={status} className="inline-flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -173,14 +173,14 @@ export default function AdminPacksPage() {
                 checked={effectiveVisibleStatuses.includes(status)}
                 onChange={() => {
                   setVisibleStatuses((prev) => {
-                    const current = prev == null ? statusOptions : prev;
+                    const current = prev == null ? allStatusOptions : prev;
                     return current.includes(status)
                       ? current.filter((s) => s !== status)
                       : [...current, status];
                   });
                 }}
               />
-              <span className="capitalize">{status}</span>
+              <span className="capitalize">{String(status).replace(/-/g, ' ')}</span>
             </label>
           ))}
         </div>
