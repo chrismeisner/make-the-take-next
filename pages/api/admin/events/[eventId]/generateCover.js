@@ -15,6 +15,7 @@ export default async function handler(req, res) {
   }
 
   const { eventId } = req.query;
+  try { console.log('[admin/generateCover] Request start', { eventId }); } catch {}
   if (!eventId) {
     return res.status(400).json({ success: false, error: 'Missing eventId parameter' });
   }
@@ -80,11 +81,15 @@ export default async function handler(req, res) {
       };
       const homeUrl = getFirstAttachmentUrl(r.homeSide);
       const awayUrl = getFirstAttachmentUrl(r.awaySide);
+      try { console.log('[admin/generateCover] Resolved team sides', { eventInternalId: r.id, hasHomeUrl: !!homeUrl, hasAwayUrl: !!awayUrl }); } catch {}
       if (!homeUrl || !awayUrl) {
         return res.status(400).json({ success: false, error: 'Missing team side images for this event' });
       }
+      try { console.log('[admin/generateCover] Composing PNG', { eventInternalId: r.id }); } catch {}
       const pngBuffer = await composeCoverPng(awayUrl, homeUrl);
+      try { console.log('[admin/generateCover] Uploading PNG to Firebase', { eventInternalId: r.id, bucket: storageBucket?.name }); } catch {}
       const publicUrl = await uploadBuffer(r.id, pngBuffer);
+      try { console.log('[admin/generateCover] Uploaded', { eventInternalId: r.id, publicUrl }); } catch {}
 
       // Persist to DB if column exists
       try {
@@ -126,6 +131,7 @@ export default async function handler(req, res) {
           }
         : null;
 
+      try { console.log('[admin/generateCover] Success response', { eventInternalId: r.id, url: publicUrl }); } catch {}
       return res.status(200).json({ success: true, url: publicUrl, event });
     }
 
@@ -150,11 +156,15 @@ export default async function handler(req, res) {
     };
     const awayUrl = getFirstAttachmentUrl(f.teamAwaySide);
     const homeUrl = getFirstAttachmentUrl(f.teamHomeSide);
+    try { console.log('[admin/generateCover] [Airtable] Resolved team sides', { eventId: rec.id, hasHomeUrl: !!homeUrl, hasAwayUrl: !!awayUrl }); } catch {}
     if (!awayUrl || !homeUrl) {
       return res.status(400).json({ success: false, error: 'Missing attachments for teamAwaySide or teamHomeSide' });
     }
+    try { console.log('[admin/generateCover] [Airtable] Composing PNG', { eventId: rec.id }); } catch {}
     const pngBuffer = await composeCoverPng(awayUrl, homeUrl);
+    try { console.log('[admin/generateCover] [Airtable] Uploading PNG to Firebase', { eventId: rec.id, bucket: storageBucket?.name }); } catch {}
     const publicUrl = await uploadBuffer(rec.id, pngBuffer);
+    try { console.log('[admin/generateCover] [Airtable] Uploaded', { eventId: rec.id, publicUrl }); } catch {}
 
     // Update Airtable attachment field eventCover
     try {
@@ -167,6 +177,7 @@ export default async function handler(req, res) {
     }
 
     // Fetch updated event via existing service shape if desired by client
+    try { console.log('[admin/generateCover] [Airtable] Success response', { eventId: rec.id, url: publicUrl }); } catch {}
     return res.status(200).json({ success: true, url: publicUrl });
   } catch (error) {
     // eslint-disable-next-line no-console

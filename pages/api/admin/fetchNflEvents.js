@@ -297,10 +297,18 @@ export default async function handler(req, res) {
             if (internalId) {
               // Call internal API to generate cover for this event id
               try {
-                const genRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/admin/events/${internalId}/generateCover`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
-                // Ignore response; continue regardless
-                await genRes.text().catch(() => null);
-              } catch {}
+                const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+                const path = `/api/admin/events/${internalId}/generateCover`;
+                try { console.log('[admin/fetchNflEvents] → generateCover start', { internalId, baseUrl, path }); } catch {}
+                const genRes = await fetch(`${baseUrl}${path}`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
+                let bodySnippet = null;
+                try { const txt = await genRes.text(); bodySnippet = txt ? txt.slice(0, 200) : null; } catch {}
+                try { console.log('[admin/fetchNflEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, bodySnippet }); } catch {}
+              } catch (e) {
+                try { console.warn('[admin/fetchNflEvents] generateCover call failed', { internalId, error: e?.message || String(e) }); } catch {}
+              }
+            } else {
+              try { console.warn('[admin/fetchNflEvents] Skipping cover generation — missing internalId after upsert', { espnGameID }); } catch {}
             }
           } else if (backend === 'airtable') {
             // Best-effort: lookup Airtable Event record by espnGameID and trigger generate via generic batch job if needed

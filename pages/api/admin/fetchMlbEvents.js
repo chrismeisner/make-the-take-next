@@ -150,9 +150,17 @@ export default async function handler(req, res) {
           if (internalId) {
             try {
               const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-              const genRes = await fetch(`${baseUrl}/api/admin/events/${internalId}/generateCover`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
-              await genRes.text().catch(() => null);
-            } catch {}
+              const path = `/api/admin/events/${internalId}/generateCover`;
+              try { console.log('[admin/fetchMlbEvents] → generateCover start', { internalId, baseUrl, path }); } catch {}
+              const genRes = await fetch(`${baseUrl}${path}`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
+              let bodySnippet = null;
+              try { const txt = await genRes.text(); bodySnippet = txt ? txt.slice(0, 200) : null; } catch {}
+              try { console.log('[admin/fetchMlbEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, bodySnippet }); } catch {}
+            } catch (e) {
+              try { console.warn('[admin/fetchMlbEvents] generateCover call failed', { internalId, error: e?.message || String(e) }); } catch {}
+            }
+          } else {
+            try { console.warn('[admin/fetchMlbEvents] Skipping cover generation — missing internalId after upsert', { eventIdStable }); } catch {}
           }
         }
       } catch {}
