@@ -1,5 +1,8 @@
 -- 2025-10-05: SMS conversation drop support
 
+-- Ensure pgcrypto for gen_random_uuid
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- 1) Per-pack drop strategy
 ALTER TABLE packs
   ADD COLUMN IF NOT EXISTS drop_strategy TEXT NOT NULL DEFAULT 'link'

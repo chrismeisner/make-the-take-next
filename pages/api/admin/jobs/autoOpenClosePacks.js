@@ -148,10 +148,16 @@ export default async function handler(req, res) {
                 // Create or get session and send first prop
                 // 1) Ensure a session exists
                 const { rows: sessRows } = await query(
-                  `INSERT INTO sms_take_sessions (profile_id, phone, pack_id, current_prop_index, status)
-                   VALUES ($1, $2, $3, 0, 'active')
-                   ON CONFLICT ON CONSTRAINT uniq_active_sms_session DO NOTHING
-                   RETURNING id`,
+                  `WITH ins AS (
+                     INSERT INTO sms_take_sessions (profile_id, phone, pack_id, current_prop_index, status)
+                     SELECT $1, $2, $3, 0, 'active'
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM sms_take_sessions s
+                        WHERE s.phone = $2 AND s.pack_id = $3 AND s.status = 'active'
+                     )
+                     RETURNING id
+                   )
+                   SELECT id FROM ins`,
                   [recipient.profile_id || null, recipient.phone, packInfo.id]
                 );
                 const hasSession = sessRows.length > 0;

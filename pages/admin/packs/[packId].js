@@ -265,6 +265,38 @@ export default function AdminPackDetail() {
           <dd>{pack.packStatus}</dd>
         </div>
         <div>
+          <dt className="font-medium">Delivery</dt>
+          <dd className="flex items-center gap-3">
+            <span>{String(pack.dropStrategy || 'link').toLowerCase() === 'sms_conversation' ? 'SMS conversation (ask & answer)' : 'Normal SMS (link)'}</span>
+            {String(pack.dropStrategy || 'link').toLowerCase() === 'sms_conversation' && (
+              <button
+                type="button"
+                className="px-2.5 py-1.5 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                onClick={async () => {
+                  if (!pack?.airtableId) return;
+                  const confirmSend = window.confirm('Send a test conversation starter to Pack Open SMS Recipients?');
+                  if (!confirmSend) return;
+                  try {
+                    const endpoint = `/api/admin/packs/${encodeURIComponent(pack.airtableId)}/send-convo-starter`;
+                    const res = await fetch(endpoint, { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data?.success) {
+                      alert(`Sent: ${data.sent}/${data.total}. Failed: ${data.failed}`);
+                    } else {
+                      alert(`Failed to send: ${data?.error || res.status}`);
+                    }
+                  } catch (e) {
+                    console.error('Convo starter send failed:', e);
+                    alert('Failed to send. Check console for details.');
+                  }
+                }}
+              >
+                Test convo starter
+              </button>
+            )}
+          </dd>
+        </div>
+        <div>
           <dt className="font-medium">Created At</dt>
           <dd>{new Date(pack.createdAt).toLocaleString()}</dd>
         </div>
