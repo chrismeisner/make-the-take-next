@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import HeaderGlobe from "./HeaderGlobe";
 import useHasMounted from "../hooks/useHasMounted";
 
@@ -96,7 +96,14 @@ export default function Header({ collapsed, setCollapsed, sidebarItems = [] }) {
 			)}
 		  </Link>
 		)}
-		{/* Sign out moved to sidebar */}
+		{/* Persistent log out */}
+		<button
+		  type="button"
+		  onClick={() => signOut({ callbackUrl: "/?logout=1" })}
+		  className={linkBaseStyles}
+		>
+		  Log out
+		</button>
 	  </div>
 	);
   }
