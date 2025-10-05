@@ -56,6 +56,19 @@ export default function FetchEventsModal({ isOpen, onClose, onFetched }) {
       }
       try {
         console.log('✅ [FetchEventsModal] Fetch complete', { processedCount: data.processedCount, league });
+        if (Array.isArray(data.coverResults)) {
+          data.coverResults.forEach((cr) => {
+            try {
+              console.log('🖼️ [FetchEventsModal] Cover generated', {
+                internalId: cr?.internalId || null,
+                status: cr?.status,
+                httpStatus: cr?.httpStatus,
+                url: cr?.coverUrl || null,
+                note: cr?.status === 'skipped_no_internal_id' ? 'Missing internal event id' : undefined,
+              });
+            } catch {}
+          });
+        }
       } catch {}
       setResult({ processedCount: data.processedCount });
       onFetched?.();

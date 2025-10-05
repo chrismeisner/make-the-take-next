@@ -12,6 +12,7 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const profileID = session?.user?.profileID;
   const isSuperAdmin = Boolean(session?.user?.superAdmin);
+  const showSidebar = Boolean(session?.user && isSuperAdmin);
   const sidebarItems = [
     { label: "Dashboard", href: "/" },
     { label: "Packs", href: "/packs" },
@@ -51,10 +52,10 @@ export default function Layout({ children }) {
   // Otherwise => original layout (with header, container, padding, etc.)
   return (
     <div className="min-h-screen flex">
-      {session?.user && isSuperAdmin ? (
+      {showSidebar ? (
         <SidebarNav items={sidebarItems} collapsed={collapsed} setCollapsed={setCollapsed} />
       ) : null}
-      <div className={`flex flex-col flex-1 min-w-0 pt-12 lg:ml-${collapsed ? '16' : '64'}`}>
+      <div className={`flex flex-col flex-1 min-w-0 pt-12 ${showSidebar ? (collapsed ? 'lg:pl-16' : 'lg:pl-64') : ''}`}>
         <Header collapsed={collapsed} setCollapsed={setCollapsed} sidebarItems={sidebarItems} />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {children}

@@ -58,6 +58,7 @@ export default async function handler(req, res) {
     console.log(`[admin/fetchMlbEvents] Upstream returned ${games.length} games for ${yyyy}-${mm}-${dd}`);
 
     let processedCount = 0;
+    const coverResults = [];
     for (const game of games) {
       const externalId = game?.id ? String(game.id) : null;
       const eventTime = game?.gameTime || null;
@@ -161,17 +162,20 @@ export default async function handler(req, res) {
                 try { const j = txt ? JSON.parse(txt) : null; coverUrl = j?.url || j?.event?.eventCoverURL || (Array.isArray(j?.event?.eventCover) ? j.event.eventCover[0]?.url : null) || null; } catch {}
               } catch {}
               try { console.log('[admin/fetchMlbEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, coverUrl, bodySnippet }); } catch {}
+              try { coverResults.push({ internalId, status: genRes.ok ? 'ok' : 'error', httpStatus: genRes.status, coverUrl }); } catch {}
             } catch (e) {
               try { console.warn('[admin/fetchMlbEvents] generateCover call failed', { internalId, error: e?.message || String(e) }); } catch {}
+              try { coverResults.push({ internalId, status: 'error', error: e?.message || String(e) }); } catch {}
             }
           } else {
             try { console.warn('[admin/fetchMlbEvents] Skipping cover generation — missing internalId after upsert', { eventIdStable }); } catch {}
+            try { coverResults.push({ internalId: null, eventIdStable: String(eventIdStable), status: 'skipped_no_internal_id' }); } catch {}
           }
         }
       } catch {}
     }
 
-    return res.status(200).json({ success: true, processedCount });
+    return res.status(200).json({ success: true, processedCount, coverResults });
   } catch (error) {
     console.error("[admin/fetchMlbEvents] Error:", error);
     return res.status(500).json({ success: false, error: error.message });

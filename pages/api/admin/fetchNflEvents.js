@@ -137,6 +137,7 @@ export default async function handler(req, res) {
 
     let processedCount = 0;
     const eventsOut = [];
+    const coverResults = [];
 
     // Postgres-only: helpers will resolve teams by slug and league directly
 
@@ -309,11 +310,14 @@ export default async function handler(req, res) {
                   try { const j = txt ? JSON.parse(txt) : null; coverUrl = j?.url || j?.event?.eventCoverURL || (Array.isArray(j?.event?.eventCover) ? j.event.eventCover[0]?.url : null) || null; } catch {}
                 } catch {}
                 try { console.log('[admin/fetchNflEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, coverUrl, bodySnippet }); } catch {}
+                try { coverResults.push({ internalId, status: genRes.ok ? 'ok' : 'error', httpStatus: genRes.status, coverUrl }); } catch {}
               } catch (e) {
                 try { console.warn('[admin/fetchNflEvents] generateCover call failed', { internalId, error: e?.message || String(e) }); } catch {}
+                try { coverResults.push({ internalId, status: 'error', error: e?.message || String(e) }); } catch {}
               }
             } else {
               try { console.warn('[admin/fetchNflEvents] Skipping cover generation — missing internalId after upsert', { espnGameID }); } catch {}
+              try { coverResults.push({ internalId: null, espnGameID: String(espnGameID), status: 'skipped_no_internal_id' }); } catch {}
             }
           } else if (backend === 'airtable') {
             // Best-effort: lookup Airtable Event record by espnGameID and trigger generate via generic batch job if needed
@@ -326,7 +330,7 @@ export default async function handler(req, res) {
     // Postgres-only response: no Airtable link fields or slug backfill
 
     console.log(`[admin/fetchNflEvents] Found ${processedCount} games for year=${year}, week=${Number(week)}`);
-    return res.status(200).json({ success: true, processedCount, events: eventsOut });
+    return res.status(200).json({ success: true, processedCount, events: eventsOut, coverResults });
   } catch (error) {
     console.error("[admin/fetchNflEvents] Error:", error);
     return res.status(500).json({ success: false, error: error.message });
