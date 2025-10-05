@@ -815,6 +815,32 @@ export default function EditPropPage() {
           setFormulaParamsText(finalFormulaParamsText);
         } catch {}
       }
+      if (autoGradeKey === 'stat_over_under') {
+        try {
+          const obj = finalFormulaParamsText && finalFormulaParamsText.trim() ? JSON.parse(finalFormulaParamsText) : {};
+          const eff = { ...(obj || {}) };
+          // Ensure the selected player from the UI is persisted
+          if (!eff.playerId && formulaPlayerId) {
+            eff.playerId = formulaPlayerId;
+          }
+          // Enrich with event-derived IDs when available
+          if (event) {
+            const gid = String(event?.espnGameID || '').trim();
+            if (gid) eff.espnGameID = gid;
+            if (event?.eventTime) {
+              const d = new Date(event.eventTime);
+              eff.gameDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+            }
+          }
+          // Persist entity and source for robustness
+          eff.entity = 'player';
+          if (dataSource) eff.dataSource = dataSource;
+
+          // Persist enriched params
+          finalFormulaParamsText = JSON.stringify(eff, null, 2);
+          setFormulaParamsText(finalFormulaParamsText);
+        } catch {}
+      }
       if (autoGradeKey === 'spread') {
         try {
           const obj = finalFormulaParamsText && finalFormulaParamsText.trim() ? JSON.parse(finalFormulaParamsText) : {};
@@ -1098,6 +1124,10 @@ export default function EditPropPage() {
     if (!parsed.dataSource) {
       const lg = String(event?.eventLeague || dataSource || '').toLowerCase();
       parsed.dataSource = (lg === 'nfl') ? 'nfl' : 'major-mlb';
+    }
+    // Ensure the selected player from the UI is included in preview params
+    if (!parsed.playerId && formulaPlayerId) {
+      parsed.playerId = String(formulaPlayerId);
     }
     return parsed;
   };
