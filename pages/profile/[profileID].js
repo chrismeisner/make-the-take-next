@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import { useModal } from "../../contexts/ModalContext";
 import Image from "next/image";
 import PageContainer from "../../components/PageContainer";
 import Toast from "../../components/Toast";
@@ -11,6 +12,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const { profileID } = router.query;
   const { data: session } = useSession();
+  const { openModal } = useModal();
 
   const [profile, setProfile] = useState(null);
   const [userTakes, setUserTakes] = useState([]);
@@ -189,7 +191,12 @@ export default function ProfilePage() {
   if (loading) return <div className="p-4">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-600">{error}</div>;
   if (!profile) return <div className="p-4">Profile not found.</div>;
-  const isOwnProfile = session?.user && session.user.profileID === profile.profileID;
+  const isOwnProfile = Boolean(
+    session?.user && (
+      session.user.profileID === profile.profileID ||
+      (session.user.phone && profile.profileMobile && session.user.phone === profile.profileMobile)
+    )
+  );
   const packMap = userPacks.reduce((map, pack) => { map[pack.packID] = pack; return map; }, {});
   const totalDecisions = (userStats?.wins || 0) + (userStats?.losses || 0);
   const winningPer = totalDecisions > 0 ? ((userStats.wins / totalDecisions) * 100) : 0;
@@ -418,18 +425,26 @@ export default function ProfilePage() {
 		</div>
 	  )}
 
-	  {/* Basic Profile Details */}
-	  <p>
-		<strong>Profile ID:</strong> {profile.profileID}
-	  </p>
+      {/* Basic Profile Details */}
   {isOwnProfile && profile.profileMobile ? (
     <p>
       <strong>Mobile:</strong> {profile.profileMobile}
     </p>
   ) : null}
-	  <p>
-		<strong>Username:</strong> {profile.profileID}
-	  </p>
+      <div className="flex items-center gap-2">
+        <p>
+          <strong>Username:</strong> {profile.profileID}
+        </p>
+        {isOwnProfile && (
+          <button
+            type="button"
+            className="text-sm text-blue-600 underline"
+            onClick={() => openModal("changeUsername", { currentUsername: profile.profileID })}
+          >
+            Change username
+          </button>
+        )}
+      </div>
 	  <p>
 		<strong>Created:</strong> {profile.createdTime}
 	  </p>

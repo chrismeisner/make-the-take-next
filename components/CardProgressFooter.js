@@ -21,7 +21,13 @@ export default function CardProgressFooter() {
         ([propID, side]) => userTakesByProp[propID]?.side !== side
       )
     : true;
-  const canSubmit = selectedCount > 0 && hasChanges;
+  // Disable submit when pack is closed (by status or by close time)
+  const statusNorm = String(packData.packStatus || '').toLowerCase();
+  const closeMs = packData.packCloseTime ? Date.parse(packData.packCloseTime) : NaN;
+  const isClosedByStatus = ['closed', 'pending-grade', 'graded', 'completed'].includes(statusNorm);
+  const isClosedByTime = Number.isFinite(closeMs) && Date.now() >= closeMs;
+  const isPackClosed = isClosedByStatus || isClosedByTime;
+  const canSubmit = selectedCount > 0 && hasChanges && !isPackClosed;
 
   // Handle click: submit takes then show confirmation modal
   async function handleSubmit() {
@@ -72,22 +78,24 @@ export default function CardProgressFooter() {
           textAlign: "left",
         }}
       >
-        {selectedCount} / {totalProps} Takes Made
+        {isPackClosed ? 'Pack closed' : `${selectedCount} / ${totalProps} Takes Made`}
         </p>
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          style={{
-            backgroundColor: canSubmit ? '#2196f3' : '#ccc',
-            color: '#fff',
-            padding: '0.25rem 0.75rem',
-            border: 'none',
-            borderRadius: '3px',
-            cursor: canSubmit ? 'pointer' : 'not-allowed',
-          }}
-        >
-          {previousSubmissions ? 'Resubmit' : 'Submit'}
-        </button>
+        {!isPackClosed && (
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            style={{
+              backgroundColor: canSubmit ? '#2196f3' : '#ccc',
+              color: '#fff',
+              padding: '0.25rem 0.75rem',
+              border: 'none',
+              borderRadius: '3px',
+              cursor: canSubmit ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {previousSubmissions ? 'Resubmit' : 'Submit'}
+          </button>
+        )}
       </div>
     </footer>
     </>

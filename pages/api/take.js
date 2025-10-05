@@ -64,6 +64,28 @@ export default async function handler(req, res) {
 	  });
 	}
 
+	// Additional guard: if the prop's parent pack is closed by status or close_time, reject
+	try {
+	  const packId = Array.isArray(propRec.Packs) && propRec.Packs.length ? propRec.Packs[0] : null;
+	  if (packId) {
+		const { rows } = await query(
+		  `SELECT pack_status, pack_close_time FROM packs WHERE id = $1 LIMIT 1`,
+		  [packId]
+		);
+		if (rows && rows.length > 0) {
+		  const packStatus = String(rows[0].pack_status || '').toLowerCase();
+		  const closeTime = rows[0].pack_close_time ? new Date(rows[0].pack_close_time) : null;
+		  const closedByStatus = ['closed','pending-grade','graded','completed'].includes(packStatus);
+		  const closedByTime = closeTime ? Date.now() >= closeTime.getTime() : false;
+		  if (closedByStatus || closedByTime) {
+			return res.status(400).json({ success: false, error: 'Pack is closed.' });
+		  }
+		}
+	  }
+	} catch (guardErr) {
+	  // Non-fatal guard failure; continue as prop open-state already enforced
+	}
+
 
 	// 6) Calculate popularity of the chosen side before adding the new take
 	const counts = await takes.countBySides(propID);

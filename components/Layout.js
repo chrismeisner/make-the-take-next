@@ -1,9 +1,8 @@
 // File: /components/Layout.js
 import { useEffect, useState } from "react";
-import dynamic from 'next/dynamic';
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
-const Header = dynamic(() => import('./Header'), { ssr: false });
+import Header from "./Header";
 import SidebarNav from "./SidebarNav";
 import Footer from "./Footer";
 

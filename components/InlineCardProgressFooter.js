@@ -21,7 +21,13 @@ export default function InlineCardProgressFooter() {
   );
   const changedCount = changedEntries.length;
   const hasChanges = changedCount > 0;
-  const canSubmit = hasChanges;
+  // Disable submit when pack is closed (by status or by close time)
+  const statusNorm = String(packData.packStatus || '').toLowerCase();
+  const closeMs = packData.packCloseTime ? Date.parse(packData.packCloseTime) : NaN;
+  const isClosedByStatus = ['closed', 'pending-grade', 'graded', 'completed'].includes(statusNorm);
+  const isClosedByTime = Number.isFinite(closeMs) && Date.now() >= closeMs;
+  const isPackClosed = isClosedByStatus || isClosedByTime;
+  const canSubmit = hasChanges && !isPackClosed;
 
   // Determine if current slide (prop) has a selection
   const hasSelectionOnCurrent = (() => {
@@ -200,23 +206,25 @@ export default function InlineCardProgressFooter() {
             textAlign: "center",
             }}
           >
-            {progressPercentage}% complete
+            {isPackClosed ? 'Pack closed' : `${progressPercentage}% complete`}
           </p>
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            style={{
-              backgroundColor: submitBgColor,
-              color: submitTextColor,
-              padding: "0.25rem 0.75rem",
-              border: "none",
-              borderRadius: "3px",
-              cursor: canSubmit ? "pointer" : "not-allowed",
-              width: "100%",
-            }}
-          >
-            {buttonLabel}
-          </button>
+          {!isPackClosed && (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              style={{
+                backgroundColor: submitBgColor,
+                color: submitTextColor,
+                padding: "0.25rem 0.75rem",
+                border: "none",
+                borderRadius: "3px",
+                cursor: canSubmit ? "pointer" : "not-allowed",
+                width: "100%",
+              }}
+            >
+              {buttonLabel}
+            </button>
+          )}
         </div>
       </footer>
     </>

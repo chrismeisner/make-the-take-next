@@ -549,7 +549,7 @@ export default function PackCarouselView({ packData, leaderboard, debugLogs, use
               </div>
               <div className="pt-4">
                 {activeTab === 'leaderboard' ? (
-                  <LeaderboardTable leaderboard={leaderboard} />
+                  <LeaderboardTable leaderboard={leaderboard} packURL={packData.packURL} />
                 ) : activeTab === 'content' ? (
                   Array.isArray(packData.contentData) && packData.contentData.length > 0 ? (
                     <ul className="space-y-3">

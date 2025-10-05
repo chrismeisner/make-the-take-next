@@ -157,7 +157,18 @@ export default function PackDetailPage({ packData, leaderboard, debugLogs, userR
     const isLoggedIn = Boolean(session?.user?.phone);
     const hasUserTakes = Array.isArray(userReceipts) && userReceipts.length > 0;
     if (status === 'graded' && isLoggedIn && hasUserTakes && !router.query.ref) {
-      openModal('packGraded', { packTitle: packData.packTitle, packProps: packData.props, packURL: packData.packURL });
+      // Show only once per user per pack
+      const profileId = String(session?.user?.profileID || '');
+      const packUrl = String(packData?.packURL || '');
+      const storageKey = `gradedSeen:${packUrl}:${profileId}`;
+      let alreadySeen = false;
+      try {
+        alreadySeen = typeof window !== 'undefined' && window.localStorage.getItem(storageKey) === '1';
+      } catch {}
+      if (!alreadySeen) {
+        openModal('packGraded', { packTitle: packData.packTitle, packProps: packData.props, packURL: packData.packURL });
+        try { if (typeof window !== 'undefined') window.localStorage.setItem(storageKey, '1'); } catch {}
+      }
     }
   }, [packData?.packStatus, packData?.packTitle, packData?.props, packData?.packURL, openModal, router.query.ref, session?.user?.phone, userReceipts]);
 

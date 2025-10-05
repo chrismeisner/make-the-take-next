@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import useHasMounted from "../hooks/useHasMounted";
+import { useModal } from "../contexts/ModalContext";
 
 /**
  * Reusable scoreboard table.
@@ -17,10 +18,11 @@ import useHasMounted from "../hooks/useHasMounted";
  *   ...
  * }
  */
-export default function LeaderboardTable({ leaderboard }) {
+export default function LeaderboardTable({ leaderboard, packURL = null }) {
   const { data: session } = useSession();
   const hasMounted = useHasMounted();
   const currentProfileID = hasMounted ? (session?.user?.profileID) : null;
+  const { openModal } = useModal();
   const hasEntries = Array.isArray(leaderboard) && leaderboard.length > 0;
 
   return (
@@ -48,11 +50,22 @@ export default function LeaderboardTable({ leaderboard }) {
 				<td className="py-2 px-3 w-10">{idx + 1}</td>
 				<td className="py-2 px-3">
 				  {item.profileID ? (
-					<Link href={"/profile/" + item.profileID}>
-					  <span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
+                    packURL ? (
+					  <button
+						type="button"
+                        onClick={() => openModal('userTakes', { packURL, profileID: item.profileID })}
+						className={(item.profileID === currentProfileID ? "font-bold " : "") + "text-blue-600 underline"}
+						title="See takes"
+					  >
 						{item.profileID}
-					  </span>
-					</Link>
+					  </button>
+					) : (
+					  <Link href={"/profile/" + item.profileID}>
+						<span className={"text-blue-600 underline " + (item.profileID === currentProfileID ? "font-bold" : "")}>
+						  {item.profileID}
+						</span>
+					  </Link>
+					)
 				  ) : (
 					'Unknown'
 				  )}

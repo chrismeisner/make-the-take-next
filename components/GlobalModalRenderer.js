@@ -30,6 +30,8 @@ import FetchEventsModal from "./modals/FetchEventsModal";
 import FetchTeamsModal from "./modals/FetchTeamsModal";
 import PackActiveModal from "./modals/PackActiveModal";
 import AISummaryModal from "./modals/AISummaryModal";
+import ReceiptModal from "./modals/ReceiptModal";
+import UserTakesModal from "./modals/UserTakesModal";
 import LoginModal from "./modals/LoginModal";
 import AwardClaimModal from "./modals/AwardClaimModal";
 import AwardSuccessModal from "./modals/AwardSuccessModal";
@@ -39,6 +41,7 @@ import { getDataBackend } from "../lib/runtimeConfig";
 import NewInventoryModal from "./modals/NewInventoryModal";
 import SubscribeModal from "./modals/SubscribeModal";
 import PromoFollowModal from "./modals/PromoFollowModal";
+import ChangeUsernameModal from "./modals/ChangeUsernameModal";
 
 export default function GlobalModalRenderer() {
   const { modalConfig, closeModal } = useModal();
@@ -48,6 +51,16 @@ export default function GlobalModalRenderer() {
   }
 
   switch (modalConfig.modalType) {
+    case "changeUsername": {
+      const { currentUsername } = modalConfig.modalProps;
+      return (
+        <ChangeUsernameModal
+          isOpen={true}
+          onClose={closeModal}
+          currentUsername={currentUsername}
+        />
+      );
+    }
     case "promoFollow": {
       const { code, previewState } = modalConfig.modalProps;
       return (
@@ -207,6 +220,28 @@ export default function GlobalModalRenderer() {
           packLeague={packLeague}
           packCloseTime={packCloseTime}
           packOpenSmsTemplate={packOpenSmsTemplate}
+        />
+      );
+    }
+    case "receipt": {
+      const { packURL, profileID } = modalConfig.modalProps;
+      return (
+        <ReceiptModal
+          isOpen={true}
+          onClose={closeModal}
+          packURL={packURL}
+          profileID={profileID}
+        />
+      );
+    }
+    case "userTakes": {
+      const { packURL, profileID } = modalConfig.modalProps;
+      return (
+        <UserTakesModal
+          isOpen={true}
+          onClose={closeModal}
+          packURL={packURL}
+          profileID={profileID}
         />
       );
     }
