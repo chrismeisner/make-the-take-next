@@ -154,8 +154,13 @@ export default async function handler(req, res) {
               try { console.log('[admin/fetchMlbEvents] → generateCover start', { internalId, baseUrl, path }); } catch {}
               const genRes = await fetch(`${baseUrl}${path}`, { method: 'POST', headers: { Cookie: req.headers.cookie || '' } });
               let bodySnippet = null;
-              try { const txt = await genRes.text(); bodySnippet = txt ? txt.slice(0, 200) : null; } catch {}
-              try { console.log('[admin/fetchMlbEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, bodySnippet }); } catch {}
+              let coverUrl = null;
+              try {
+                const txt = await genRes.text();
+                bodySnippet = txt ? txt.slice(0, 200) : null;
+                try { const j = txt ? JSON.parse(txt) : null; coverUrl = j?.url || j?.event?.eventCoverURL || (Array.isArray(j?.event?.eventCover) ? j.event.eventCover[0]?.url : null) || null; } catch {}
+              } catch {}
+              try { console.log('[admin/fetchMlbEvents] ← generateCover done', { internalId, status: genRes.status, ok: genRes.ok, coverUrl, bodySnippet }); } catch {}
             } catch (e) {
               try { console.warn('[admin/fetchMlbEvents] generateCover call failed', { internalId, error: e?.message || String(e) }); } catch {}
             }
