@@ -421,7 +421,16 @@ export default function PackPreview({ pack, className = "", accent = "blue" }) {
 				<div className="mt-0.5 text-xs text-gray-500">
 					<span>by </span>
 					{pack.creatorProfileHandle ? (
-						<Link href={`/profile/${pack.creatorProfileHandle}`} className="hover:underline">@{pack.creatorProfileHandle}</Link>
+						<span
+							role="link"
+							tabIndex={0}
+							className="hover:underline cursor-pointer"
+							onClick={(e) => { try { e.preventDefault(); e.stopPropagation(); } catch {} router.push(`/profile/${pack.creatorProfileHandle}`); }}
+							onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { try { e.preventDefault(); e.stopPropagation(); } catch {} router.push(`/profile/${pack.creatorProfileHandle}`); } }}
+							aria-label={`View profile @${pack.creatorProfileHandle}`}
+						>
+							@{pack.creatorProfileHandle}
+						</span>
 					) : (
 						<span className="font-mono">{String(pack.creatorProfileId).slice(0, 8)}</span>
 					)}

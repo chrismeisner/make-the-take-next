@@ -7,7 +7,7 @@ import GlobalModal from "./GlobalModal";
 
 export default function ChangeUsernameModal({ isOpen, onClose, currentUsername }) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const [username, setUsername] = useState(currentUsername || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,6 +39,8 @@ export default function ChangeUsernameModal({ isOpen, onClose, currentUsername }
       if (!resp.ok || data?.error) {
         throw new Error(data?.error || "Failed to update username");
       }
+      // Refresh session so header/profile links reflect the new handle immediately
+      try { await update({ profileID: trimmed }); } catch {}
       // Navigate to the new profile route
       try {
         const newPath = `/profile/${encodeURIComponent(trimmed)}`;

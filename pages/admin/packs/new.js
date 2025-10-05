@@ -33,6 +33,7 @@ export default function AdminCreatePackPage() {
   const [eventInfoById, setEventInfoById] = useState({});
   const [packOpenSmsTemplate, setPackOpenSmsTemplate] = useState('');
   const [smsPreview, setSmsPreview] = useState('');
+  const [dropStrategy, setDropStrategy] = useState('link');
 
   // Load leagues
   useEffect(() => {
@@ -357,6 +358,7 @@ export default function AdminCreatePackPage() {
       if (packOpenTime) payload.packOpenTime = new Date(packOpenTime).toISOString();
       if (packCloseTime) payload.packCloseTime = new Date(packCloseTime).toISOString();
       if (packOpenSmsTemplate) payload.packOpenSmsTemplate = packOpenSmsTemplate;
+      if (dropStrategy) payload.dropStrategy = dropStrategy;
       if (propsList.length) payload.props = propsList.map(p => p.airtableId);
       if (Array.isArray(packEventIds) && packEventIds.length > 0) {
         payload.events = packEventIds;
@@ -672,6 +674,24 @@ export default function AdminCreatePackPage() {
             >
               Generate AI Content
             </button>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Delivery method</label>
+          <select
+            value={dropStrategy}
+            onChange={(e) => setDropStrategy(e.target.value)}
+            className="mt-1 px-3 py-2 border rounded w-full"
+          >
+            <option value="link">Send pack link via SMS</option>
+            <option value="sms_conversation">Start SMS conversation with Prop 1</option>
+          </select>
+          <div className="mt-1 text-xs text-gray-600">
+            {dropStrategy === 'link' ? (
+              <span>Users receive a link to the pack detail when it opens.</span>
+            ) : (
+              <span>Users are prompted via SMS with the first proposition and can reply A/B.</span>
+            )}
           </div>
         </div>
         <div>

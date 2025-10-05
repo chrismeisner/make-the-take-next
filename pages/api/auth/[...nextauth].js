@@ -206,8 +206,14 @@ export const authOptions = {
   ],
 
   callbacks: {
-	// 1) Embed phone/profileID into the JWT
-	async jwt({ token, user }) {
+    // 1) Embed phone/profileID into the JWT
+    async jwt({ token, user, trigger, session }) {
+      // When the client calls session.update({ profileID: 'new' }), persist into JWT
+      if (trigger === 'update' && session?.profileID) {
+        token.profileID = session.profileID;
+        // If we also carry a username field in token, keep them in sync
+        token.username = session.profileID;
+      }
 	  if (user) {
 		token.phone = user.phone;
 		token.profileID = user.profileID;
@@ -233,8 +239,8 @@ export const authOptions = {
 	  return token;
 	},
 
-	// 2) Add them to session.user
-	async session({ session, token }) {
+    // 2) Add them to session.user
+    async session({ session, token }) {
 	  if (token) {
 		const backend = getDataBackend();
 		const baseUser = {

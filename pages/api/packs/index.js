@@ -440,7 +440,7 @@ async function handler(req, res) {
       if (!currentUser?.userId) {
         return res.status(401).json({ success: false, error: "Unauthorized" });
       }
-      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace, packOpenSmsTemplate } = req.body;
+      const { packTitle, packSummary, packURL, packType, packLeague, packStatus, packOpenTime, packCloseTime, event, eventId, events, teams, packCoverUrl, props, packCreator, firstPlace, packOpenSmsTemplate, dropStrategy } = req.body;
       try {
         console.log('[api/packs POST] incoming create', {
           packURL,
@@ -484,6 +484,7 @@ async function handler(req, res) {
         packOpenTime, packCloseTime, packCoverUrl,
         prize,
         packOpenSmsTemplate,
+        dropStrategy: (dropStrategy && ['link','sms_conversation'].includes(String(dropStrategy))) ? String(dropStrategy) : undefined,
         eventId: finalEventId,
         events, props,
         creatorProfileId: currentUser.userId,

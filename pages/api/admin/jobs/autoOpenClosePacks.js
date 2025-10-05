@@ -53,20 +53,22 @@ export default async function handler(req, res) {
       RETURNING id, pack_url`;
     const { rows: opened } = await query(openSql);
 
-    // Send SMS notifications for newly opened packs
+    // Send SMS notifications or start SMS conversations for newly opened packs
     if (opened.length > 0) {
       console.log('📱 [autoOpenClosePacks] Sending SMS notifications for opened packs...');
       for (const pack of opened) {
         try {
           // Get pack details including league for SMS targeting
           const { rows: packDetails } = await query(
-            `SELECT id, pack_id, pack_url, title, league, pack_open_sms_template, pack_open_time, pack_close_time FROM packs WHERE id = $1 LIMIT 1`,
+            `SELECT id, pack_id, pack_url, title, league, pack_open_sms_template, pack_open_time, pack_close_time, COALESCE(drop_strategy, 'link') AS drop_strategy FROM packs WHERE id = $1 LIMIT 1`,
             [pack.id]
           );
           
           if (packDetails.length === 0) continue;
           const packInfo = packDetails[0];
           const league = (packInfo.league || '').toLowerCase();
+
+          const isConversation = String(packInfo.drop_strategy || 'link').toLowerCase() === 'sms_conversation';
 
           // Resolve SMS rule/template for this league
           const { rows: ruleRows } = await query(
@@ -136,11 +138,41 @@ export default async function handler(req, res) {
             continue;
           }
 
-          // Send SMS to each recipient
+          // Send SMS to each recipient (link strategy) or seed sessions + first prop (conversation strategy)
           let sentCount = 0;
           for (const recipient of recRows) {
             try {
-              await sendSMS({ to: recipient.phone, message });
+              if (!isConversation) {
+                await sendSMS({ to: recipient.phone, message });
+              } else {
+                // Create or get session and send first prop
+                // 1) Ensure a session exists
+                const { rows: sessRows } = await query(
+                  `INSERT INTO sms_take_sessions (profile_id, phone, pack_id, current_prop_index, status)
+                   VALUES ($1, $2, $3, 0, 'active')
+                   ON CONFLICT ON CONSTRAINT uniq_active_sms_session DO NOTHING
+                   RETURNING id`,
+                  [recipient.profile_id || null, recipient.phone, packInfo.id]
+                );
+                const hasSession = sessRows.length > 0;
+                // 2) Fetch ordered props and send the first one
+                const { rows: props } = await query(
+                  `SELECT prop_id, prop_short, prop_summary, prop_side_a_short, prop_side_b_short
+                     FROM props
+                    WHERE pack_id = $1
+                    ORDER BY COALESCE(prop_order, 0) ASC, created_at ASC
+                    LIMIT 1`,
+                  [packInfo.id]
+                );
+                if (props && props.length > 0) {
+                  const p = props[0];
+                  const line = (p.prop_short || p.prop_summary || '').trim();
+                  const a = (p.prop_side_a_short || 'A').trim();
+                  const b = (p.prop_side_b_short || 'B').trim();
+                  const body = `Pack: ${packInfo.title}\n1/${1} ${line}\nReply A) ${a} or B) ${b}`;
+                  await sendSMS({ to: recipient.phone, message: body });
+                }
+              }
               sentCount++;
             } catch (smsErr) {
               console.error(`[autoOpenClosePacks] SMS send error for ${recipient.phone}:`, smsErr);

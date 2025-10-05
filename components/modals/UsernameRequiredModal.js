@@ -5,7 +5,7 @@ import { useModal } from "../../contexts/ModalContext";
 
 export default function UsernameRequiredModal({ isOpen, onClose, receiptId, packTitle, submitAllTakes, profileID }) {
   const { openModal } = useModal();
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
 
   // Compute a default temporary username: 'taker' + last 4 digits of phone
   const phone = session?.user?.phone || "";
@@ -41,6 +41,8 @@ export default function UsernameRequiredModal({ isOpen, onClose, receiptId, pack
       if (!resp.ok || data.error) {
         throw new Error(data.error || "Failed to update username");
       }
+      // Refresh session with new profileID so UI updates immediately
+      try { await update({ profileID: username }); } catch {}
       // After updating username, submit takes
       const newTakeIDs = await submitAllTakes(receiptId);
       // Fire-and-forget SMS notification to the user
