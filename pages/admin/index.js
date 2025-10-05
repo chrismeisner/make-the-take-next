@@ -394,6 +394,11 @@ export default function AdminPage({ superAdminSecret }) {
                 Test AI (Prompts)
               </button>
             </Link>
+            <Link href="/admin/proposition-package-formatter">
+              <button className="px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900">
+                Proposition Package Formatter
+              </button>
+            </Link>
             <Link href="/admin/api-tester">
               <button className="px-3 py-2 bg-blue-950 text-white rounded hover:bg-blue-900">
                 API Tester

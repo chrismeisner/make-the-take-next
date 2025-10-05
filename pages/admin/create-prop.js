@@ -20,6 +20,25 @@ export default function CreatePropUnifiedPage() {
   const [propSideBTake, setPropSideBTake] = useState('');
   const [propSideBMoneyline, setPropSideBMoneyline] = useState('');
   const [propStatus, setPropStatus] = useState('open');
+
+  // Prefill from querystring when navigated from formatter page
+  useEffect(() => {
+    try {
+      if (!router || !router.query) return;
+      const q = router.query;
+      // prefill gate
+      const shouldPrefill = String(q.prefill || '').trim() === '1';
+      if (!shouldPrefill) return;
+      if (q.propShort) setPropShort(String(q.propShort));
+      if (q.propSummary) setPropSummary(String(q.propSummary));
+      if (q.PropSideAShort) setPropSideAShort(String(q.PropSideAShort));
+      if (q.PropSideBShort) setPropSideBShort(String(q.PropSideBShort));
+      if (q.PropSideATake) setPropSideATake(String(q.PropSideATake));
+      if (q.PropSideBTake) setPropSideBTake(String(q.PropSideBTake));
+      if (q.PropSideAMoneyline) setPropSideAMoneyline(String(q.PropSideAMoneyline));
+      if (q.PropSideBMoneyline) setPropSideBMoneyline(String(q.PropSideBMoneyline));
+    } catch {}
+  }, [router]);
   
   // Profit/payout from moneyline with default stake 250
   const profitFromMoneyline = (moneyline, stake = 250) => {
@@ -92,6 +111,7 @@ export default function CreatePropUnifiedPage() {
   const [metricCatalog, setMetricCatalog] = useState({}); // key -> { key,label,source_key }
   const [selectedMetric, setSelectedMetric] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState([]);
+  const [selectedMetricBundleKey, setSelectedMetricBundleKey] = useState('');
   // Team Winner mapping (A/B -> home/away)
   const [sideAMap, setSideAMap] = useState('');
   const [sideBMap, setSideBMap] = useState('');
@@ -137,6 +157,19 @@ export default function CreatePropUnifiedPage() {
       const words = spaced.split(/\s+/).filter(Boolean);
       return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     } catch { return String(key || ''); }
+  };
+
+  // Apply multi-stat bundle -> populate metrics array used by grading
+  const applyMetricBundle = (bundleKey) => {
+    const entry = metricCatalog && metricCatalog[bundleKey];
+    const bundleMetrics = Array.isArray(entry?.metrics) ? entry.metrics.filter(Boolean) : [];
+    if (bundleMetrics.length >= 2) {
+      setSelectedMetrics(bundleMetrics);
+      upsertRootParam('metrics', bundleMetrics);
+    } else {
+      setSelectedMetrics([]);
+      upsertRootParam('metrics', []);
+    }
   };
   // Player H2H (and similar) inputs
   const [playerAId, setPlayerAId] = useState('');
@@ -2193,76 +2226,111 @@ export default function CreatePropUnifiedPage() {
             {autoGradeKey === 'player_multi_stat_ou' && (
               <div className="mt-3 space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Metrics (sum of 2+)</label>
-                  <div className="mt-1 space-y-2">
-                    {(selectedMetrics.length ? selectedMetrics : ['','']).map((value, idx) => (
-                      <div key={`metric-row-${idx}`} className="flex items-center gap-2">
-                        {metricLoading ? (
-                          <div className="text-xs text-gray-600">Loading metrics…</div>
-                        ) : metricOptions && metricOptions.length > 0 ? (
-                          <select
-                            className="block flex-1 border rounded px-2 py-1"
-                            value={value || ''}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
-                              arr[idx] = v;
-                              const uniq = Array.from(new Set(arr.filter(Boolean)));
-                              setSelectedMetrics(uniq);
-                              upsertRootParam('metrics', uniq);
-                            }}
-                          >
-                            <option value="">Select a metric…</option>
-                            {metricOptions.map((k) => (<option key={`m-${idx}-${k}`} value={k}>{formatMetricLabel(k)}</option>))}
-                          </select>
-                        ) : (
-                          <input
-                            className="block flex-1 border rounded px-2 py-1"
-                            value={value || ''}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
-                              arr[idx] = v;
-                              const uniq = Array.from(new Set(arr.filter(Boolean)));
-                              setSelectedMetrics(uniq);
-                              upsertRootParam('metrics', uniq);
-                            }}
-                            placeholder="e.g. passingYards"
-                          />
-                        )}
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs bg-gray-200 rounded"
-                          onClick={() => {
-                            const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
-                            if (arr.length <= 2) return;
-                            arr.splice(idx, 1);
-                            const uniq = Array.from(new Set(arr.filter(Boolean)));
-                            setSelectedMetrics(uniq);
-                            upsertRootParam('metrics', uniq);
-                          }}
-                          disabled={(selectedMetrics.length ? selectedMetrics.length : 2) <= 2}
-                          title="Remove metric"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                    <div>
-                      <button
-                        type="button"
-                        className="px-3 py-1 bg-gray-200 rounded"
-                        onClick={() => {
-                          const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
-                          arr.push('');
-                          setSelectedMetrics(arr);
-                        }}
-                      >
-                        Add metric
-                      </button>
-                      <div className="text-xs text-gray-600 mt-1">Minimum 2 metrics.</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const bundles = Object.values(metricCatalog||{}).filter((m) => Array.isArray(m?.metrics) && m.metrics.length >= 2);
+                    const hasBundles = bundles.length > 0;
+                    if (hasBundles) {
+                      return (
+                        <>
+                          <label className="block text-sm font-medium text-gray-700">Metric Bundle</label>
+                          {metricLoading ? (
+                            <div className="mt-1 text-xs text-gray-600">Loading bundles…</div>
+                          ) : (
+                            <select
+                              className="mt-1 block w-full border rounded px-2 py-1"
+                              value={selectedMetricBundleKey}
+                              onChange={(e) => { const k=e.target.value; setSelectedMetricBundleKey(k); applyMetricBundle(k); upsertRootParam('entity','player'); }}
+                              disabled={!metricCatalog || Object.keys(metricCatalog).length === 0}
+                            >
+                              <option value="">Select a bundle…</option>
+                              {bundles.map((m) => (
+                                <option key={`bundle-${m.key || m.label}`} value={m.key || m.label}>{m.label || formatMetricLabel(m.key)}</option>
+                              ))}
+                            </select>
+                          )}
+                          {!!metricError && <div className="mt-1 text-xs text-red-600">{metricError}</div>}
+                          {selectedMetrics && selectedMetrics.length>0 && (
+                            <div className="mt-2 text-xs text-gray-600">Includes: {selectedMetrics.map((k)=>formatMetricLabel(k)).join(', ')}</div>
+                          )}
+                        </>
+                      );
+                    }
+                    // Fallback to legacy multi-select if bundles unavailable
+                    return (
+                      <>
+                        <label className="block text-sm font-medium text-gray-700">Metrics (sum of 2+)</label>
+                        <div className="mt-1 space-y-2">
+                          {(selectedMetrics.length ? selectedMetrics : ['','']).map((value, idx) => (
+                            <div key={`metric-row-${idx}`} className="flex items-center gap-2">
+                              {metricLoading ? (
+                                <div className="text-xs text-gray-600">Loading metrics…</div>
+                              ) : metricOptions && metricOptions.length > 0 ? (
+                                <select
+                                  className="block flex-1 border rounded px-2 py-1"
+                                  value={value || ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                                    arr[idx] = v;
+                                    const uniq = Array.from(new Set(arr.filter(Boolean)));
+                                    setSelectedMetrics(uniq);
+                                    upsertRootParam('metrics', uniq);
+                                  }}
+                                >
+                                  <option value="">Select a metric…</option>
+                                  {metricOptions.map((k) => (<option key={`m-${idx}-${k}`} value={k}>{formatMetricLabel(k)}</option>))}
+                                </select>
+                              ) : (
+                                <input
+                                  className="block flex-1 border rounded px-2 py-1"
+                                  value={value || ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                                    arr[idx] = v;
+                                    const uniq = Array.from(new Set(arr.filter(Boolean)));
+                                    setSelectedMetrics(uniq);
+                                    upsertRootParam('metrics', uniq);
+                                  }}
+                                  placeholder="e.g. passingYards"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs bg-gray-200 rounded"
+                                onClick={() => {
+                                  const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                                  if (arr.length <= 2) return;
+                                  arr.splice(idx, 1);
+                                  const uniq = Array.from(new Set(arr.filter(Boolean)));
+                                  setSelectedMetrics(uniq);
+                                  upsertRootParam('metrics', uniq);
+                                }}
+                                disabled={(selectedMetrics.length ? selectedMetrics.length : 2) <= 2}
+                                title="Remove metric"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <div>
+                            <button
+                              type="button"
+                              className="px-3 py-1 bg-gray-200 rounded"
+                              onClick={() => {
+                                const arr = [...(selectedMetrics.length ? selectedMetrics : ['',''])];
+                                arr.push('');
+                                setSelectedMetrics(arr);
+                              }}
+                            >
+                              Add metric
+                            </button>
+                            <div className="text-xs text-gray-600 mt-1">Minimum 2 metrics.</div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
