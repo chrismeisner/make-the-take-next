@@ -1,52 +1,63 @@
 // File: /pages/api/outbox/send.js
-import { fetchReadyOutboxMessages, updateOutboxStatus } from "../../../lib/airtableService";
 import { sendSMS } from "../../../lib/twilioService";
+import { query } from "../../../lib/db/postgres";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-	return res.status(405).json({ success: false, error: "Method not allowed" });
+    return res.status(405).json({ success: false, error: "Method not allowed" });
   }
   try {
-	// Fetch outbox records with status "ready"
-	const records = await fetchReadyOutboxMessages();
-	
-	// Process each record one-by-one (you may choose to process in parallel if desired)
-	for (const record of records) {
-	  const { outboxMessage, outboxRecipients } = record.fields;
-	  
-	  // outboxRecipients should be an array of expanded values (profileMobile numbers)
-	  // Depending on your Airtable setup, it might be an array of strings (phone numbers) or objects.
-	  // Here we assume that the lookup has been expanded so you directly get phone numbers.
-	  const recipients = Array.isArray(outboxRecipients) ? outboxRecipients : [];
-	  
-	  if (recipients.length === 0) {
-		console.error(`[Outbox] No recipients found for record ${record.id}`);
-		await updateOutboxStatus(record.id, "error");
-		continue;
-	  }
-	  
-	  // Send SMS to all recipients; track if all send successfully.
-	  let allSent = true;
-	  for (const phone of recipients) {
-		try {
-		  await sendSMS({ to: phone, message: outboxMessage });
-		} catch (err) {
-		  allSent = false;
-		  console.error(`[Outbox] Error sending SMS to ${phone} for record ${record.id}:`, err);
-		}
-	  }
-	  
-	  // Update status based on outcome
-	  if (allSent) {
-		await updateOutboxStatus(record.id, "sent");
-	  } else {
-		await updateOutboxStatus(record.id, "error");
-	  }
-	}
-	
-	return res.status(200).json({ success: true, processed: records.length });
+    // 1) Fetch all outbox messages that are ready to send
+    const { rows: outboxRows } = await query(
+      `SELECT id, message
+         FROM outbox
+        WHERE status = 'ready'
+        ORDER BY created_at ASC`
+    );
+
+    let processed = 0;
+
+    // 2) For each outbox row, fetch recipients' phone numbers and send
+    for (const row of outboxRows) {
+      const outboxId = row.id;
+      const message = row.message || '';
+
+      const { rows: recipientRows } = await query(
+        `SELECT p.mobile_e164 AS phone
+           FROM outbox_recipients r
+           JOIN profiles p ON p.id = r.profile_id
+          WHERE r.outbox_id = $1 AND p.mobile_e164 IS NOT NULL`,
+        [outboxId]
+      );
+      const recipients = recipientRows.map(r => r.phone).filter(Boolean);
+
+      if (recipients.length === 0) {
+        // No recipients → mark as error and continue
+        await query(`UPDATE outbox SET status = 'error' WHERE id = $1`, [outboxId]);
+        continue;
+      }
+
+      let allSent = true;
+      for (const phone of recipients) {
+        try {
+          await sendSMS({ to: phone, message });
+        } catch (err) {
+          allSent = false;
+          // eslint-disable-next-line no-console
+          console.error(`[Outbox] Error sending SMS to ${phone} for outbox ${outboxId}:`, err);
+        }
+      }
+
+      // Update status based on outcome
+      const newStatus = allSent ? 'sent' : 'error';
+      await query(`UPDATE outbox SET status = $2 WHERE id = $1`, [outboxId, newStatus]);
+      processed += 1;
+    }
+
+    return res.status(200).json({ success: true, processed });
   } catch (err) {
-	console.error("[Outbox API] Error processing outbox messages:", err);
-	return res.status(500).json({ success: false, error: err.message });
+    // eslint-disable-next-line no-console
+    console.error("[Outbox API] Error processing outbox messages:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 }
