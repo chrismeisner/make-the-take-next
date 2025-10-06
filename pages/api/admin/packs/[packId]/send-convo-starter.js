@@ -85,27 +85,36 @@ export default async function handler(req, res) {
 
     // Fetch first prop to compose conversation starter text
     const { rows: props } = await query(
-      `SELECT prop_short, prop_summary, prop_side_a_short, prop_side_b_short
+      `SELECT id, prop_id, prop_short, prop_summary, prop_side_a_short, prop_side_b_short
          FROM props
         WHERE pack_id = $1
-        ORDER BY COALESCE(prop_order, 0) ASC, created_at ASC
-        LIMIT 1`,
+        ORDER BY COALESCE(prop_order, 0) ASC, created_at ASC`,
       [pack.id]
     );
-    if (!props.length) {
+    const total = props.length;
+    if (!total) {
       return res.status(400).json({ success: false, error: 'No props found in this pack' });
     }
     const p = props[0];
     const line = (p.prop_short || p.prop_summary || '').trim();
     const a = (p.prop_side_a_short || 'A').trim();
     const b = (p.prop_side_b_short || 'B').trim();
-    const body = `Pack: ${pack.title}\n1/1 ${line}\nReply A) ${a} or B) ${b}`;
+    const body = `Pack: ${pack.title}\n1/${total} ${line}\nReply A) ${a} or B) ${b}`;
 
     let sent = 0;
     let failed = 0;
     const errors = [];
     for (const r of recipients) {
       try {
+        // Seed session if not present
+        await query(
+          `INSERT INTO sms_take_sessions (profile_id, phone, pack_id, current_prop_index, status)
+           SELECT $1, $2, $3, 0, 'active'
+           WHERE NOT EXISTS (
+             SELECT 1 FROM sms_take_sessions s WHERE s.phone = $2 AND s.pack_id = $3 AND s.status = 'active'
+           )`,
+          [r.profile_id || null, r.phone, pack.id]
+        );
         await sendSMS({ to: r.phone, message: body });
         sent += 1;
       } catch (e) {

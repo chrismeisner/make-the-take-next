@@ -128,13 +128,17 @@ export default async function handler(req, res) {
         const a = (next.prop_side_a_short || 'A').trim();
         const b = (next.prop_side_b_short || 'B').trim();
         const line = (next.prop_short || next.prop_summary || '').trim();
-        const msg = `${nextIndex + 1}/${total} ${line}\nReply A) ${a} or B) ${b}`;
+        const ack = letter === 'A' ? `Saved: A) ${a}` : `Saved: B) ${b}`;
+        const msg = `${ack}\n${nextIndex + 1}/${total} ${line}\nReply A) ${a} or B) ${b}`;
         await sendSMS({ to: from, message: msg });
       } else {
         await query(`UPDATE sms_take_sessions SET status = 'completed', last_inbound_sid = $2, updated_at = NOW() WHERE id = $1`, [session.id, messageSID]);
         const site = (process.env.SITE_URL || 'https://makethetake.com').replace(/\/$/, '');
         const url = `${site}/packs/${session.pack_url || ''}`;
-        await sendSMS({ to: from, message: `All set! Review your takes: ${url}` });
+        const a = (prop.prop_side_a_short || 'A').trim();
+        const b = (prop.prop_side_b_short || 'B').trim();
+        const ack = letter === 'A' ? `Saved: A) ${a}` : `Saved: B) ${b}`;
+        await sendSMS({ to: from, message: `${ack}\nAll set! Review your takes: ${url}` });
       }
 
       res.setHeader('Content-Type', 'text/xml');
