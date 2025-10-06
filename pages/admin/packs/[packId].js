@@ -464,6 +464,7 @@ export default function AdminPackDetail() {
                   <th className="px-3 py-2 border-b">Title</th>
                   <th className="px-3 py-2 border-b">Short</th>
                   <th className="px-3 py-2 border-b">Status</th>
+                  <th className="px-3 py-2 border-b">Fan Takes</th>
                   <th className="px-3 py-2 border-b">ID</th>
                 </tr>
               </thead>
@@ -478,6 +479,7 @@ export default function AdminPackDetail() {
                         {p.propStatus || 'unknown'}
                       </span>
                     </td>
+                    <td className="px-3 py-2 border-b">{Number(p.takesCount || 0)}</td>
                     <td className="px-3 py-2 border-b text-gray-500">{p.propID || p.airtableId}</td>
                   </tr>
                 ))}

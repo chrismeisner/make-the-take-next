@@ -88,10 +88,22 @@ export default async function handler(req, res) {
     let props = [];
     try {
       const { rows: propRows } = await query(
-        `SELECT id, prop_id, prop_short, prop_summary, prop_status, prop_order
-           FROM props
-          WHERE pack_id = $1
-          ORDER BY COALESCE(prop_order, 0) ASC`,
+        `SELECT pr.id,
+                pr.prop_id,
+                pr.prop_short,
+                pr.prop_summary,
+                pr.prop_status,
+                pr.prop_order,
+                COALESCE(cnt.c, 0) AS takes_count
+           FROM props pr
+      LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS c
+                  FROM takes t
+                 WHERE (t.prop_id = pr.id OR t.prop_id_text = pr.prop_id)
+                   AND t.take_status = 'latest'
+                ) cnt ON TRUE
+          WHERE pr.pack_id = $1
+          ORDER BY COALESCE(pr.prop_order, 0) ASC`,
         [r.id]
       );
       props = (propRows || []).map((pr) => ({
@@ -101,6 +113,7 @@ export default async function handler(req, res) {
         propShort: pr.prop_short || '',
         propStatus: pr.prop_status || 'open',
         propOrder: pr.prop_order ?? 0,
+        takesCount: Number(pr.takes_count || 0),
       }));
     } catch (e) {
       // Non-fatal for admin detail
