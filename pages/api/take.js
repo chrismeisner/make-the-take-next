@@ -115,7 +115,7 @@ export default async function handler(req, res) {
 	if (receiptId) takeFields.receiptID = receiptId;
 	// Include takeRef if present in referer URL
 	if (takeRef) takeFields.takeRef = takeRef;
-    const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: takeFields });
+    const newTakeID = await takes.createLatestTake({ propID, propSide, phone: currentUser.phone, profileId: ensuredProfile?.id, fields: { ...takeFields, take_source: 'web' } });
 
     // 7.5) If this came from a shared link, auto-award +5 tokens to the referrer per referred user per pack
     try {

@@ -3,7 +3,6 @@
 import * as qs from 'querystring';
 import { sendSMS } from '../../../lib/twilioService';
 import { query } from '../../../lib/db/postgres';
-import Airtable from 'airtable';
 
 // Helper to read raw request body without bodyParser
 async function getRawBody(req) {
@@ -14,8 +13,7 @@ async function getRawBody(req) {
   return Buffer.concat(chunks);
 }
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+// Airtable removed; use Postgres sms_inbox table
 
 export const config = {
   api: {
@@ -38,20 +36,16 @@ export default async function handler(req, res) {
   const messageSID = parsed.MessageSid;
   const body = parsed.Body ? parsed.Body.trim().toUpperCase() : '';
 
-  // Log incoming message to Inbox table
+  // Log incoming message to Postgres sms_inbox table
   try {
-    await base('Inbox').create([{ fields: {
-      messageSID,
-      inboxFrom: from,
-      inboxTo: toNumber,
-      inboxBody: parsed.Body || '',
-      inboxReceivedAt: new Date().toISOString(),
-      inboxMatchedKeyword: body,
-      inboxWebhookStatus: 'received',
-    } }]);
+    await query(
+      `INSERT INTO sms_inbox (message_sid, from_e164, to_e164, body, matched_keyword, webhook_status, received_at)
+       VALUES ($1, $2, $3, $4, $5, 'received', NOW())`,
+      [messageSID || null, from || null, toNumber || null, parsed.Body || '', body || null]
+    );
     console.log(`[sms/incoming] Logged message ${messageSID} from ${from}`);
   } catch (err) {
-    console.error('[sms/incoming] Error logging to Inbox', err);
+    console.error('[sms/incoming] Error logging to sms_inbox', err);
   }
   
   // SMS conversation: handle active sms_take_sessions first
@@ -118,8 +112,8 @@ export default async function handler(req, res) {
           [prop.prop_id, from]
         );
         await query(
-          `INSERT INTO takes (prop_id, prop_id_text, prop_side, take_mobile, take_status, pack_id, profile_id, take_result)
-           VALUES ($1, $2, $3, $4, 'latest', $5, $6, 'pending')`,
+          `INSERT INTO takes (prop_id, prop_id_text, prop_side, take_mobile, take_status, pack_id, profile_id, take_result, take_source)
+           VALUES ($1, $2, $3, $4, 'latest', $5, $6, 'pending', 'sms')`,
           [prop.id, prop.prop_id, letter, from, session.pack_id, session.profile_id || null]
         );
       } catch (e) {
@@ -151,59 +145,7 @@ export default async function handler(req, res) {
   }
 
   // Check if the incoming message matches any groupKeyword in the Groups table
-  try {
-    const groupFound = await base('Groups')
-      .select({
-        filterByFormula: `UPPER({groupKeyword}) = "${body}"`,
-        maxRecords: 1,
-      })
-      .firstPage();
-    if (groupFound.length > 0) {
-      const groupRec = groupFound[0];
-      console.log(
-        `[sms/incoming] Matched group keyword '${groupRec.fields.groupKeyword}' for message ${messageSID}`
-      );
-      // Link this user to the group by adding their profile record to groupMembers
-      const phone = from;
-      let profileRecId;
-      // Find or create profile record
-      const profResults = await base('Profiles')
-        .select({ filterByFormula: `{profileMobile} = "${phone}"`, maxRecords: 1 })
-        .firstPage();
-      if (profResults.length > 0) {
-        profileRecId = profResults[0].id;
-      } else {
-        const created = await base('Profiles').create([
-          { fields: { profileMobile: phone } }
-        ]);
-        profileRecId = created[0].id;
-      }
-      // Update groupMembers if not already linked
-      const existingMembers = groupRec.fields.groupMembers || [];
-      if (!existingMembers.includes(profileRecId)) {
-        const updatedMembers = [...existingMembers, profileRecId];
-        await base('Groups').update([
-          {
-            id: groupRec.id,
-            fields: { groupMembers: updatedMembers }
-          }
-        ]);
-        console.log(
-          `[sms/incoming] Added profile ${profileRecId} to group ${groupRec.id}`
-        );
-      }
-      // Send acknowledgment SMS for group match
-      await sendSMS({
-        to: from,
-        message: `you matched with ${groupRec.fields.groupKeyword}`,
-      });
-      // Respond with empty TwiML to acknowledge receipt
-      res.setHeader('Content-Type', 'text/xml');
-      return res.status(200).send('<Response></Response>');
-    }
-  } catch (err) {
-    console.error('[sms/incoming] Error matching group keyword', err);
-  }
+  // Group keyword flow removed from Airtable; no-op
 
   if (body === 'TAKERS') {
     try {

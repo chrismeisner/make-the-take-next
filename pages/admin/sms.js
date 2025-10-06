@@ -13,6 +13,8 @@ export default function AdminSmsPage() {
   const [busy, setBusy] = useState(false);
   const [outbox, setOutbox] = useState([]);
   const [outboxLoading, setOutboxLoading] = useState(false);
+  const [inbox, setInbox] = useState([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
   const [testers, setTesters] = useState([]);
   const [testerPhone, setTesterPhone] = useState('');
   const [testerName, setTesterName] = useState('');
@@ -44,6 +46,9 @@ export default function AdminSmsPage() {
         await fetchOutbox();
       } catch {}
       try {
+        await fetchInbox();
+      } catch {}
+      try {
         await fetchTesters();
       } catch {}
     })();
@@ -59,6 +64,19 @@ export default function AdminSmsPage() {
       // noop
     } finally {
       setOutboxLoading(false);
+    }
+  }
+
+  async function fetchInbox() {
+    setInboxLoading(true);
+    try {
+      const res = await fetch('/api/admin/sms/inbox');
+      const data = await res.json();
+      if (data?.success) setInbox(Array.isArray(data.inbox) ? data.inbox : []);
+    } catch {
+      // noop
+    } finally {
+      setInboxLoading(false);
     }
   }
 
@@ -545,6 +563,42 @@ export default function AdminSmsPage() {
               <div>
                 <button type="button" onClick={sendTestFromRuleFlow} disabled={testBusy || !selectedRuleId || !selectedPackId || !selectedRecipientPhone} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded">{testBusy ? 'Sending…' : 'Send Test SMS'}</button>
               </div>
+            </div>
+          </div>
+
+          <div className="border rounded p-4 bg-white md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold">Inbox</h3>
+              <button type="button" onClick={fetchInbox} disabled={inboxLoading} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded">{inboxLoading ? 'Refreshing…' : 'Refresh'}</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600">
+                    <th className="px-2 py-1">Received</th>
+                    <th className="px-2 py-1">From</th>
+                    <th className="px-2 py-1">To</th>
+                    <th className="px-2 py-1">Body</th>
+                    <th className="px-2 py-1">Keyword</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inbox.map((m) => (
+                    <tr key={m.id} className="border-t">
+                      <td className="px-2 py-1 whitespace-nowrap">{m.received_at ? new Date(m.received_at).toLocaleString() : ''}</td>
+                      <td className="px-2 py-1 whitespace-nowrap">{m.from_e164}</td>
+                      <td className="px-2 py-1 whitespace-nowrap">{m.to_e164 || ''}</td>
+                      <td className="px-2 py-1"><div className="max-w-xl truncate" title={m.body || ''}>{m.body || ''}</div></td>
+                      <td className="px-2 py-1 whitespace-nowrap">{m.matched_keyword || ''}</td>
+                    </tr>
+                  ))}
+                  {(!inbox || inbox.length === 0) && (
+                    <tr>
+                      <td className="px-2 py-2 text-gray-500" colSpan={5}>{inboxLoading ? 'Loading…' : 'No incoming messages yet.'}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
